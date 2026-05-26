@@ -1,0 +1,32 @@
+# Build outputs
+build/
+.gradle/
+*/build/
+
+# Local IDE files
+.idea/
+.cursor/
+*.iml
+
+# CodeGraph machine-local index data
+.codegraph/
+.codegraph/*.db
+.codegraph/*.db-*
+.codegraph/cache/
+.codegraph/*.log
+.codegraph/.dirty
+
+# Android local SDK config
+local.properties
+
+# Runtime/imported game data must never be committed
+games/
+original/
+active/
+incoming/
+backups/
+saves/
+
+# Local asset packs; selected CC0 assets are copied into app/src/main/res/
+kenney_*.zip
+mobile-controls-*.zip
