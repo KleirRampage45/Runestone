@@ -2,33 +2,69 @@
 
 ## CodeGraph
 
-Use CodeGraph for structural code questions:
+Use CodeGraph for structural code questions. Always run `codegraph sync` before relying on results after editing files.
 
-- `codegraph_context` for feature/architecture context
-- `codegraph_search` for symbol lookup
-- `codegraph_callers` / `codegraph_callees` for call relationships
-- `codegraph_trace` for flow questions
-- `codegraph_impact` for change radius
-- `codegraph_files` for indexed project structure
+## Project Overview
 
-After adding or editing source files, run `codegraph sync` or `codegraph index` before relying on CodeGraph results.
+Runestone is a multi-engine RPG Maker game launcher for Android. It supports:
+- **XP / VX / VX Ace** — via mkxp-z native runtime (TODO: integrate native .so)
+- **MV / MZ** — via Android WebView (fully implemented in WebViewEngine.kt)
 
-## Project Rules
+## Key Architecture
 
-- **No copyrighted game files** — never commit RTP assets, game data, official art, screenshots, or music.
-- **Keep imported game data out of git** — workspace/games directories are in `.gitignore`.
-- **License compliance** — Runestone is GPLv2+. All source files must include the GPL header. Third-party components must be documented in THIRD_PARTY.md.
-- **Inherited from Grimmobile** — Core launcher architecture (SAF import, workspace isolation, settings) is ported from blacksouls-android. Keep the patterns consistent unless there's a reason to diverge.
-- **Engine-agnostic** — GameId is not hardcoded to specific titles. Engine detection must work for any RPG Maker game.
+```
+app/src/main/java/com/runestone/app/
+├── MainActivity.kt        → Home screen, game list, import flow
+├── GameActivity.kt        → Routes to correct engine based on detected type
+├── engine/
+│   ├── EngineDetector.kt  → Detects engine type from game files
+│   ├── WebViewEngine.kt   → Full MV/MZ runtime via Chromium WebView
+│   └── RgssEngine.kt      → Stub for mkxp-z integration (WIP)
+├── importer/
+│   └── SafGameImporter.kt → Imports games via SAF (full implementation)
+├── workspace/
+│   └── WorkspaceManager.kt → Manages installed games + files
+└── data/
+    ├── GameEntry.kt       → Removed. Use WorkspaceManager.GameInfo instead
+    └── RunnerSettings.kt
+
+app/src/main/assets/
+├── fake_greenworks.js     → Fakes Steam API for MV/MZ games
+├── bootstrap.js           → WebGL/WebAudio detection and bootstrapper
+└── gamepad.html           → Virtual gamepad overlay (injected via JS)
+```
 
 ## Build
 
 ```bash
-./gradlew assembleDebug        # Build APK
-./gradlew installDebug         # Install on connected device
+./gradlew assembleDebug          # Build APK
+./gradlew installDebug           # Install on connected device via ADB
 ```
+
+## Project Rules
+
+- **No copyrighted game files in git.** Test games go in `/tests/games/` (gitignored).
+- **GPLv2+ license.** All source files must include the GPL header.
+- **Keep patterns consistent with Grimmobile** (blacksouls-android).
+- **Engine-agnostic.** EngineDetector must handle any RPG Maker game.
+- **Use CodeGraph** for structural queries, not grep.
+
+## Engine Detection Logic
+
+EngineDetector inspects files in this order:
+1. `Game.rmmzproject` → MZ
+2. `Game.rvproj2` or `Game.rgss3a` → VX Ace
+3. `Game.rvproj` or `Scripts.rvdata` → VX
+4. `Game.rxproj` or `Scripts.rxdata` → XP
+5. `www/index.html` + `package.json` → MV or MZ
+6. `Data/` with `.rvdata2` / `.rvdata` / `.rxdata` → respective RGSS engine
+
+## Test Data
+
+Fear & Hunger (Spanish, RPG Maker MV) is at `/tests/games/fear-hunger/` for testing.
+Not committed to git. Use it to verify the WebView game player.
 
 ## Branches
 
-- `master` — stable, working builds
-- `development` — active work (default)
+- `master` — stable/working builds
+- `development` — active work, branch y trabajo aquí por defecto

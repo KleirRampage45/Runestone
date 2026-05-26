@@ -27,6 +27,9 @@ incoming/
 backups/
 saves/
 
+# Local test games (user-provided game files)
+/tests/games/
+
 # Local asset packs; selected CC0 assets are copied into app/src/main/res/
 kenney_*.zip
 mobile-controls-*.zip

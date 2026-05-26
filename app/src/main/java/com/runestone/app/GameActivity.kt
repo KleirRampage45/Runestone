@@ -13,16 +13,28 @@ package com.runestone.app
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
+import android.widget.FrameLayout
+import android.widget.Toast
+import com.runestone.app.data.EngineType
+import com.runestone.app.engine.EngineDetector
+import com.runestone.app.engine.WebViewEngine
+import java.io.File
 
 class GameActivity : Activity() {
+
+    private var webViewEngine: WebViewEngine? = null
+    private var engineType: EngineType = EngineType.UNKNOWN
+    private var gamePath: String = ""
 
     companion object {
         private const val EXTRA_GAME_PATH = "game_path"
         private const val EXTRA_ENGINE_TYPE = "engine_type"
 
-        fun start(activity: Activity, gamePath: String) {
+        fun start(activity: Activity, gamePath: String, engineType: String? = null) {
             val intent = Intent(activity, GameActivity::class.java).apply {
                 putExtra(EXTRA_GAME_PATH, gamePath)
+                if (engineType != null) putExtra(EXTRA_ENGINE_TYPE, engineType)
             }
             activity.startActivity(intent)
         }
@@ -30,14 +42,94 @@ class GameActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val gamePath = intent.getStringExtra(EXTRA_GAME_PATH) ?: run {
+
+        gamePath = intent.getStringExtra(EXTRA_GAME_PATH) ?: run {
+            Toast.makeText(this, "No game path provided", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
 
-        // TODO: Detect engine and launch appropriate runtime
-        // - RGSS (XP/VX/VX Ace) -> mkxp-z native activity
-        // - MV/MZ -> WebView pointing to www/index.html
+        val gameDir = File(gamePath)
+        if (!gameDir.exists() || !gameDir.isDirectory) {
+            Toast.makeText(this, "Game directory not found", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
+        // Detect engine type
+        val typeStr = intent.getStringExtra(EXTRA_ENGINE_TYPE)
+        engineType = if (typeStr != null) {
+            try { EngineType.valueOf(typeStr) } catch (e: Exception) { EngineDetector.detect(gameDir) }
+        } else {
+            EngineDetector.detect(gameDir)
+        }
+
+        when (engineType) {
+            EngineType.MV, EngineType.MZ -> launchWebViewGame(gameDir)
+            EngineType.RGSS_XP, EngineType.RGSS_VX, EngineType.RGSS_VX_ACE -> launchRgssGame(gameDir)
+            EngineType.UNKNOWN -> {
+                // Try anyway - maybe it's an MV game with weird structure
+                Toast.makeText(this, "Unknown engine type, trying WebView", Toast.LENGTH_SHORT).show()
+                launchWebViewGame(gameDir)
+            }
+        }
+    }
+
+    private fun launchWebViewGame(gameDir: File) {
+        val layout = FrameLayout(this).apply {
+            id = View.generateViewId()
+        }
+        setContentView(layout)
+
+        val engine = WebViewEngine(this)
+        webViewEngine = engine
+
+        layout.addView(engine, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT,
+        ))
+
+        engine.loadGame(gameDir.absolutePath, WebViewEngine.WebViewGameConfig(
+            title = gameDir.name,
+            addGamepad = true,
+            fakeGreenworks = true,
+            showFps = true,
+        ))
+    }
+
+    private fun launchRgssGame(gameDir: File) {
+        // RGSS games (XP/VX/VX Ace) need the mkxp-z native runtime.
+        // For now, show a message since mkxp-z integration is pending.
+        Toast.makeText(this, "RGSS engine (${engineType.label}) support coming soon", Toast.LENGTH_LONG).show()
         finish()
+    }
+
+    override fun onBackPressed() {
+        val engine = webViewEngine
+        if (engine != null) {
+            val shouldQuit = engine.handleBack()
+            if (shouldQuit) {
+                super.onBackPressed()
+            }
+        } else {
+            super.onBackPressed()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        webViewEngine?.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        webViewEngine?.resumeTimers()
+        webViewEngine?.onResume()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        webViewEngine?.destroy()
+        webViewEngine = null
     }
 }
