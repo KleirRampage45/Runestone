@@ -1,0 +1,3 @@
+[submodule "native/mkxp-z-android"]
+	path = native/mkxp-z-android
+	url = https://github.com/KleirRampage45/mkxp-z-android.git
