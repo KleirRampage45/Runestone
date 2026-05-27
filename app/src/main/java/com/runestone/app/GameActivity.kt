@@ -65,8 +65,11 @@ class GameActivity : Activity() {
         }
 
         when (engineType) {
-            EngineType.MV, EngineType.MZ -> launchWebViewGame(gameDir)
+            EngineType.MV, EngineType.MZ,
+            EngineType.TYRANO, EngineType.CONSTRUCT -> launchWebViewGame(gameDir)
             EngineType.RGSS_XP, EngineType.RGSS_VX, EngineType.RGSS_VX_ACE -> launchRgssGame(gameDir)
+            EngineType.EASYRPG -> launchEasyRpgGame(gameDir)
+            EngineType.RENPY -> launchRenpyGame(gameDir)
             EngineType.UNKNOWN -> {
                 // Try anyway - maybe it's an MV game with weird structure
                 Toast.makeText(this, "Unknown engine type, trying WebView", Toast.LENGTH_SHORT).show()
@@ -101,6 +104,20 @@ class GameActivity : Activity() {
         // RGSS games (XP/VX/VX Ace) need the mkxp-z native runtime.
         // For now, show a message since mkxp-z integration is pending.
         Toast.makeText(this, "RGSS engine (${engineType.label}) support coming soon", Toast.LENGTH_LONG).show()
+        finish()
+    }
+
+    private fun launchEasyRpgGame(gameDir: File) {
+        // RPG Maker 2000/2003 games need the EasyRPG native runtime.
+        // Phase 1: show a message since EasyRPG integration is pending.
+        Toast.makeText(this, "RPG Maker 2000/2003 support coming soon", Toast.LENGTH_LONG).show()
+        finish()
+    }
+
+    private fun launchRenpyGame(gameDir: File) {
+        // Ren'Py games need the Ren'Py plugin APK.
+        // Phase 2: show a message since Ren'Py integration is pending.
+        Toast.makeText(this, "Ren'Py support coming soon (will require separate plugin APK)", Toast.LENGTH_LONG).show()
         finish()
     }
 

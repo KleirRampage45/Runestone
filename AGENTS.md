@@ -4,34 +4,74 @@
 
 Use CodeGraph for structural code questions. Always run `codegraph sync` before relying on results after editing files.
 
+```bash
+codegraph sync  # Run after editing files
+codegraph status  # Check index status
+```
+
 ## Project Overview
 
-Runestone is a multi-engine RPG Maker game launcher for Android. It supports:
-- **XP / VX / VX Ace** — via mkxp-z native runtime (TODO: integrate native .so)
-- **MV / MZ** — via Android WebView (fully implemented in WebViewEngine.kt)
+Runestone is an **open-source multi-engine game launcher for Android** — the definitive alternative to JoiPlay. It supports:
+
+### Current Engines
+- **RPG Maker MV / MZ** — via Android WebView (✅ fully implemented)
+- **RPG Maker XP / VX / VX Ace** — via mkxp-z native runtime (🚧 in progress)
+
+### Planned Engines
+- **RPG Maker 2000 / 2003** — via EasyRPG (Phase 1)
+- **Ren'Py** — Visual novels (Phase 2)
+- **TyranoBuilder** — HTML/JS visual novels (Phase 2)
+- **Construct 2/3** — HTML5 games (Phase 3)
+- **Flash** — via Ruffle WASM (Phase 3)
+
+See `DESIGN.md` for full architecture and roadmap.
 
 ## Key Architecture
 
-```
-app/src/main/java/com/runestone/app/
-├── MainActivity.kt        → Home screen, game list, import flow
-├── GameActivity.kt        → Routes to correct engine based on detected type
-├── engine/
-│   ├── EngineDetector.kt  → Detects engine type from game files
-│   ├── WebViewEngine.kt   → Full MV/MZ runtime via Chromium WebView
-│   └── RgssEngine.kt      → Stub for mkxp-z integration (WIP)
-├── importer/
-│   └── SafGameImporter.kt → Imports games via SAF (full implementation)
-├── workspace/
-│   └── WorkspaceManager.kt → Manages installed games + files
-└── data/
-    ├── GameEntry.kt       → Removed. Use WorkspaceManager.GameInfo instead
-    └── RunnerSettings.kt
+### Plugin-Based Engine System
 
-app/src/main/assets/
-├── fake_greenworks.js     → Fakes Steam API for MV/MZ games
-├── bootstrap.js           → WebGL/WebAudio detection and bootstrapper
-└── gamepad.html           → Virtual gamepad overlay (injected via JS)
+Each engine implements the `GameEngine` interface:
+
+```kotlin
+interface GameEngine {
+    val id: String              // "mkxp-z", "webview-mv"
+    val name: String            // "RPG Maker XP/VX/VX Ace"
+    fun canRun(gameFolder: File): Boolean
+    fun launch(context: Context, gameFolder: File, config: GameConfig)
+    fun getSaves(gameFolder: File): List<SaveFile>
+}
+```
+
+Engines register in `EngineRegistry` and are auto-detected by `EngineDetector`.
+
+### Project Structure
+
+```
+Runestone/
+├── app/src/main/java/com/runestone/app/
+│   ├── MainActivity.kt        → Home screen, game library, import flow
+│   ├── GameActivity.kt        → Routes to correct engine based on detection
+│   ├── engine/
+│   │   ├── EngineDetector.kt  → Detects engine type from game files
+│   │   ├── EngineRegistry.kt  → Plugin registration system
+│   │   ├── WebViewEngine.kt   → MV/MZ runtime via Chromium WebView
+│   │   └── MkxpZEngine.kt     → mkxp-z integration (WIP)
+│   ├── importer/
+│   │   └── SafGameImporter.kt → Imports games via SAF
+│   ├── workspace/
+│   │   └── WorkspaceManager.kt → Manages installed games + files
+│   └── data/
+│       ├── EngineType.kt      → Enum of supported engines
+│       └── RunnerSettings.kt  → User preferences
+├── native/
+│   └── mkxp-z-android/        → mkxp-z submodule (native C++ runtime)
+├── app/src/main/assets/
+│   ├── fake_greenworks.js     → Fakes Steam API for MV/MZ games
+│   ├── bootstrap.js           → WebGL/WebAudio detection
+│   └── gamepad.html           → Virtual gamepad overlay
+├── DESIGN.md                  → Architecture & design decisions
+├── CONTRIBUTING.md            → Contribution guidelines
+└── tests/games/               → Test games (gitignored)
 ```
 
 ## Build

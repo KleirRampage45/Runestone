@@ -126,7 +126,7 @@ class EasyRpgEngine : GameEngine {
         return saves.sortedBy { it.slot ?: 999 }
     }
 
-    private fun detectVersion(gameFolder: File): String {
+    override fun detectVersion(gameFolder: File): String {
         // RPG Maker 2003 has a different .ldb format than 2000
         // Simple heuristic: check for .ldb file size or specific bytes
         // For now, just return generic version
