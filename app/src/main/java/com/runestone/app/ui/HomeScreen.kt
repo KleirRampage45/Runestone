@@ -498,6 +498,22 @@ class HomeScreen(private val context: Context) {
             }
         }
 
+        // Long-press → context menu
+        cardWrapper.setOnLongClickListener {
+            val items = listOf("Play", "Manage Files", "Add to Favorites", "Remove Game")
+            val actions = listOf(
+                { onPlay(game.storageName) },
+                { onManage(game.storageName) },
+                { android.widget.Toast.makeText(context, "Added to Favorites", android.widget.Toast.LENGTH_SHORT).show() },
+                { android.widget.Toast.makeText(context, "Remove: ${game.displayName}", android.widget.Toast.LENGTH_SHORT).show() },
+            )
+            android.app.AlertDialog.Builder(context)
+                .setTitle(game.displayName)
+                .setItems(items.toTypedArray()) { _, which -> actions[which]() }
+                .show()
+            true
+        }
+
         // Game name below card
         cardContainer.addView(TextView(context).apply {
             text = game.displayName; setTextColor(TEXT); textSize = 15f
