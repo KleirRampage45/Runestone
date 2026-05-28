@@ -72,31 +72,12 @@ class EasyRpgEngine : GameEngine {
 
     override fun launch(context: Context, gameFolder: File, config: GameConfig) {
         Log.i(TAG, "Launching ${gameFolder.name} via EasyRPG")
-
-        try {
-            // Launch EasyRPG native activity
-            // The submodule provides org.easyrpg.player.GameActivity
-            val intent = Intent().apply {
-                setClassName(
-                    context.packageName,
-                    "org.easyrpg.player.GameActivity"
-                )
-                putExtra("game_path", gameFolder.absolutePath)
-
-                config.extraArgs.forEach { (key, value) ->
-                    putExtra(key, value)
-                }
-
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch EasyRPG activity", e)
-            // TODO: Show user-friendly error
-            // "EasyRPG runtime not available. Please rebuild with native support."
-            throw RuntimeException("EasyRPG runtime not available", e)
-        }
+        // EasyRPG Player is not bundled — show informational toast
+        android.widget.Toast.makeText(
+            context,
+            "EasyRPG Player required. Download from github.com/EasyRPG/Player/releases",
+            android.widget.Toast.LENGTH_LONG
+        ).show()
     }
 
     override fun getSaves(gameFolder: File): List<SaveFile> {

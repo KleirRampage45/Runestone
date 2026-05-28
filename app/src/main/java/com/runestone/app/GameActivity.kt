@@ -11,11 +11,13 @@
 package com.runestone.app
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
@@ -368,13 +370,33 @@ class GameActivity : Activity() {
     }
 
     private fun launchEasyRpgGame(gameDir: File) {
-        Toast.makeText(this, "RPG Maker 2000/2003 support coming soon", Toast.LENGTH_LONG).show()
-        finish()
+        Log.i(TAG, "launchEasyRpgGame: $gameDir — EasyRPG plugin not installed")
+        AlertDialog.Builder(this)
+            .setTitle("EasyRPG Player Required")
+            .setMessage("RPG Maker 2000/2003 games need the EasyRPG Player plugin to run.\n\nDownload it now from GitHub?")
+            .setPositiveButton("Download") { _, _ ->
+                val url = Uri.parse("https://github.com/EasyRPG/Player/releases/latest")
+                startActivity(Intent(Intent.ACTION_VIEW, url))
+                finish()
+            }
+            .setNegativeButton("Cancel") { _, _ -> finish() }
+            .setCancelable(false)
+            .show()
     }
 
     private fun launchRenpyGame(gameDir: File) {
-        Toast.makeText(this, "Ren'Py support coming soon (will require separate plugin APK)", Toast.LENGTH_LONG).show()
-        finish()
+        Log.i(TAG, "launchRenpyGame: $gameDir — Ren'Py plugin not installed")
+        AlertDialog.Builder(this)
+            .setTitle("Ren'Py Plugin Required")
+            .setMessage("Ren'Py visual novels need the Ren'Py plugin to run.\n\nDownload it now from Runestone's plugin page?")
+            .setPositiveButton("Download") { _, _ ->
+                val url = Uri.parse("https://runestone.app/plugins/renpy")
+                startActivity(Intent(Intent.ACTION_VIEW, url))
+                finish()
+            }
+            .setNegativeButton("Cancel") { _, _ -> finish() }
+            .setCancelable(false)
+            .show()
     }
 
     override fun onBackPressed() {
