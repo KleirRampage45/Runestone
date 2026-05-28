@@ -31,6 +31,30 @@
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
 
+        <!-- Godot Engine — MIT, bundled native -->
+        <activity
+            android:name="org.godotengine.android.GodotActivity"
+            android:screenOrientation="sensor"
+            android:exported="false"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+
+        <!-- ONScripter (NScripter) — GPLv2+, bundled native -->
+        <activity
+            android:name="com.runestone.plugin.onscripter.OnscripterActivity"
+            android:screenOrientation="sensor"
+            android:exported="false"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+
+        <!-- Ren'Py — MIT, bundled native -->
+        <activity
+            android:name="com.runestone.plugin.renpy.RenpyActivity"
+            android:screenOrientation="sensor"
+            android:exported="false"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

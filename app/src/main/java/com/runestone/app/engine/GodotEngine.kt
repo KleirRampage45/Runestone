@@ -47,29 +47,13 @@ class GodotEngine : GameEngine {
     }
 
     override fun launch(context: Context, gameFolder: File, config: GameConfig) {
-        Log.i(TAG, "Launching Godot: ${gameFolder.name}")
-        // Try bundled native first
-        try {
-            val intent = Intent().apply {
-                setClassName(context.packageName, GODOT_ACTIVITY)
-                putExtra("godot_arg", "-path")
-                putExtra("godot_arg_value", gameFolder.absolutePath)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(intent)
-            return
-        } catch (e: Exception) {
-            Log.w(TAG, "Godot native not bundled — showing download", e)
+        Log.i(TAG, "Launching Godot (bundled): ${gameFolder.name}")
+        val intent = Intent().apply {
+            setClassName(context.packageName, GODOT_ACTIVITY)
+            putExtra("godot_arg", "-path")
+            putExtra("godot_arg_value", gameFolder.absolutePath)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        // Fallback dialog
-        val activity = context as? android.app.Activity ?: return
-        android.app.AlertDialog.Builder(activity)
-            .setTitle("Godot Engine Required")
-            .setMessage("Godot (MIT-licensed) — Runestone can bundle the runtime natively.\n\nDownload the Godot Android plugin?")
-            .setPositiveButton("Download") { _, _ ->
-                activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://godotengine.org/download/android/")))
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+        context.startActivity(intent)
     }
 }

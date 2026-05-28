@@ -42,14 +42,12 @@ enum class EngineType(
     VNMAKER("VN Maker", EngineTier.BUNDLED),
     RUFFLE("Flash (Ruffle)", EngineTier.BUNDLED),
 
-    // ══ Bundlable (MIT/GPL — can bundle, not yet built) ══
-    RENPY("Ren'Py", EngineTier.DOWNLOAD),
-    GODOT("Godot Engine", EngineTier.DOWNLOAD),
-    GODOT3("Godot 3.x", EngineTier.DOWNLOAD),
-    GODOT4("Godot 4.x", EngineTier.DOWNLOAD),
-
-    // ══ Download only (runtime exists but complex/heavy to bundle) ══
-    NSCRIPTER("NScripter", EngineTier.DOWNLOAD),
+    // ══ Bundled native (GPL/MIT — runtime .so included in APK) ══
+    RENPY("Ren'Py", EngineTier.BUNDLED),
+    GODOT("Godot Engine", EngineTier.BUNDLED),
+    GODOT3("Godot 3.x", EngineTier.BUNDLED),
+    GODOT4("Godot 4.x", EngineTier.BUNDLED),
+    NSCRIPTER("NScripter / ONScripter", EngineTier.BUNDLED),
     ELECTRON("Electron", EngineTier.DOWNLOAD),
 
     // ══ Legacy (detect only — no open-source runtime exists) ══

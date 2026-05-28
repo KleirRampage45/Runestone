@@ -87,29 +87,13 @@ class RenpyEngine : GameEngine {
     }
 
     override fun launch(context: Context, gameFolder: File, config: GameConfig) {
-        Log.i(TAG, "Launching ${gameFolder.name} via Ren'Py")
-
-        // Check if Ren'Py plugin is installed
-        if (!isPluginInstalled(context)) {
-            Log.e(TAG, "Ren'Py plugin not installed")
-            // TODO: Show user dialog to download plugin
-            // "Ren'Py support requires the Runestone Ren'Py Plugin. Download now?"
-            throw RuntimeException("Ren'Py plugin not installed. Please install from GitHub.")
+        Log.i(TAG, "Launching Ren'Py (bundled): ${gameFolder.name}")
+        val intent = android.content.Intent().apply {
+            setClassName(context.packageName, "com.runestone.plugin.renpy.RenpyActivity")
+            putExtra("game_path", gameFolder.absolutePath)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-
-        try {
-            // Launch plugin activity
-            val intent = android.content.Intent().apply {
-                setClassName(PLUGIN_PACKAGE, PLUGIN_ACTIVITY)
-                putExtra("game_path", gameFolder.absolutePath)
-                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch Ren'Py plugin", e)
-            throw RuntimeException("Ren'Py plugin launch failed", e)
-        }
+        context.startActivity(intent)
     }
 
     override fun getSaves(gameFolder: File): List<SaveFile> {

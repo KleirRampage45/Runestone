@@ -393,19 +393,41 @@ class GameActivity : Activity() {
         startActivity(intent)
     }
 
-    private fun launchRenpyGame(gameDir: File) {
-        Toast.makeText(this, "Ren'Py support coming soon (will require separate plugin APK)", Toast.LENGTH_LONG).show()
-        finish()
-    }
+    // ── Godot (MIT — bundled native) ─────────────────────────────
 
     private fun launchGodotGame(gameDir: File) {
-        Toast.makeText(this, "Godot support coming soon", Toast.LENGTH_LONG).show()
-        finish()
+        Log.i(TAG, "Godot bundled: launching ${gameDir.name}")
+        val intent = Intent().apply {
+            setClassName(packageName, "org.godotengine.android.GodotActivity")
+            putExtra("godot_arg", "-path")
+            putExtra("godot_arg_value", gameDir.absolutePath)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(intent)
     }
 
+    // ── NScripter / ONScripter (GPLv2+ — bundled native) ─────────
+
     private fun launchNScripterGame(gameDir: File) {
-        Toast.makeText(this, "NScripter support coming soon (ONScripter GPLv2+)", Toast.LENGTH_LONG).show()
-        finish()
+        Log.i(TAG, "ONScripter bundled: launching ${gameDir.name}")
+        val intent = Intent().apply {
+            setClassName(packageName, "com.runestone.plugin.onscripter.OnscripterActivity")
+            putExtra("game_path", gameDir.absolutePath)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(intent)
+    }
+
+    // ── Ren'Py (MIT — bundled native) ────────────────────────────
+
+    private fun launchRenpyGame(gameDir: File) {
+        Log.i(TAG, "Ren'Py bundled: launching ${gameDir.name}")
+        val intent = Intent().apply {
+            setClassName(packageName, "com.runestone.plugin.renpy.RenpyActivity")
+            putExtra("game_path", gameDir.absolutePath)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(intent)
     }
 
     private fun showLegacyDialog(type: EngineType) {
