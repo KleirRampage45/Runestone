@@ -101,6 +101,80 @@ class SaveManager(private val workspaceManager: WorkspaceManager) {
         private val SAVE_FILTER = FileFilter { file ->
             file.isFile && file.name.matches(Regex("""(?i)(save|file|game|global)\d*\.(rvdata2|rvdata|rxdata|dat|json|lsd|lmu|lmt)"""))
         }
+
+        /** Known save extensions for cross-platform detection. */
+        val PC_SAVE_EXTENSIONS = setOf("rvdata2", "rvdata", "rxdata", "lsd", "save", "json", "dat")
+    }
+
+    // ── Import / Export ──────────────────────────────────────────
+
+    /**
+     * Import a save file from external storage into the game.
+     * Detects the correct target directory based on engine type.
+     *
+     * @param storageName Game storage name
+     * @param sourceFile The save file to import
+     * @param slot Optional slot number (for auto-naming)
+     * @return The imported file, or null on failure
+     */
+    fun importSave(storageName: String, sourceFile: File, slot: Int? = null): File? {
+        val gameDir = workspaceManager.originalDir(storageName)
+        if (!gameDir.isDirectory) return null
+
+        // Detect target directory based on existing save locations
+        val saveLocations = listOf(
+            File(gameDir, "www/save"),   // MV/MZ
+            File(gameDir, "save"),       // Alternative
+            gameDir,                     // RGSS root
+        )
+
+        val targetDir = saveLocations.firstOrNull { it.isDirectory } ?: saveLocations.first()
+        targetDir.mkdirs()
+
+        val targetName = if (slot != null && sourceFile.extension in PC_SAVE_EXTENSIONS) {
+            "Save${slot.toString().padStart(2, '0')}.${sourceFile.extension}"
+        } else {
+            sourceFile.name
+        }
+
+        val target = File(targetDir, targetName)
+        sourceFile.copyTo(target, overwrite = true)
+        return target
+    }
+
+    /**
+     * Export a save file to a destination directory.
+     * @return The exported file, or null on failure.
+     */
+    fun exportSave(storageName: String, saveName: String, destDir: File): File? {
+        val saves = listSaves(storageName)
+        val source = saves.find { it.name == saveName } ?: return null
+        val dest = File(destDir, source.name)
+        source.copyTo(dest, overwrite = true)
+        return dest
+    }
+
+    /**
+     * Scan a directory for PC-compatible save files.
+     * Useful for users who copied saves from their PC.
+     */
+    fun detectPcSaves(folder: File): List<File> {
+        if (!folder.isDirectory) return emptyList()
+        return folder.listFiles(SAVE_FILTER)?.filter {
+            it.extension.lowercase() in PC_SAVE_EXTENSIONS
+        }?.sortedBy { it.name } ?: emptyList()
+    }
+
+    /**
+     * Import all detected PC saves from a folder into the game.
+     * Auto-detects the target save directory.
+     */
+    fun importPcSaves(storageName: String, pcFolder: File): List<File> {
+        val saves = detectPcSaves(pcFolder)
+        return saves.mapNotNull { save ->
+            val slot = Regex("""(\d+)""").find(save.name)?.groupValues?.get(1)?.toIntOrNull()
+            importSave(storageName, save, slot)
+        }
     }
 }
 
