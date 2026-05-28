@@ -1,31 +1,48 @@
 package org.easyrpg.player.player;
 
 import android.content.Intent;
+import android.content.res.AssetManager;
 import android.os.Bundle;
 import android.util.Log;
 
 /**
  * Minimal JNI surface for libeasyrpg_android.so (APK v0.8.1).
  *
- * Extends mkxp-z MainActivity to reuse SDL2/OpenGL/gamepad infrastructure.
- * Loads EasyRPG native .so instead of mkxp-z, and forwards the game path
- * as command-line arguments that EasyRPG's main() expects.
+ * Provides the static methods that the native code calls via JNI.
+ * Extends mkxp-z MainActivity for SDL2/OpenGL/gamepad infrastructure.
  */
 public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
 
     private static final String TAG = "EasyRPGWrapper";
-
-    // Intent extra keys — match what the EasyRPG native code expects
     private static final String EXTRA_PROJECT_PATH = "project_path";
     private static final String EXTRA_COMMAND_LINE = "command_line";
-    private static final String EXTRA_SAVE_PATH = "save_path";
 
     private String mProjectPath;
-    private String mSavePath;
-    private String[] mCommandLine;
 
     // ═══════════════════════════════════════════════
-    // SDL overrides — load EasyRPG, pass correct args
+    // Static JNI methods — called by native code
+    // ═══════════════════════════════════════════════
+
+    /**
+     * Called by native ApkFilesystem to read APK assets (RTP, fonts, etc.).
+     * Must be static — the native code calls it as CallStaticObjectMethod.
+     */
+    public static AssetManager getAssetManager() {
+        return getContext().getAssets();
+    }
+
+    /**
+     * Called by native SafFilesystem for SAF-based file access.
+     * Only needed if games are accessed via SAF URIs — returns null
+     * which will cause the native code to fall back to regular filesystem.
+     */
+    public static Object getHandleForPath(String path) {
+        Log.w(TAG, "getHandleForPath — SAF not supported, using regular filesystem");
+        return null;
+    }
+
+    // ═══════════════════════════════════════════════
+    // SDL overrides
     // ═══════════════════════════════════════════════
 
     @Override
@@ -38,11 +55,6 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
 
     @Override
     protected String[] getArguments() {
-        // EasyRPG's main() expects: [project_path, ...]
-        // Pass the project path plus any extra command-line args
-        if (mCommandLine != null && mCommandLine.length > 0) {
-            return mCommandLine;
-        }
         if (mProjectPath != null) {
             return new String[] { mProjectPath };
         }
@@ -50,21 +62,16 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
     }
 
     // ═══════════════════════════════════════════════
-    // JNI callbacks — required by libeasyrpg_android.so
+    // JNI callbacks
     // ═══════════════════════════════════════════════
 
-    /** Called by native code via JNI. Must be public, no args, void return. */
-    public void openSettings() {
-        Log.d(TAG, "openSettings (no-op)");
-    }
+    public void openSettings() { Log.d(TAG, "openSettings"); }
 
-    /** Called by native code via JNI. */
     public void endGame() {
         Log.i(TAG, "endGame");
         finish();
     }
 
-    /** Called by native code via JNI. */
     public void resetGame() {
         Log.i(TAG, "resetGame — restarting");
         Intent intent = getIntent();
@@ -72,10 +79,7 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
         startActivity(intent);
     }
 
-    /** Called by native code via JNI. */
-    public void toggleFps() {
-        Log.d(TAG, "toggleFps (no-op)");
-    }
+    public void toggleFps() { Log.d(TAG, "toggleFps"); }
 
     // ═══════════════════════════════════════════════
     // Lifecycle
@@ -85,7 +89,6 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
     protected void onCreate(Bundle savedInstanceState) {
         Intent intent = getIntent();
 
-        // Read project path from intent extras
         mProjectPath = intent.getStringExtra(EXTRA_PROJECT_PATH);
         if (mProjectPath == null || mProjectPath.isEmpty()) {
             mProjectPath = intent.getStringExtra("game_path");
@@ -94,15 +97,9 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
             mProjectPath = android.os.Environment.getExternalStorageDirectory() + "/easyrpg-games";
         }
 
-        mSavePath = intent.getStringExtra(EXTRA_SAVE_PATH);
-        mCommandLine = intent.getStringArrayExtra(EXTRA_COMMAND_LINE);
-
         Log.i(TAG, "Project path: " + mProjectPath);
-        Log.i(TAG, "Save path: " + mSavePath);
 
-        // Inject the project path so MainActivity/SDL picks it up
         intent.putExtra("com.grimmobile.runner.extra.GAME_PATH", mProjectPath);
-
         super.onCreate(savedInstanceState);
     }
 }
