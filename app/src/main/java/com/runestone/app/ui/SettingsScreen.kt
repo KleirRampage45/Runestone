@@ -124,6 +124,15 @@ class SettingsScreen(private val context: Context) {
         )
 
         content.addView(spacer(16))
+
+        // Language
+        content.addView(sectionTitle("Language", "Select your preferred language."))
+        content.addView(languageSelector(context) { lang ->
+            com.runestone.app.LocaleManager.setLanguage(context, lang)
+            onSettingsChanged(current)
+        })
+
+        content.addView(spacer(16))
         content.addView(sectionTitle("Help & About", "Learn how Runestone works."))
         content.addView(expandableButton("HELP — How to use Runestone", ::makeHelpContent))
         content.addView(spacer(8))
@@ -239,6 +248,33 @@ class SettingsScreen(private val context: Context) {
             )
             setOnClickListener { onClick() }
         }
+
+    private fun languageSelector(ctx: Context, onSelect: (String) -> Unit): LinearLayout {
+        val currentLang = com.runestone.app.LocaleManager.getSavedLanguage(ctx)
+        val languages = listOf("system" to "System Default", "en" to "English", "es" to "Español")
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = GradientDrawable().apply {
+                setColor(Color.argb(30, 255, 255, 255)); cornerRadius = dp(8).toFloat()
+            }
+            setPadding(dp(2), dp(2), dp(2), dp(2))
+        }
+        for ((code, label) in languages) {
+            val selected = code == currentLang
+            val chip = TextView(ctx).apply {
+                text = label; textSize = 11f; gravity = Gravity.CENTER
+                setTextColor(if (selected) ACCENT else MUTED)
+                typeface = if (selected) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                setPadding(dp(8), dp(7), dp(8), dp(7))
+                background = if (selected) GradientDrawable().apply {
+                    setColor(Color.argb(80, 200, 170, 130)); cornerRadius = dp(6).toFloat()
+                } else null
+                setOnClickListener { onSelect(code) }
+            }
+            row.addView(chip, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        return row
+    }
 
     private fun sectionTitle(title: String, detail: String): LinearLayout =
         LinearLayout(context).apply {

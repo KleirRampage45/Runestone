@@ -12,6 +12,7 @@ package com.runestone.app
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -60,6 +61,10 @@ class MainActivity : Activity() {
     private var activeEngineFilter: EngineType? = null
     private var currentSort: SortMode = SortMode.NAME_ASC
     private var searchQuery: String = ""
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleManager.applyLocale(newBase))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
