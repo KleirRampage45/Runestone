@@ -40,6 +40,13 @@ data class GameCardInfo(
     val isPaused: Boolean = false,
 )
 
+/** Tracks the currently selected card's views for single-selection UX */
+data class SelectedCardRef(
+    var dimOverlay: View?,
+    var actionPanel: View?,
+    var cardFrame: View?,
+)
+
 class HomeScreen(private val context: Context) {
 
     fun create(
@@ -56,6 +63,18 @@ class HomeScreen(private val context: Context) {
         pausedGame: GameCardInfo? = null,
         onResume: (() -> Unit)? = null,
     ): FrameLayout {
+        // ── Single-selection tracker ──
+        val selectedCard = SelectedCardRef(null, null, null)
+        fun deselectCurrent() {
+            selectedCard.dimOverlay?.visibility = View.GONE
+            selectedCard.actionPanel?.visibility = View.GONE
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                (selectedCard.cardFrame as? FrameLayout)?.setRenderEffect(null)
+            }
+            selectedCard.dimOverlay = null
+            selectedCard.actionPanel = null
+            selectedCard.cardFrame = null
+        }
         val root = FrameLayout(context).apply {
             setBackgroundColor(Color.rgb(3, 3, 4))
         }
@@ -89,7 +108,7 @@ class HomeScreen(private val context: Context) {
             })
         } else {
             games.forEach { game ->
-                content.addView(createHeroCard(game, onPlay, onManage))
+                content.addView(createHeroCard(game, onPlay, onManage, ::deselectCurrent, selectedCard))
                 content.addView(spacer(dp(10)))
             }
         }
@@ -399,7 +418,9 @@ class HomeScreen(private val context: Context) {
     // ============================================================
 
     private fun createHeroCard(
-        game: GameCardInfo, onPlay: (String) -> Unit, onManage: (String) -> Unit
+        game: GameCardInfo, onPlay: (String) -> Unit, onManage: (String) -> Unit,
+        deselectAll: () -> Unit,
+        selected: SelectedCardRef,
     ): LinearLayout {
         val cardContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
@@ -476,9 +497,12 @@ class HomeScreen(private val context: Context) {
         }
         actionPanel.addView(optsBtn, LinearLayout.LayoutParams(btnW, WRAP))
 
-        // Tap wrapper → toggle overlay + blur
+        // Tap wrapper → toggle overlay + blur (single-selection)
         cardWrapper.setOnClickListener {
             if (dimOverlay.visibility == View.GONE) {
+                // Deselect previously selected card first
+                deselectAll()
+                // Select this card
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                     cardFrame.setRenderEffect(
                         android.graphics.RenderEffect.createBlurEffect(32f, 32f,
@@ -489,12 +513,13 @@ class HomeScreen(private val context: Context) {
                 actionPanel.scaleX = 0.9f; actionPanel.scaleY = 0.9f
                 actionPanel.animate().scaleX(1f).scaleY(1f).setDuration(200)
                     .setInterpolator(OvershootInterpolator(1.2f)).start()
+                // Track this card as selected
+                selected.dimOverlay = dimOverlay
+                selected.actionPanel = actionPanel
+                selected.cardFrame = cardFrame
             } else {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                    cardFrame.setRenderEffect(null)
-                }
-                dimOverlay.visibility = View.GONE
-                actionPanel.visibility = View.GONE
+                // Deselect this card (tap same card again)
+                deselectAll()
             }
         }
 
