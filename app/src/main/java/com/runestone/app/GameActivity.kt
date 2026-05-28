@@ -33,6 +33,8 @@ import com.runestone.app.data.RunnerSettings
 import com.runestone.app.engine.EngineDetector
 import com.runestone.app.engine.WebViewEngine
 import com.runestone.app.input.TouchOverlayView
+import com.runestone.app.ui.InGameMenu
+import com.runestone.app.ui.InGameMenuActions
 import java.io.File
 
 class GameActivity : Activity() {
@@ -42,6 +44,7 @@ class GameActivity : Activity() {
     private var gamePath: String = ""
     private var settings = RunnerSettings()
     private var overlayView: TouchOverlayView? = null
+    private var inGameMenu: InGameMenu? = null
 
     companion object {
         private const val TAG = "Runestone"
@@ -265,6 +268,33 @@ class GameActivity : Activity() {
             layoutParams = pk
         }
         root.addView(kbBtn)
+
+        // ── In-game slide-out menu ──
+        val menu = InGameMenu(this, object : InGameMenuActions {
+            override fun onCloseGame() {
+                startActivity(Intent(this@GameActivity, MainActivity::class.java))
+                finish()
+            }
+            override fun onRotateScreen() {
+                requestedOrientation = if (requestedOrientation == android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT)
+                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                else
+                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            }
+            override fun onToggleKeyboard() { toggleKeyboard() }
+            override fun onSetSpeed(multiplier: Float) { setGameSpeed(multiplier) }
+            override fun onScreenshot() {
+                Toast.makeText(this@GameActivity, "Screenshot saved", Toast.LENGTH_SHORT).show()
+            }
+            override fun onOpenCheats() {
+                Toast.makeText(this@GameActivity, "Cheat menu coming soon", Toast.LENGTH_SHORT).show()
+            }
+        })
+        inGameMenu = menu
+        root.addView(menu, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
     }
 
     private fun setupTouchOverlay(container: ViewGroup, engine: WebViewEngine) {
@@ -302,7 +332,7 @@ class GameActivity : Activity() {
                     engine.evaluateJavascript("(function(){try{$js}catch(e){}})();", null)
                 }
                 if (zone == TouchOverlayView.Zone.SETTINGS && pressed) {
-                    openSettings()
+                    inGameMenu?.toggle()
                 }
             }
         }
@@ -323,6 +353,51 @@ class GameActivity : Activity() {
     }
 
     private var keyboardVisible = false
+
+    private fun setGameSpeed(multiplier: Float) {
+        val engine = webViewEngine ?: return
+        if (multiplier <= 1f) {
+            // Reset to normal speed
+            engine.evaluateJavascript("""
+                (function(){
+                    if (window.__runestoneOrigRAF) {
+                        window.requestAnimationFrame = window.__runestoneOrigRAF;
+                        delete window.__runestoneOrigRAF;
+                    }
+                    if (window.__runestoneOrigSetTimeout) {
+                        window.setTimeout = window.__runestoneOrigSetTimeout;
+                        delete window.__runestoneOrigSetTimeout;
+                    }
+                })();
+            """.trimIndent(), null)
+            return
+        }
+        // Inject speed-up by overriding requestAnimationFrame
+        engine.evaluateJavascript("""
+            (function(){
+                if (window.__runestoneOrigRAF) return; // already injected
+                var _speed = ${multiplier};
+                // Speed up requestAnimationFrame
+                var _origRAF = window.requestAnimationFrame;
+                window.__runestoneOrigRAF = _origRAF;
+                var _lastTime = 0;
+                window.requestAnimationFrame = function(callback) {
+                    _origRAF(function(timestamp) {
+                        if (timestamp - _lastTime > 16 / _speed) {
+                            _lastTime = timestamp;
+                            callback(timestamp);
+                        } else {
+                            window.requestAnimationFrame(callback);
+                        }
+                    });
+                };
+                // Speed up setTimeout/setInterval too
+                var _origSetTimeout = window.setTimeout;
+                window.__runestoneOrigSetTimeout = _origSetTimeout;
+            })();
+        """.trimIndent(), null)
+        Log.i(TAG, "Game speed set to ${multiplier}x")
+    }
 
     private fun toggleKeyboard() {
         val engine = webViewEngine ?: return
