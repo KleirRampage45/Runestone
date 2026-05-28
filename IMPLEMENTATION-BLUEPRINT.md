@@ -2,7 +2,8 @@
 
 > **Goal:** Replace all stubs. Build a complete JoiPlay competitor from scratch.
 > **Target version:** 1.0.0
-> **Current version:** 0.2.0 (stub-heavy alpha)
+> **Current version:** 0.5.0 (Phase 0-6 implemented, see IMPLEMENTATION_STATUS.md)
+> **Last updated:** 2026-05-28 — Phases 0-6 feature-complete.
 
 ---
 
