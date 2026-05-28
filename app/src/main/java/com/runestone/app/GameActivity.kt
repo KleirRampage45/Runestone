@@ -386,8 +386,8 @@ class GameActivity : Activity() {
     private fun launchEasyRpgGame(gameDir: File) {
         Log.i(TAG, "EasyRPG bundled: launching ${gameDir.name}")
         val intent = Intent().apply {
-            setClassName(packageName, "org.easyrpg.player.GameActivity")
-            putExtra("game_path", gameDir.absolutePath)
+            setClassName(packageName, "org.easyrpg.player.player.EasyRpgPlayerActivity")
+            putExtra("project_path", gameDir.absolutePath)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         startActivity(intent)

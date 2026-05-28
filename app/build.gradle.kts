@@ -27,8 +27,14 @@ android {
 
     sourceSets {
         getByName("main") {
-            java.srcDirs("src/main/java", "../native/mkxp-z-android/app/src/main/java")
-            res.srcDirs("src/main/res", "../native/mkxp-z-android/app/src/main/res")
+            java.srcDirs(
+                "src/main/java",
+                "../native/mkxp-z-android/app/src/main/java"
+            )
+            res.srcDirs(
+                "src/main/res",
+                "../native/mkxp-z-android/app/src/main/res"
+            )
             assets.srcDirs("src/main/assets", "../native/mkxp-z-android/app/src/main/assets")
         }
     }
