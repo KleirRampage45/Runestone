@@ -23,6 +23,14 @@
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
 
+        <!-- EasyRPG Player (RPG Maker 2000/2003) — GPLv3, bundled native -->
+        <activity
+            android:name="org.easyrpg.player.GameActivity"
+            android:screenOrientation="sensor"
+            android:exported="false"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -381,9 +381,16 @@ class GameActivity : Activity() {
         startActivity(intent)
     }
 
+    // ── EasyRPG (GPLv3 — bundled native, no download needed) ─────
+
     private fun launchEasyRpgGame(gameDir: File) {
-        Toast.makeText(this, "RPG Maker 2000/2003 support coming soon", Toast.LENGTH_LONG).show()
-        finish()
+        Log.i(TAG, "EasyRPG bundled: launching ${gameDir.name}")
+        val intent = Intent().apply {
+            setClassName(packageName, "org.easyrpg.player.GameActivity")
+            putExtra("game_path", gameDir.absolutePath)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(intent)
     }
 
     private fun launchRenpyGame(gameDir: File) {
