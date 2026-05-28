@@ -11,6 +11,7 @@
 package com.runestone.app
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -118,11 +119,24 @@ class GameActivity : Activity() {
         }
 
         when (engineType) {
+            // WebView engines (bundled)
             EngineType.MV, EngineType.MZ,
-            EngineType.TYRANO, EngineType.CONSTRUCT -> launchWebViewGame(gameDir)
+            EngineType.TYRANO, EngineType.CONSTRUCT,
+            EngineType.HTML, EngineType.TWINE, EngineType.VNMAKER,
+            EngineType.RUFFLE -> launchWebViewGame(gameDir)
+
+            // Native engines (bundled)
             EngineType.RGSS_XP, EngineType.RGSS_VX, EngineType.RGSS_VX_ACE -> launchRgssGame(gameDir)
-            EngineType.EASYRPG -> launchEasyRpgGame(gameDir)
+            EngineType.RGSS_2000, EngineType.RGSS_2003, EngineType.EASYRPG -> launchEasyRpgGame(gameDir)
+
+            // Bundlable engines (native-first, fallback download)
             EngineType.RENPY -> launchRenpyGame(gameDir)
+            EngineType.GODOT, EngineType.GODOT3, EngineType.GODOT4 -> launchGodotGame(gameDir)
+            EngineType.NSCRIPTER -> launchNScripterGame(gameDir)
+
+            // Legacy / unsupported
+            EngineType.RM95, EngineType.DANTE98 -> showLegacyDialog(engineType)
+            EngineType.ELECTRON -> showElectronDialog()
             EngineType.UNKNOWN -> {
                 Toast.makeText(this, "Unknown engine, trying WebView", Toast.LENGTH_SHORT).show()
                 launchWebViewGame(gameDir)
@@ -375,6 +389,34 @@ class GameActivity : Activity() {
     private fun launchRenpyGame(gameDir: File) {
         Toast.makeText(this, "Ren'Py support coming soon (will require separate plugin APK)", Toast.LENGTH_LONG).show()
         finish()
+    }
+
+    private fun launchGodotGame(gameDir: File) {
+        Toast.makeText(this, "Godot support coming soon", Toast.LENGTH_LONG).show()
+        finish()
+    }
+
+    private fun launchNScripterGame(gameDir: File) {
+        Toast.makeText(this, "NScripter support coming soon (ONScripter GPLv2+)", Toast.LENGTH_LONG).show()
+        finish()
+    }
+
+    private fun showLegacyDialog(type: EngineType) {
+        AlertDialog.Builder(this)
+            .setTitle("Legacy Engine — ${type.label}")
+            .setMessage("This is a legacy engine from ${if (type == EngineType.DANTE98) "1992" else "1997"}.\n\nNo open-source runtime exists. These games require the original PC software.")
+            .setPositiveButton("OK") { _, _ -> finish() }
+            .setCancelable(false)
+            .show()
+    }
+
+    private fun showElectronDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Electron Not Supported")
+            .setMessage("Electron apps bundle a full Chromium browser.\n\nThey cannot run on Android and require a desktop PC.")
+            .setPositiveButton("OK") { _, _ -> finish() }
+            .setCancelable(false)
+            .show()
     }
 
     override fun onBackPressed() {

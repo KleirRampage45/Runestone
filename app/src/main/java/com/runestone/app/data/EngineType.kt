@@ -11,45 +11,76 @@
 package com.runestone.app.data
 
 /**
- * Enumeration of all supported game engines.
- * 
- * This is kept for backward compatibility with existing code.
- * New code should use the GameEngine interface and EngineRegistry instead.
- * 
+ * All supported game engines.
+ *
+ * "Bundled" = native runtime included in the APK.
+ * "Download" = native runtime must be downloaded (or WebView fallback).
+ * "Detect only" = no runtime exists; informational dialog shown.
+ *
  * @see com.runestone.app.engine.GameEngine
  * @see com.runestone.app.engine.EngineRegistry
  */
-enum class EngineType(val label: String) {
-    // Native engines
-    RGSS_XP("RPG Maker XP"),
-    RGSS_VX("RPG Maker VX"),
-    RGSS_VX_ACE("RPG Maker VX Ace"),
-    EASYRPG("RPG Maker 2000/2003"),
-    RENPY("Ren'Py"),
-    
-    // WebView engines
-    MV("RPG Maker MV"),
-    MZ("RPG Maker MZ"),
-    TYRANO("TyranoBuilder"),
-    CONSTRUCT("Construct 2/3"),
-    
-    // Unknown
-    UNKNOWN("Unknown Engine");
+enum class EngineType(
+    val label: String,
+    val tier: EngineTier = EngineTier.BUNDLED,
+) {
+    // ══ Bundled native (GPL/MIT — runtime included in APK) ══
+    RGSS_XP("RPG Maker XP", EngineTier.BUNDLED),
+    RGSS_VX("RPG Maker VX", EngineTier.BUNDLED),
+    RGSS_VX_ACE("RPG Maker VX Ace", EngineTier.BUNDLED),
+    RGSS_2000("RPG Maker 2000", EngineTier.BUNDLED),
+    RGSS_2003("RPG Maker 2003", EngineTier.BUNDLED),
+    EASYRPG("RPG Maker 2000/2003", EngineTier.BUNDLED),  // legacy alias
+
+    // ══ Bundled WebView (MIT — runs in system WebView, nothing to download) ══
+    MV("RPG Maker MV", EngineTier.BUNDLED),
+    MZ("RPG Maker MZ", EngineTier.BUNDLED),
+    TYRANO("TyranoBuilder", EngineTier.BUNDLED),
+    CONSTRUCT("Construct 2/3", EngineTier.BUNDLED),
+    HTML("HTML5 Game", EngineTier.BUNDLED),
+    TWINE("Twine", EngineTier.BUNDLED),
+    VNMAKER("VN Maker", EngineTier.BUNDLED),
+    RUFFLE("Flash (Ruffle)", EngineTier.BUNDLED),
+
+    // ══ Bundlable (MIT/GPL — can bundle, not yet built) ══
+    RENPY("Ren'Py", EngineTier.DOWNLOAD),
+    GODOT("Godot Engine", EngineTier.DOWNLOAD),
+    GODOT3("Godot 3.x", EngineTier.DOWNLOAD),
+    GODOT4("Godot 4.x", EngineTier.DOWNLOAD),
+
+    // ══ Download only (runtime exists but complex/heavy to bundle) ══
+    NSCRIPTER("NScripter", EngineTier.DOWNLOAD),
+    ELECTRON("Electron", EngineTier.DOWNLOAD),
+
+    // ══ Legacy (detect only — no open-source runtime exists) ══
+    RM95("RPG Maker 95", EngineTier.LEGACY),
+    DANTE98("RPG Tsukuru Dante 98", EngineTier.LEGACY),
+
+    // ══ Unknown ══
+    UNKNOWN("Unknown Engine", EngineTier.LEGACY);
 
     companion object {
-        /**
-         * Convert a GameEngine ID to EngineType.
-         * Returns UNKNOWN if no match.
-         */
         fun fromEngineId(id: String): EngineType = when (id) {
-            "mkxp-z" -> RGSS_VX_ACE  // mkxp-z handles XP/VX/VX Ace
+            "mkxp-z" -> RGSS_VX_ACE
             "easyrpg" -> EASYRPG
             "renpy" -> RENPY
+            "godot", "godot3" -> GODOT3
+            "godot4" -> GODOT4
             "webview-mv" -> MV
             "webview-mz" -> MZ
             "tyrano" -> TYRANO
             "construct" -> CONSTRUCT
+            "html" -> HTML
+            "twine" -> TWINE
+            "vnmaker" -> VNMAKER
+            "ruffle" -> RUFFLE
+            "nscripter" -> NSCRIPTER
+            "electron" -> ELECTRON
+            "rm95" -> RM95
+            "dante98" -> DANTE98
             else -> UNKNOWN
         }
     }
 }
+
+enum class EngineTier { BUNDLED, DOWNLOAD, LEGACY }

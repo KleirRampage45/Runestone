@@ -81,17 +81,30 @@ object EngineRegistry {
 
     /** Initialize all built-in engines. Call once from Application.onCreate(). */
     fun initDefaults() {
-        // Native engines (highest priority — specific file signatures)
-        register(MkxpZEngine())
-        register(EasyRpgEngine())
+        // Native engines (bundled — GPL/MIT)
+        register(MkxpZEngine())       // XP/VX/VX Ace — mkxp-z GPLv2+
+        register(EasyRpgEngine())     // 2000/2003 — EasyRPG GPLv3
 
-        // WebView engines (medium priority — HTML-based)
-        register(WebViewMzEngine())
-        register(WebViewMvEngine())
-        register(TyranoEngine())
-        register(ConstructEngine())
+        // WebView engines (bundled — system WebView)
+        register(WebViewMzEngine())   // MZ
+        register(WebViewMvEngine())   // MV
+        register(TyranoEngine())      // TyranoBuilder
+        register(ConstructEngine())   // Construct 2/3
 
-        // Future engines (lowest priority)
-        register(RenpyEngine())
+        // HTML5 engines (bundled — WebView)
+        register(HtmlGameEngine())    // Generic HTML5
+        register(TwineEngine())       // Twine
+        register(VnMakerEngine())     // VN Maker
+
+        // Flash engine (bundled — Ruffle MIT)
+        register(RuffleEngine())      // Flash/SWF
+
+        // Bundlable engines (GPL/MIT — native runtime not yet built)
+        register(RenpyEngine())       // Ren'Py MIT
+        register(GodotEngine())       // Godot MIT
+
+        // Download-only engines (runtime exists, needs separate APK)
+        register(NScripterEngine())   // NScripter / ONScripter GPLv2+
+        register(ElectronEngine())    // Electron (desktop only)
     }
 }

@@ -60,11 +60,16 @@ class EasyRpgEngine : GameEngine {
         if (!canRun(gameFolder)) return null
 
         val version = detectVersion(gameFolder)
+        val engineVersion = when {
+            version.contains("2003") -> "RGSS 2003"
+            version.contains("2000") -> "RGSS 2000"
+            else -> "EasyRPG"
+        }
         val title = detectTitleFromLdb(gameFolder) ?: gameFolder.name
 
         return EngineMetadata(
             engine = id,
-            version = version,
+            version = engineVersion,
             title = title,
             icon = null
         )

@@ -1,3 +1,6 @@
 [submodule "native/mkxp-z-android"]
 	path = native/mkxp-z-android
 	url = https://github.com/KleirRampage45/mkxp-z-android.git
+[submodule "native/easyrpg-android"]
+	path = native/easyrpg-android
+	url = https://github.com/EasyRPG/Player.git
