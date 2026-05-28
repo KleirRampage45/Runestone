@@ -20,35 +20,41 @@ package com.runestone.app.data
  * @see com.runestone.app.engine.EngineRegistry
  */
 enum class EngineType(val label: String) {
-    // Native engines
+    // Native engines (bundled or bundled-able)
     RGSS_XP("RPG Maker XP"),
     RGSS_VX("RPG Maker VX"),
     RGSS_VX_ACE("RPG Maker VX Ace"),
-    EASYRPG("RPG Maker 2000/2003"),
-    RENPY("Ren'Py"),
-    
+    RGSS_2000("RPG Maker 2000"),          // EasyRPG (GPLv3 — bundlable)
+    RGSS_2003("RPG Maker 2003"),          // EasyRPG (GPLv3 — bundlable)
+    EASYRPG("RPG Maker 2000/2003"),       // Legacy alias
+    RENPY("Ren'Py"),                       // MIT — bundlable
+    GODOT("Godot Engine"),                 // MIT — bundlable
+
+    // Legacy engines (detection only — no open-source runtime exists)
+    RM95("RPG Maker 95"),                  // Proprietary, 1997
+    DANTE98("RPG Tsukuru Dante 98"),       // Proprietary, 1992
+
     // WebView engines
     MV("RPG Maker MV"),
     MZ("RPG Maker MZ"),
     TYRANO("TyranoBuilder"),
     CONSTRUCT("Construct 2/3"),
-    
+
     // Unknown
     UNKNOWN("Unknown Engine");
 
     companion object {
-        /**
-         * Convert a GameEngine ID to EngineType.
-         * Returns UNKNOWN if no match.
-         */
         fun fromEngineId(id: String): EngineType = when (id) {
-            "mkxp-z" -> RGSS_VX_ACE  // mkxp-z handles XP/VX/VX Ace
+            "mkxp-z" -> RGSS_VX_ACE
             "easyrpg" -> EASYRPG
             "renpy" -> RENPY
+            "godot" -> GODOT
             "webview-mv" -> MV
             "webview-mz" -> MZ
             "tyrano" -> TYRANO
             "construct" -> CONSTRUCT
+            "rm95" -> RM95
+            "dante98" -> DANTE98
             else -> UNKNOWN
         }
     }

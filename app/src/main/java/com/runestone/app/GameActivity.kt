@@ -11,11 +11,13 @@
 package com.runestone.app
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
@@ -121,8 +123,19 @@ class GameActivity : Activity() {
             EngineType.MV, EngineType.MZ,
             EngineType.TYRANO, EngineType.CONSTRUCT -> launchWebViewGame(gameDir)
             EngineType.RGSS_XP, EngineType.RGSS_VX, EngineType.RGSS_VX_ACE -> launchRgssGame(gameDir)
-            EngineType.EASYRPG -> launchEasyRpgGame(gameDir)
+            EngineType.RGSS_2000, EngineType.RGSS_2003, EngineType.EASYRPG -> launchEasyRpgGame(gameDir)
             EngineType.RENPY -> launchRenpyGame(gameDir)
+            EngineType.GODOT -> launchGodotGame(gameDir)
+            EngineType.RM95, EngineType.DANTE98 -> {
+                AlertDialog.Builder(this)
+                    .setTitle("Legacy Engine")
+                    .setMessage("${engineType.label} is a legacy engine from ${if (engineType == EngineType.DANTE98) "1992" else "1997"}.\n\n" +
+                        "No open-source runtime exists for this engine. These games require the original software on a PC.\n\n" +
+                        "Runestone can import the files, but cannot play them on Android.")
+                    .setPositiveButton("OK") { _, _ -> finish() }
+                    .setCancelable(false)
+                    .show()
+            }
             EngineType.UNKNOWN -> {
                 Toast.makeText(this, "Unknown engine, trying WebView", Toast.LENGTH_SHORT).show()
                 launchWebViewGame(gameDir)
@@ -367,14 +380,96 @@ class GameActivity : Activity() {
         startActivity(intent)
     }
 
+    // ── EasyRPG (GPLv3 — bundled native when available) ──────────
+
     private fun launchEasyRpgGame(gameDir: File) {
-        Toast.makeText(this, "RPG Maker 2000/2003 support coming soon", Toast.LENGTH_LONG).show()
-        finish()
+        // Try bundled native EasyRPG activity first
+        try {
+            val intent = Intent().apply {
+                setClassName(packageName, "org.easyrpg.player.GameActivity")
+                putExtra("game_path", gameDir.absolutePath)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            Log.i(TAG, "EasyRPG: launched bundled native activity")
+            return
+        } catch (e: Exception) {
+            Log.w(TAG, "EasyRPG native not bundled — showing download dialog", e)
+        }
+        // Fallback: download prompt
+        AlertDialog.Builder(this)
+            .setTitle("EasyRPG Player Required")
+            .setMessage("RPG Maker 2000/2003 games need the EasyRPG Player runtime.\n\n" +
+                "EasyRPG is GPLv3 open-source — Runestone can bundle it natively.\n\n" +
+                "Download it now from GitHub?")
+            .setPositiveButton("Download") { _, _ ->
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/EasyRPG/Player/releases/latest")))
+                finish()
+            }
+            .setNegativeButton("Cancel") { _, _ -> finish() }
+            .setCancelable(false)
+            .show()
     }
 
+    // ── Ren'Py (MIT — bundled native when available) ─────────────
+
     private fun launchRenpyGame(gameDir: File) {
-        Toast.makeText(this, "Ren'Py support coming soon (will require separate plugin APK)", Toast.LENGTH_LONG).show()
-        finish()
+        // Try bundled native Ren'Py activity first
+        try {
+            val intent = Intent().apply {
+                setClassName(packageName, "com.runestone.plugin.renpy.RenpyActivity")
+                putExtra("game_path", gameDir.absolutePath)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            Log.i(TAG, "Ren'Py: launched bundled native activity")
+            return
+        } catch (e: Exception) {
+            Log.w(TAG, "Ren'Py native not bundled — showing download dialog", e)
+        }
+        // Fallback: download prompt
+        AlertDialog.Builder(this)
+            .setTitle("Ren'Py Plugin Required")
+            .setMessage("Ren'Py visual novels need the Ren'Py runtime.\n\n" +
+                "Ren'Py is MIT-licensed — Runestone can bundle it natively.\n\n" +
+                "Download it now?")
+            .setPositiveButton("Download") { _, _ ->
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://runestone.app/plugins/renpy")))
+                finish()
+            }
+            .setNegativeButton("Cancel") { _, _ -> finish() }
+            .setCancelable(false)
+            .show()
+    }
+
+    // ── Godot (MIT — bundled native when available) ──────────────
+
+    private fun launchGodotGame(gameDir: File) {
+        try {
+            val intent = Intent().apply {
+                setClassName(packageName, "org.godotengine.android.GodotActivity")
+                putExtra("godot_arg", "-path")
+                putExtra("godot_arg_value", gameDir.absolutePath)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            Log.i(TAG, "Godot: launched bundled native activity")
+            return
+        } catch (e: Exception) {
+            Log.w(TAG, "Godot native not bundled", e)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Godot Engine Required")
+            .setMessage("Godot games need the Godot runtime.\n\n" +
+                "Godot is MIT-licensed — Runestone can bundle it natively.\n\n" +
+                "Download the Godot plugin?")
+            .setPositiveButton("Download") { _, _ ->
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://godotengine.org/download/android/")))
+                finish()
+            }
+            .setNegativeButton("Cancel") { _, _ -> finish() }
+            .setCancelable(false)
+            .show()
     }
 
     override fun onBackPressed() {
