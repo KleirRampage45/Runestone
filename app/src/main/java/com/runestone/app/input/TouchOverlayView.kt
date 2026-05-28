@@ -30,6 +30,7 @@ class TouchOverlayView(context: Context) : View(context) {
     var controlsOnly: Boolean = false
     var showExtraButtons: Boolean = false
     var onInput: ((Zone, pressed: Boolean) -> Unit)? = null
+    var gameStorageName: String? = null  // set for per-game layout persistence
 
     // Active presses for visual feedback
     private val activeZones = mutableSetOf<Zone>()
@@ -627,8 +628,10 @@ class TouchOverlayView(context: Context) : View(context) {
     }
 
     private fun loadLayout() {
-        val prefs = context.getSharedPreferences("controller-layout-v1", Context.MODE_PRIVATE)
         layout.clear()
+        // TODO: When PerGameConfig is merged from phase1 branch, load from runestone.json
+        // if (gameStorageName != null) { ... load from PerGameConfig ... }
+        val prefs = context.getSharedPreferences("controller-layout-v1", Context.MODE_PRIVATE)
         Control.entries.forEach { control ->
             val default = defaultLayout[control] ?: return@forEach
             val prefix = "${if (controlsOnly) "portrait" else "landscape"}_${control.name}"
@@ -641,6 +644,7 @@ class TouchOverlayView(context: Context) : View(context) {
     }
 
     private fun saveLayout() {
+        // TODO: When PerGameConfig is merged, save to runestone.json per-game
         val prefs = context.getSharedPreferences("controller-layout-v1", Context.MODE_PRIVATE).edit()
         layout.forEach { (control, placement) ->
             val prefix = "${if (controlsOnly) "portrait" else "landscape"}_${control.name}"
