@@ -56,7 +56,7 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
     @Override
     protected String[] getArguments() {
         if (mProjectPath != null) {
-            return new String[] { mProjectPath };
+            return new String[] { "--project-path", mProjectPath };
         }
         return new String[0];
     }
