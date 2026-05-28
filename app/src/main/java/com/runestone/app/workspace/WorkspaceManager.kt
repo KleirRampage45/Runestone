@@ -22,9 +22,12 @@ import java.io.File
  * ```
  * {filesDir}/games/
  *   {gameName}/
- *     original/       -> imported game files
- *     saves/          -> per-game save files
- *     manifest.json   -> engine type, settings
+ *     original/       -> clean imported game files (never modified)
+ *     active/         -> playable copy (modified by mods/patches)
+ *     saves/          -> protected save files
+ *     incoming/       -> temp dir during import
+ *     manifest.json   -> engine type, metadata
+ *     install_state.json -> import status
  * ```
  */
 class WorkspaceManager(private val context: Context) {
@@ -33,16 +36,14 @@ class WorkspaceManager(private val context: Context) {
         val storageName: String,
         val displayName: String,
         val engineType: EngineType,
-        val gamePath: String,
+        val originalPath: String,
+        val activePath: String,
         val fileCount: Int,
     )
 
     val gamesBaseDir: File
         get() = File(context.filesDir, "games")
 
-    /**
-     * Scan for installed games in the games directory.
-     */
     fun scanInstalledGames(): List<GameInfo> {
         val dir = gamesBaseDir
         if (!dir.exists()) return emptyList()
@@ -53,14 +54,27 @@ class WorkspaceManager(private val context: Context) {
                 val originalDir = File(gameDir, "original")
                 if (!originalDir.isDirectory) return@mapNotNull null
 
-                val engineType = EngineDetector.detect(originalDir)
+                // Check for manual engine override in install_state.json
+                val override = runCatching {
+                    val stateFile = File(gameDir, "install_state.json")
+                    if (stateFile.isFile) {
+                        val json = org.json.JSONObject(stateFile.readText())
+                        if (json.has("engineOverride")) {
+                            EngineType.valueOf(json.getString("engineOverride"))
+                        } else null
+                    } else null
+                }.getOrNull()
+
+                val engineType = override ?: EngineDetector.detect(originalDir)
                 val fileCount = originalDir.walkTopDown().count { it.isFile }
+                val displayName = readGameTitle(originalDir, engineType) ?: formatDisplayName(gameDir.name)
 
                 GameInfo(
                     storageName = gameDir.name,
-                    displayName = formatDisplayName(gameDir.name),
+                    displayName = displayName,
                     engineType = engineType,
-                    gamePath = originalDir.absolutePath,
+                    originalPath = originalDir.absolutePath,
+                    activePath = originalDir.absolutePath,
                     fileCount = fileCount,
                 )
             }
@@ -68,16 +82,32 @@ class WorkspaceManager(private val context: Context) {
             ?: emptyList()
     }
 
-    /**
-     * Check if a game name is already installed (to avoid duplicates).
-     */
+    /** Read the game's actual title from its metadata files. */
+    private fun readGameTitle(originalDir: File, engineType: EngineType): String? {
+        return when (engineType) {
+            EngineType.RGSS_XP, EngineType.RGSS_VX, EngineType.RGSS_VX_ACE -> {
+                val ini = File(originalDir, "Game.ini")
+                if (ini.isFile) {
+                    ini.readLines().firstOrNull { it.startsWith("Title=", ignoreCase = true) }
+                        ?.substringAfter("=")?.trim()?.takeIf { it.isNotBlank() }
+                } else null
+            }
+            EngineType.MV, EngineType.MZ -> {
+                val sys = File(originalDir, "www/data/System.json")
+                if (sys.isFile) {
+                    runCatching {
+                        org.json.JSONObject(sys.readText()).optString("gameTitle", null)
+                    }.getOrNull()?.takeIf { it.isNotBlank() }
+                } else null
+            }
+            else -> null
+        }
+    }
+
     fun isInstalled(gameName: String): Boolean {
         return File(gamesBaseDir, gameName).exists()
     }
 
-    /**
-     * Create a unique game directory name.
-     */
     fun allocateGameDir(baseName: String): File {
         var dirName = sanitizeName(baseName)
         var dir = File(gamesBaseDir, dirName)
@@ -90,19 +120,50 @@ class WorkspaceManager(private val context: Context) {
         return dir
     }
 
-    /**
-     * Resolve paths for a given game.
-     */
     fun gameDir(storageName: String): File = File(gamesBaseDir, storageName)
     fun originalDir(storageName: String): File = File(gameDir(storageName), "original")
+    fun activeDir(storageName: String): File = File(gameDir(storageName), "active")
     fun savesDir(storageName: String): File = File(gameDir(storageName), "saves")
+    fun incomingDir(storageName: String): File = File(gameDir(storageName), "incoming")
 
-    /**
-     * Remove an installed game and all its data.
-     */
-    fun removeGame(storageName: String) {
+    fun ensureWorkspace(storageName: String): File {
         val dir = gameDir(storageName)
-        if (dir.exists()) {
+        listOf(dir, File(dir, "saves")).forEach { it.mkdirs() }
+        return dir
+    }
+
+    fun rebuildActiveWorkspace(storageName: String) {
+        val gameDir = gameDir(storageName)
+        val original = File(gameDir, "original")
+        val active = File(gameDir, "active")
+
+        if (!original.isDirectory) return
+
+        active.deleteRecursively()
+        active.mkdirs()
+        original.copyRecursively(active, overwrite = true)
+    }
+
+    fun clearActiveWorkspace(storageName: String) {
+        val active = activeDir(storageName)
+        if (active.exists()) {
+            active.deleteRecursively()
+        }
+    }
+
+    fun removeGame(storageName: String, keepSaves: Boolean = false) {
+        val dir = gameDir(storageName)
+        if (!dir.exists()) return
+
+        if (keepSaves) {
+            // Save saves, nuke everything else
+            val saves = savesDir(storageName)
+            dir.deleteRecursively()
+            dir.mkdirs()
+            if (saves.exists()) {
+                saves.copyRecursively(File(dir, "saves"), overwrite = true)
+            }
+        } else {
             dir.deleteRecursively()
         }
     }

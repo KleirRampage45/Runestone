@@ -15,6 +15,14 @@
             android:exported="false"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize" />
 
+        <!-- mkxp-z native engine (RPG Maker XP/VX/VX Ace) -->
+        <activity
+            android:name="com.hatkid.mkxpz.MainActivity"
+            android:screenOrientation="sensor"
+            android:exported="false"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

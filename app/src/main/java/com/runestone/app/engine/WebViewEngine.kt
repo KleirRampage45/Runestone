@@ -57,8 +57,6 @@ class WebViewEngine(context: Context) : WebView(context) {
         val addGamepad: Boolean = true,
         val fakeGreenworks: Boolean = true,
         val manuallyStart: Boolean = false,
-        val forceCanvas: Boolean = false,
-        val forceNoAudio: Boolean = false,
         val forceAudioExt: String = "",
         val showFps: Boolean = true,
         val backButtonQuits: Boolean = false,
@@ -129,6 +127,17 @@ class WebViewEngine(context: Context) : WebView(context) {
                     }
                 }
 
+                // Intercept .m4a audio requests — serve .ogg instead if available
+                // This works at the network level, so it catches audio loaded at any time
+                // (during init, mid-game, etc.) and doesn't depend on MV internal APIs
+                if (config.forceAudioExt.isNotEmpty() && url.contains(".m4a")) {
+                    val oggUrl = url.replace(Regex("\\.m4a(\\?.*)?$"), config.forceAudioExt)
+                    val oggFile = resolveGameFile(oggUrl)
+                    if (oggFile != null && oggFile.exists()) {
+                        return createAudioResponse(oggFile, "audio/ogg")
+                    }
+                }
+
                 return super.shouldInterceptRequest(view, request)
             }
 
@@ -161,6 +170,8 @@ class WebViewEngine(context: Context) : WebView(context) {
                 if (config.showFps) {
                     view.evaluateJavascript(FPS_OVERLAY_JS, null)
                 }
+                // Fix PIXI tile bleeding — force NEAREST scale mode
+                view.evaluateJavascript(PIXI_TILE_FIX_JS, null)
             }
         }
 
@@ -175,9 +186,9 @@ class WebViewEngine(context: Context) : WebView(context) {
             }
         }
 
-        // Build URI with query params for WebGL/audio
-        val uri = buildGameUri(indexHtml)
-        loadUrl(uri)
+        // Load the game with ?webgl param — MV games parse location.search
+        // to determine rendering mode (WebGL vs Canvas)
+        loadUrl("file://${indexHtml.absolutePath}?webgl")
     }
 
     private fun findWwwDir(gameDir: File): File {
@@ -192,31 +203,6 @@ class WebViewEngine(context: Context) : WebView(context) {
             if (File(dir, "index.html").exists()) return dir
         }
         return gameDir
-    }
-
-    private fun buildGameUri(indexHtml: File): String {
-        val sb = StringBuilder("file://${indexHtml.absolutePath}?")
-
-        if (config.forceCanvas || !detectWebglSupport()) {
-            sb.append("canvas")
-        } else {
-            sb.append("webgl")
-        }
-
-        if (config.forceNoAudio || !detectWebAudioSupport()) {
-            sb.append("&noaudio")
-        }
-
-        return sb.toString()
-    }
-
-    private fun detectWebglSupport(): Boolean {
-        // We assume WebView supports WebGL on modern Android (API 26+)
-        return android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O
-    }
-
-    private fun detectWebAudioSupport(): Boolean {
-        return true // All modern Android WebViews support WebAudio
     }
 
     private fun readAssetFile(filename: String): String? {
@@ -317,6 +303,44 @@ class WebViewEngine(context: Context) : WebView(context) {
         }
     }
 
+    /**
+     * Resolve a URL path to a file in the game directory.
+     * Handles file:// URLs, relative paths, and paths with query strings.
+     */
+    private fun resolveGameFile(url: String): File? {
+        val gameDir = gameDir ?: return null
+        // Strip file:// prefix and query params
+        var path = url
+        if (path.startsWith("file://")) {
+            path = path.removePrefix("file://")
+        }
+        // Strip query string
+        val queryIdx = path.indexOf('?')
+        if (queryIdx > 0) path = path.substring(0, queryIdx)
+        // Strip fragment
+        val fragIdx = path.indexOf('#')
+        if (fragIdx > 0) path = path.substring(0, fragIdx)
+
+        // If it's an absolute path, return as-is (shouldn't happen for game assets)
+        if (path.startsWith("/")) return File(path)
+
+        // Relative path — resolve from game dir
+        val wwwDir = findWwwDir(gameDir)
+        return File(wwwDir, path)
+    }
+
+    /**
+     * Create a WebResourceResponse from an audio file with proper MIME type.
+     * Throws if the file cannot be opened.
+     */
+    private fun createAudioResponse(file: File, mimeType: String): WebResourceResponse {
+        return WebResourceResponse(
+            mimeType,
+            "utf-8",
+            FileInputStream(file)
+        )
+    }
+
     companion object {
         // JS to fix localStorage access
         private const val LOCALSTORAGE_FIX_JS = """
@@ -380,7 +404,44 @@ class WebViewEngine(context: Context) : WebView(context) {
         })();
         """
 
-        // JS for FPS overlay
+        // Fix PIXI tile seam bleeding — forces nearest-neighbor scaling + CSS pixelated
+        private const val PIXI_TILE_FIX_JS = """
+        (function() {
+            try {
+                // Inject CSS for pixelated rendering on all canvases
+                var style = document.createElement('style');
+                style.textContent = 'canvas { image-rendering: pixelated !important; image-rendering: crisp-edges !important; } ' +
+                    'canvas[style*="image-rendering"] { image-rendering: pixelated !important; }';
+                document.head.appendChild(style);
+
+                // Patch PIXI scale mode BEFORE textures are created
+                if (typeof PIXI !== 'undefined') {
+                    if (PIXI.BaseTexture && PIXI.BaseTexture.defaultOptions) {
+                        PIXI.BaseTexture.defaultOptions.scaleMode = 0; // NEAREST
+                    }
+                    if (PIXI.SCALE_MODES) {
+                        PIXI.SCALE_MODES.DEFAULT = PIXI.SCALE_MODES.NEAREST;
+                    }
+                    // PIXI v8+
+                    if (PIXI.settings) {
+                        PIXI.settings.SCALE_MODE = 0;
+                    }
+                    // Works for all versions — patch the prototype
+                    if (PIXI.BaseTexture && PIXI.BaseTexture.prototype) {
+                        var origUpdate = PIXI.BaseTexture.prototype.update;
+                        PIXI.BaseTexture.prototype.update = function() {
+                            if (this) { try { this.scaleMode = 0; } catch(e) {} }
+                            return origUpdate ? origUpdate.apply(this, arguments) : null;
+                        };
+                    }
+                    console.log('[Runestone] PIXI forced to NEAREST scaling (tile bleed fix)');
+                }
+            } catch(e) {
+                console.warn('[Runestone] PIXI fix error: ' + e.message);
+            }
+        })();
+        """
+
         private const val FPS_OVERLAY_JS = """
         (function() {
             var el = document.createElement('div');

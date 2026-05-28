@@ -6,11 +6,14 @@
 package com.runestone.app.data
 
 data class RunnerSettings(
-    val layoutMode: String = LAYOUT_PORTRAIT_CONSOLE,
-) {
-    companion object {
-        const val LAYOUT_LANDSCAPE = "landscape"
-        const val LAYOUT_PORTRAIT_CONSOLE = "portrait_console"
-        const val LAYOUT_GAMEPAD = "gamepad"
-    }
-}
+    val layoutMode: LayoutMode = LayoutMode.PORTRAIT_CONSOLE,
+    val touchOpacity: Float = 0.72f,
+    val touchScale: Float = 1.0f,
+    val hapticsEnabled: Boolean = true,
+    val hapticIntensity: Float = 0.55f,
+    val showExtraButtons: Boolean = false,
+    val integerScaling: Boolean = false,
+    val smoothScaling: Boolean = false,
+    val textScale: Float = 1.0f,
+    val forceAudioExt: String = ".ogg",
+)

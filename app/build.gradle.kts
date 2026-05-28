@@ -12,8 +12,8 @@ android {
         applicationId = "com.runestone.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -25,11 +25,20 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    buildTypes {
-        release {
-            isMinifyEnabled = false
+    sourceSets {
+        getByName("main") {
+            java.srcDirs("src/main/java", "../native/mkxp-z-android/app/src/main/java")
+            res.srcDirs("src/main/res", "../native/mkxp-z-android/app/src/main/res")
+            assets.srcDirs("src/main/assets", "../native/mkxp-z-android/app/src/main/assets")
         }
     }
+    
+    // Native build is optional - enable after running setup-native-build.sh
+    // externalNativeBuild {
+    //     ndkBuild {
+    //         path = file("../native/mkxp-z-android/app/jni/Android.mk")
+    //     }
+    // }
 }
 
 kotlin {

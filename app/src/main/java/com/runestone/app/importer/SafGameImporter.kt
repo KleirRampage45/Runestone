@@ -11,195 +11,184 @@
 package com.runestone.app.importer
 
 import android.content.ContentResolver
-import android.database.Cursor
 import android.net.Uri
-import android.provider.OpenableColumns
+import android.provider.DocumentsContract
 import android.util.Log
 import com.runestone.app.data.EngineType
 import com.runestone.app.engine.EngineDetector
 import com.runestone.app.workspace.WorkspaceManager
+import org.json.JSONObject
 import java.io.File
-import java.io.FileOutputStream
 
 sealed class SafImportResult {
-    data class Success(val gameName: String, val engineType: EngineType) : SafImportResult()
+    data class Success(val storageName: String, val engineType: EngineType, val fileCount: Int) : SafImportResult()
     data class Failure(val reason: String) : SafImportResult()
 }
 
-/**
- * Imports games via Android's Storage Access Framework (SAF).
- *
- * The user picks a folder (the game root or www folder) and we:
- * 1. Walk the tree URI recursively
- * 2. Copy all files to the app's private workspace
- * 3. Detect the engine type
- * 4. Generate a manifest
- */
 class SafGameImporter(
     private val contentResolver: ContentResolver,
     private val workspaceManager: WorkspaceManager,
+    private val onProgress: (String) -> Unit = {},
 ) {
     companion object {
         private const val TAG = "RunestoneImport"
-        private val SKIP_DIRS = setOf(
-            ".git", ".svn", "__MACOSX", ".DS_Store",
-            "node_modules", "bower_components",
-        )
     }
 
-    fun importTree(treeUri: Uri): SafImportResult {
-        return try {
-            val gameName = deriveGameName(treeUri)
-            val gameDir = workspaceManager.allocateGameDir(gameName)
-            val originalDir = File(gameDir, "original")
-            val savesDir = File(gameDir, "saves")
+    fun importTree(treeUri: Uri, requestedStorageName: String? = null): SafImportResult {
+        Log.i(TAG, "importTree: uri=$treeUri requested=$requestedStorageName")
+        val gameName = requestedStorageName ?: deriveGameName(treeUri)
+        Log.i(TAG, "importTree: gameName=$gameName")
+        val sanitized = sanitizeName(gameName)
+        val gameDir: File = if (requestedStorageName != null && workspaceManager.isInstalled(requestedStorageName)) {
+            workspaceManager.gameDir(requestedStorageName)
+        } else {
+            workspaceManager.allocateGameDir(sanitized)
+        }
 
-            originalDir.mkdirs()
-            savesDir.mkdirs()
+        val incoming = File(gameDir, "incoming")
+        val original = File(gameDir, "original")
 
-            var totalFiles = 0
-            var totalBytes = 0L
+        onProgress("Preparing workspace...")
+        incoming.deleteRecursively()
+        incoming.mkdirs()
 
-            val filesCopied = copyTree(treeUri, originalDir)
-            totalFiles = filesCopied.first
-            totalBytes = filesCopied.second
+        return runCatching {
+            val rootDocumentId = DocumentsContract.getTreeDocumentId(treeUri)
+            Log.i(TAG, "importTree: rootDocumentId=$rootDocumentId")
+            val rootDocumentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootDocumentId)
+            Log.i(TAG, "importTree: rootDocumentUri=$rootDocumentUri")
 
-            if (totalFiles == 0) {
+            onProgress("Copying game files...")
+            val fileCount = copyDocumentTree(rootDocumentUri, incoming)
+
+            if (fileCount == 0) {
+                incoming.deleteRecursively()
                 gameDir.deleteRecursively()
                 return SafImportResult.Failure("No files found in selected folder")
             }
 
-            // Detect engine from the copied files
-            val engineType = EngineDetector.detect(originalDir)
+            onProgress("Checking game files...")
+            val engineType = EngineDetector.detect(incoming)
+            if (engineType == EngineType.UNKNOWN) {
+                incoming.deleteRecursively()
+                gameDir.deleteRecursively()
+                return SafImportResult.Failure("Could not detect a supported game engine in this folder")
+            }
 
-            Log.d(TAG, "Import complete: $totalFiles files, ${totalBytes / 1024}KB, engine=$engineType")
+            onProgress("Freezing clean original...")
+            original.deleteRecursively()
+            require(incoming.renameTo(original)) { "Could not move imported files into workspace" }
 
-            // Store metadata in a manifest file
-            val manifest = org.json.JSONObject().apply {
+            onProgress("Building workspace...")
+            workspaceManager.rebuildActiveWorkspace(gameDir.name)
+
+            onProgress("Generating manifest...")
+            File(gameDir, "manifest.json").writeText(JSONObject().apply {
                 put("storageName", gameDir.name)
                 put("engineType", engineType.name)
                 put("engineLabel", engineType.label)
-                put("fileCount", totalFiles)
+                put("fileCount", fileCount)
                 put("importedAt", System.currentTimeMillis())
-            }
-            File(gameDir, "manifest.json").writeText(manifest.toString(2))
+            }.toString(2))
 
-            SafImportResult.Success(
-                gameName = gameDir.name,
-                engineType = engineType,
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Import failed", e)
-            SafImportResult.Failure(e.message ?: "Unknown error")
+            onProgress("Import complete: $fileCount files")
+            Log.d(TAG, "Import complete: $fileCount files, engine=$engineType")
+
+            SafImportResult.Success(gameDir.name, engineType, fileCount)
+        }.getOrElse { error ->
+            incoming.deleteRecursively()
+            Log.e(TAG, "Import failed", error)
+            SafImportResult.Failure(error.message ?: error.javaClass.simpleName)
         }
     }
 
-    /**
-     * Recursively copy files from a SAF tree URI to a local directory.
-     */
-    private fun copyTree(uri: Uri, destDir: File): Pair<Int, Long> {
-        var fileCount = 0
-        var byteCount = 0L
-
-        val children = listChildren(uri)
-        for (child in children) {
-            val childName = child.first
-            val childUri = child.second
-
-            if (shouldSkip(childName)) continue
-
-            val childDest = File(destDir, childName)
-
-            if (isDirectory(childUri)) {
-                childDest.mkdirs()
-                val result = copyTree(childUri, childDest)
-                fileCount += result.first
-                byteCount += result.second
-            } else {
-                try {
-                    val inputStream = contentResolver.openInputStream(childUri)
-                    if (inputStream != null) {
-                        childDest.parentFile?.mkdirs()
-                        FileOutputStream(childDest).use { output ->
-                            inputStream.copyTo(output)
-                        }
-                        inputStream.close()
-                        fileCount++
-                        byteCount += childDest.length()
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to copy $childName: ${e.message}")
-                }
+    private fun copyDocumentTree(documentUri: Uri, target: File, fileCount: MutableList<Int> = mutableListOf(0)): Int {
+        val meta = queryDocument(documentUri)
+        if (meta.isDirectory) {
+            onProgress("Copying game files...")
+            target.mkdirs()
+            listChildren(documentUri).forEach { child ->
+                val safeName = sanitizeName(child.name)
+                copyDocumentTree(child.uri, File(target, safeName), fileCount)
             }
+            return fileCount[0]
+        } else {
+            target.parentFile?.mkdirs()
+            contentResolver.openInputStream(documentUri).use { input ->
+                requireNotNull(input) { "Could not open ${meta.name}" }
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+            fileCount[0]++
+            onProgress("Copying ${meta.name}")
+            return fileCount[0]
         }
-
-        return Pair(fileCount, byteCount)
     }
 
-    /**
-     * List children of a directory URI using ContentResolver.
-     */
-    private fun listChildren(uri: Uri): List<Pair<String, Uri>> {
-        val children = mutableListOf<Pair<String, Uri>>()
+    private fun listChildren(parentUri: Uri): List<DocumentMeta> {
+        val parentId = DocumentsContract.getDocumentId(parentUri)
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(parentUri, parentId)
+        val children = mutableListOf<DocumentMeta>()
 
-        // Use DocumentsContract to list children
-        try {
-            val childUri = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(
-                uri,
-                android.provider.DocumentsContract.getDocumentId(uri)
-            )
-
-            val cursor = contentResolver.query(
-                childUri,
-                arrayOf(
-                    OpenableColumns.DISPLAY_NAME,
-                    android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-                    android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE,
-                ),
-                null, null, null
-            )
-
-            cursor?.use { c ->
-                while (c.moveToNext()) {
-                    val name = c.getString(0) ?: "unknown"
-                    val docId = c.getString(1) ?: continue
-                    val childDocUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(
-                        uri, docId
-                    )
-                    children.add(Pair(name, childDocUri))
-                }
+        contentResolver.query(
+            childrenUri,
+            arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE,
+            ),
+            null, null, null,
+        )?.use { cursor ->
+            val idCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val nameCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            val mimeCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+            while (cursor.moveToNext()) {
+                val docId = cursor.getString(idCol)
+                val childUri = DocumentsContract.buildDocumentUriUsingTree(parentUri, docId)
+                children.add(DocumentMeta(childUri, cursor.getString(nameCol), cursor.getString(mimeCol)))
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to list children of $uri", e)
         }
-
         return children
     }
 
-    private fun isDirectory(uri: Uri): Boolean {
-        return try {
-            val mimeType = contentResolver.getType(uri)
-            mimeType?.startsWith("vnd.android.document/directory") == true
-        } catch (e: Exception) {
-            false
+    private fun queryDocument(documentUri: Uri): DocumentMeta {
+        contentResolver.query(
+            documentUri,
+            arrayOf(
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE,
+            ),
+            null, null, null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val name = cursor.getString(cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME))
+                val mime = cursor.getString(cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE))
+                return DocumentMeta(documentUri, name, mime)
+            }
         }
+        return DocumentMeta(documentUri, "document", "")
     }
 
-    private fun shouldSkip(name: String): Boolean {
-        return name in SKIP_DIRS || name.startsWith(".")
+    private fun sanitizeName(name: String): String {
+        val cleaned = name.replace('/', '_').replace('\\', '_').trim()
+        if (cleaned.isEmpty()) throw IllegalArgumentException("Empty file name")
+        if (cleaned == "." || cleaned == "..") throw IllegalArgumentException("Unsafe name: $name")
+        return cleaned
     }
 
-    /**
-     * Try to derive a human-readable game name from the URI.
-     */
     private fun deriveGameName(treeUri: Uri): String {
-        // Try to get the last segment of the URI path
-        val path = treeUri.lastPathSegment ?: return "imported-game"
-        // Try to decode and clean it up
-        val decoded = Uri.decode(path)
-        return decoded
-            .replace(Regex("^tree/|^document/|^primary:"), "")
-            .trimEnd('/')
-            .ifEmpty { "imported-game" }
+        return treeUri.lastPathSegment
+            ?.let { Uri.decode(it) }
+            ?.replace(Regex("^tree/|^document/|^primary:"), "")
+            ?.trimEnd('/')
+            ?.ifEmpty { "imported-game" }
+            ?: "imported-game"
+    }
+
+    private data class DocumentMeta(
+        val uri: Uri,
+        val name: String,
+        val mimeType: String,
+    ) {
+        val isDirectory: Boolean = mimeType == DocumentsContract.Document.MIME_TYPE_DIR
     }
 }
