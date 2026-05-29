@@ -132,9 +132,6 @@ class HomeScreen(private val context: Context) {
                         games = games,
                         onPlay = onPlay,
                         onManage = onManage,
-                        pausedGame = pausedGame,
-                        onResume = onResume,
-                        onStop = onStop,
                     ), FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -406,9 +403,9 @@ class HomeScreen(private val context: Context) {
                 SortMode.DATE_ADDED -> "NEW"
             }
             val filterBtn = TextView(context).apply {
-                text = "▤ $filterLabel$searchBadge  |  $sortLabel"; setTextColor(ACCENT); textSize = 11f
+                text = " \u25A4 $filterLabel$searchBadge  |  $sortLabel "; setTextColor(ACCENT); textSize = 13f
                 typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setPadding(dp(10), dp(6), dp(10), dp(6))
+                setPadding(dp(14), dp(10), dp(14), dp(10))
                 background = glassBg(dp(12))
                 setOnClickListener { showFilterSortDialog(onApplyFilters, activeFilter, activeSearch, currentSort) }
                 makeLiquid(this)
@@ -643,18 +640,9 @@ class HomeScreen(private val context: Context) {
         panel.addView(sortContainer)
         panel.addView(spacer(dp(12)))
 
-        // ── DONE + CLEAR buttons ──
+        // ── CLEAR + DONE buttons (swapped) ──
         panel.addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
-            // DONE
-            addView(TextView(context).apply {
-                text = "DONE"; setTextColor(Color.rgb(220, 200, 160)); textSize = 12f
-                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setPadding(dp(24), dp(8), dp(24), dp(8))
-                background = glassBg(dp(8), alpha = 120, accent = true)
-                setOnClickListener { animTap(this); doApply() }
-                makeLiquid(this)
-            }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { setMargins(dp(4), 0, dp(4), 0) })
             // CLEAR
             addView(TextView(context).apply {
                 text = "CLEAR"; setTextColor(MUTED); textSize = 12f
@@ -670,6 +658,15 @@ class HomeScreen(private val context: Context) {
                     clearSearchBtn.visibility = View.INVISIBLE
                     rebuildChips(); rebuildSorts()
                 }
+                makeLiquid(this)
+            }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { setMargins(dp(4), 0, dp(4), 0) })
+            // DONE
+            addView(TextView(context).apply {
+                text = "DONE"; setTextColor(Color.rgb(220, 200, 160)); textSize = 12f
+                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setPadding(dp(24), dp(8), dp(24), dp(8))
+                background = glassBg(dp(8), alpha = 120, accent = true)
+                setOnClickListener { animTap(this); doApply() }
                 makeLiquid(this)
             }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { setMargins(dp(4), 0, dp(4), 0) })
         })
@@ -706,7 +703,7 @@ class HomeScreen(private val context: Context) {
 
         val w = context.resources.displayMetrics.widthPixels
         val cardW = (w * 0.88f).toInt()
-        val cardH = (cardW * 0.56f).toInt()
+        val cardH = (cardW * 0.62f).toInt()
 
         // Wrapper stacks card + overlay — blur only hits card
         val cardWrapper = FrameLayout(context).apply {
@@ -748,20 +745,20 @@ class HomeScreen(private val context: Context) {
         }
         dimOverlay.addView(actionPanel)
 
-        // PLAY / RESUME — fixed symmetric width
-        val btnLabel = if (game.isPaused) "RESUME" else "PLAY"
-        val btnW = dp(120)
-        val playBtn = TextView(context).apply {
-            text = btnLabel; setTextColor(Color.rgb(220, 200, 160)); textSize = 16f
-            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            background = glassBg(dp(6), alpha = 100, accent = !game.isPaused)
-            if (game.isPaused) (background as GradientDrawable).setColor(Color.argb(120, 30, 60, 30))
-            setOnClickListener { onPlay(game.storageName) }
-            makeLiquid(this)
+        // PLAY — fixed symmetric width (only for non-paused games; paused games use the bottom bar)
+        if (!game.isPaused) {
+            val btnW = dp(120)
+            val playBtn = TextView(context).apply {
+                text = "PLAY"; setTextColor(Color.rgb(220, 200, 160)); textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                background = glassBg(dp(6), alpha = 100, accent = true)
+                setOnClickListener { onPlay(game.storageName) }
+                makeLiquid(this)
+            }
+            actionPanel.addView(playBtn, LinearLayout.LayoutParams(btnW, WRAP))
+            actionPanel.addView(spacer(dp(14)))
         }
-        actionPanel.addView(playBtn, LinearLayout.LayoutParams(btnW, WRAP))
-        actionPanel.addView(spacer(dp(14)))
 
         // OPTIONS — same width
         val optsBtn = TextView(context).apply {
@@ -772,7 +769,7 @@ class HomeScreen(private val context: Context) {
             setOnClickListener { onManage(game.storageName) }
             makeLiquid(this)
         }
-        actionPanel.addView(optsBtn, LinearLayout.LayoutParams(btnW, WRAP))
+        actionPanel.addView(optsBtn, LinearLayout.LayoutParams(dp(120), WRAP))
 
         // Tap wrapper → toggle overlay + blur (single-selection)
         cardWrapper.setOnClickListener {
@@ -808,9 +805,25 @@ class HomeScreen(private val context: Context) {
             setPadding(dp(4), dp(8), dp(4), 0)
         })
         cardContainer.addView(TextView(context).apply {
-            text = "${game.fileCount} files  |  ${game.engineType.label}"
-            setTextColor(MUTED); textSize = 10f; gravity = Gravity.CENTER
+            text = "${game.engineType.label}  \u2022  ${game.fileCount} files"
+            setTextColor(MUTED); textSize = 11f; gravity = Gravity.CENTER
             setPadding(0, dp(2), 0, 0)
+        })
+        // Status badge
+        val statusText = when {
+            game.isPaused -> "\u25B6 Paused"
+            game.isReady -> "\u2713 Ready"
+            else -> "\u2022 Installed"
+        }
+        val statusColor = when {
+            game.isPaused -> Color.rgb(140, 220, 140)
+            game.isReady -> Color.rgb(207, 174, 126)
+            else -> MUTED
+        }
+        cardContainer.addView(TextView(context).apply {
+            text = statusText; setTextColor(statusColor); textSize = 10f
+            gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, dp(4), 0, dp(4))
         })
 
         return cardContainer
@@ -846,7 +859,8 @@ class HomeScreen(private val context: Context) {
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     v.animate().cancel()
-                    v.animate().scaleX(1.08f).scaleY(1.08f).setDuration(120).start()
+                    v.scaleX = 1.08f
+                    v.scaleY = 1.08f
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val cx = v.width / 2f
@@ -857,10 +871,16 @@ class HomeScreen(private val context: Context) {
                     v.translationY = dy
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    v.animate().scaleX(1f).scaleY(1f)
+                    v.animate().cancel()
+                    v.animate()
+                        .scaleX(1f).scaleY(1f)
                         .translationX(0f).translationY(0f)
                         .setDuration(250)
                         .setInterpolator(OvershootInterpolator(1.6f))
+                        .withEndAction {
+                            v.scaleX = 1f; v.scaleY = 1f
+                            v.translationX = 0f; v.translationY = 0f
+                        }
                         .start()
                 }
             }
@@ -886,9 +906,6 @@ class HomeScreen(private val context: Context) {
         games: List<GameCardInfo>,
         onPlay: (String) -> Unit,
         onManage: ((String) -> Unit)? = null,
-        pausedGame: GameCardInfo? = null,
-        onResume: (() -> Unit)? = null,
-        onStop: ((String) -> Unit)? = null,
     ): FrameLayout {
         val container = FrameLayout(context).apply {
             setBackgroundColor(Color.rgb(3, 3, 4))
@@ -918,40 +935,6 @@ class HomeScreen(private val context: Context) {
 
         val colorExtractor = GameColorExtractor(context)
 
-        // RESUME banner (if a game is paused)
-        if (pausedGame != null && onResume != null) {
-            val barRow = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-                setPadding(dp(10), dp(6), dp(10), dp(6))
-                background = GradientDrawable().apply {
-                    setColor(Color.argb(200, 15, 15, 18))
-                    cornerRadius = dp(14).toFloat()
-                    setStroke(dp(1), Color.argb(100, 100, 100, 100))
-                }
-            }
-            val stopBtn = TextView(context).apply {
-                text = "STOP — ${pausedGame.displayName}"
-                setTextColor(Color.rgb(240, 120, 120)); textSize = 11f
-                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setPadding(dp(8), dp(8), dp(8), dp(8))
-                setOnClickListener { onStop?.invoke(pausedGame.storageName) }
-            }
-            barRow.addView(stopBtn, LinearLayout.LayoutParams(0, WRAP, 1f))
-
-            val resumeBtn = TextView(context).apply {
-                text = "▶ RESUME"; setTextColor(Color.rgb(140, 220, 140)); textSize = 11f
-                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setPadding(dp(8), dp(8), dp(8), dp(8))
-                setOnClickListener { onResume() }
-            }
-            barRow.addView(resumeBtn, LinearLayout.LayoutParams(WRAP, WRAP))
-
-            container.addView(barRow, FrameLayout.LayoutParams(
-                MATCH, WRAP, Gravity.TOP
-            ))
-        }
-
         // Carousel
         val carouselHeight = (context.resources.displayMetrics.heightPixels * 0.55f).toInt()
         val layoutManager = Carousel3DLayoutManager(context)
@@ -976,6 +959,7 @@ class HomeScreen(private val context: Context) {
             clipToPadding = false
             isNestedScrollingEnabled = false
         }
+        // Snap to nearest card on fling/release
         container.addView(recyclerView, FrameLayout.LayoutParams(
             MATCH, carouselHeight, Gravity.TOP,
         ))
@@ -1020,7 +1004,7 @@ class HomeScreen(private val context: Context) {
         }
         container.addView(detailPanel, FrameLayout.LayoutParams(
             MATCH, WRAP, Gravity.BOTTOM,
-        ))
+        ).apply { bottomMargin = dp(60) })
 
         // Vignette overlay (cinematic corners)
         container.addView(VignetteOverlay(context), FrameLayout.LayoutParams(MATCH, MATCH))

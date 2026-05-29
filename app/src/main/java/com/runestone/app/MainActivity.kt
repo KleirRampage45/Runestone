@@ -90,6 +90,7 @@ class MainActivity : Activity() {
     }
 
     private var pausedGamePath: String? = null
+    private var initialLaunch = true
     private var activeEngineFilter: EngineType? = null
     private var currentSort: SortMode = SortMode.DATE_ADDED
     private var searchQuery: String = ""
@@ -100,9 +101,12 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "onCreate")
-        // Check for paused game from SharedPreferences
+        // Check for paused game from SharedPreferences — load for display,
+        // then clear immediately since the game activity is dead after fresh onCreate
         pausedGamePath = getSharedPreferences("runestone", MODE_PRIVATE)
             .getString("paused_game", null)
+        getSharedPreferences("runestone", MODE_PRIVATE).edit()
+            .remove("paused_game").apply()
         settingsStore = SettingsStore(this)
         workspaceManager = WorkspaceManager(this)
         installStateStore = InstallStateStore(workspaceManager)
@@ -350,7 +354,7 @@ class MainActivity : Activity() {
 
         val wrapper = FrameLayout(this).apply {
             // Semi-transparent black dims the home screen underneath
-            setBackgroundColor(Color.argb(160, 0, 0, 0))
+            setBackgroundColor(Color.argb(200, 0, 0, 0))
 
             // Start below final position so it slides up while fading in
             alpha = 0f
@@ -362,7 +366,7 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            lp.setMargins(dp(8), dp(56), dp(8), dp(8))
+            lp.setMargins(dp(8), dp(20), dp(8), dp(8))
             addView(panel, lp)
 
             // Prevent clicks on the panel from reaching the dim bg
@@ -505,13 +509,10 @@ class MainActivity : Activity() {
                     pausedGamePath = null
                     getSharedPreferences("runestone", MODE_PRIVATE).edit()
                         .remove("paused_game").apply()
-                    // Signal GameActivity to self-destruct
                     getSharedPreferences("runestone", MODE_PRIVATE).edit()
                         .putString("kill_game", storageName).apply()
+                    refreshGames()
                     showHome()
-                    // Finish this activity to reveal GameActivity, which will
-                    // check kill_game flag and finish itself immediately
-                    finish()
                 }
             }} else null,
         )
@@ -580,7 +581,6 @@ class MainActivity : Activity() {
                 onSettingsChanged = { newSettings ->
                     settings = newSettings
                     settingsStore.save(newSettings)
-                    showSettings()
                 },
                 onBack = { dismissOverlay() },
             ),
@@ -853,13 +853,17 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        Log.i(TAG, "onResume importActive=${activeImportProgressView != null}")
-        if (activeImportProgressView == null) {
-            pausedGamePath = getSharedPreferences("runestone", MODE_PRIVATE)
-                .getString("paused_game", null)
-            refreshGames()
-            showHome()
+        Log.i(TAG, "onResume importActive=${activeImportProgressView != null} initial=$initialLaunch overlay=${activeOverlay != null}")
+        if (activeImportProgressView != null) return
+        if (initialLaunch) {
+            initialLaunch = false
+            return
         }
+        if (activeOverlay != null) return
+        pausedGamePath = getSharedPreferences("runestone", MODE_PRIVATE)
+            .getString("paused_game", null)
+        refreshGames()
+        showHome()
     }
 
     override fun onBackPressed() {

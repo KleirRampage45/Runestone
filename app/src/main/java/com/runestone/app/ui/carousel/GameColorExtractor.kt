@@ -22,7 +22,7 @@ class GameColorExtractor(private val context: Context) {
         }
 
         if (coverUrl.isNullOrBlank()) {
-            val fallback = engineColor(engineType)
+            val fallback = metadataColor(gameTitle, engineType)
             cache[gameTitle] = fallback
             onColor(fallback)
             return
@@ -33,17 +33,38 @@ class GameColorExtractor(private val context: Context) {
                 val bitmap = BitmapFactory.decodeStream(URL(coverUrl).openStream())
                 if (bitmap != null) {
                     val palette = Palette.from(bitmap).generate()
-                    val color = palette.getVibrantColor(palette.getMutedColor(engineColor(engineType)))
+                    val color = palette.getVibrantColor(palette.getMutedColor(metadataColor(gameTitle, engineType)))
                     cache[gameTitle] = color
                     bitmap.recycle()
                     Handler(Looper.getMainLooper()).post { onColor(color) }
                 } else {
-                    Handler(Looper.getMainLooper()).post { onColor(engineColor(engineType)) }
+                    val fallback = metadataColor(gameTitle, engineType)
+                    cache[gameTitle] = fallback
+                    Handler(Looper.getMainLooper()).post { onColor(fallback) }
                 }
             } catch (e: Exception) {
-                Handler(Looper.getMainLooper()).post { onColor(engineColor(engineType)) }
+                val fallback = metadataColor(gameTitle, engineType)
+                cache[gameTitle] = fallback
+                Handler(Looper.getMainLooper()).post { onColor(fallback) }
             }
         }.start()
+    }
+
+    private fun metadataColor(gameTitle: String, engineType: EngineType): Int {
+        val base = engineColor(engineType)
+        val r = android.graphics.Color.red(base)
+        val g = android.graphics.Color.green(base)
+        val b = android.graphics.Color.blue(base)
+        val hash = gameTitle.hashCode()
+        val dr = ((hash and 0xFF) - 128) / 6
+        val dg = (((hash shr 8) and 0xFF) - 128) / 6
+        val db = (((hash shr 16) and 0xFF) - 128) / 6
+        return android.graphics.Color.argb(
+            android.graphics.Color.alpha(base),
+            (r + dr).coerceIn(0, 255),
+            (g + dg).coerceIn(0, 255),
+            (b + db).coerceIn(0, 255),
+        )
     }
 
     companion object {

@@ -20,6 +20,7 @@ import androidx.recyclerview.widget.RecyclerView
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sign
 
 class Carousel3DLayoutManager(
@@ -35,7 +36,7 @@ class Carousel3DLayoutManager(
     private val cardHeightPx: Int
     private val cardSpacingPx: Int
     private val visibleCardCount = 5 // show up to 5 cards at once
-    private val centerPercent = 0.35f // card center at 35% from left
+    private val centerPercent = 0.5f // card center at 50% (true center)
     private var lastFocusedPosition: Int = RecyclerView.NO_POSITION
     var focusListener: FocusListener? = null
 
@@ -122,6 +123,44 @@ class Carousel3DLayoutManager(
     override fun onAttachedToWindow(view: RecyclerView?) {
         super.onAttachedToWindow(view)
         view?.cameraDistance = 8000f * context.resources.displayMetrics.density
+        
+        // Snap to nearest card when scroll settles
+        view?.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            private var snapRunnable: Runnable? = null
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    val closest = findClosestPosition()
+                    if (closest >= 0 && closest != getCurrentPosition()) {
+                        recyclerView.smoothScrollToPosition(closest)
+                    }
+                }
+            }
+        })
+    }
+
+    /** Find the position closest to center */
+    private fun findClosestPosition(): Int {
+        val containerCenter = width / 2f
+        var closestPosition = RecyclerView.NO_POSITION
+        var closestDistance = Float.MAX_VALUE
+        for (i in 0 until childCount) {
+            val child = getChildAt(i) ?: continue
+            val distance = abs((child.left + child.right) / 2f - containerCenter)
+            if (distance < closestDistance) {
+                closestDistance = distance
+                closestPosition = getPosition(child)
+            }
+        }
+        return closestPosition
+    }
+
+    /** Get the currently snapped position */
+    private fun getCurrentPosition(): Int {
+        if (itemCount == 0) return RecyclerView.NO_POSITION
+        val maxScroll = (itemCount - 1) * (cardWidthPx + cardSpacingPx)
+        if (maxScroll <= 0) return 0
+        return ((scrollOffset.toFloat() / maxScroll) * (itemCount - 1)).roundToInt()
+            .coerceIn(0, itemCount - 1)
     }
 
     private fun dp(value: Int): Int =
@@ -147,7 +186,7 @@ class Carousel3DLayoutManager(
             val absPos = abs(position)
 
             // 3D transforms
-            val scale = lerp(1.0f, 0.65f, (absPos / 2f).coerceIn(0f, 1f))
+            val scale = lerp(1.08f, 0.65f, (absPos / 2f).coerceIn(0f, 1f))
             val rotation = sign(position) * lerp(0f, 45f, (absPos / 2f).coerceIn(0f, 1f))
             val alpha = lerp(1.0f, 0.45f, (absPos / 2f).coerceIn(0f, 1f))
 
@@ -157,7 +196,7 @@ class Carousel3DLayoutManager(
             child.alpha = alpha
 
             // Elevation
-            child.elevation = lerp(dp(14).toFloat(), dp(2).toFloat(), (absPos / 2f).coerceIn(0f, 1f))
+            child.elevation = lerp(dp(24).toFloat(), dp(2).toFloat(), (absPos / 2f).coerceIn(0f, 1f))
 
             // Blur for edge cards (API 31+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

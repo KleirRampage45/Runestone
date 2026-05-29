@@ -108,18 +108,35 @@ class SettingsScreen(private val context: Context) {
             }
         })
         content.addView(spacer(10))
-        content.addView(switchPanel("Haptic Feedback", "Vibrate when virtual controls are pressed.", current.hapticsEnabled) { checked ->
-            current = current.copy(hapticsEnabled = checked)
-            onSettingsChanged(current)
-        })
-        content.addView(spacer(10))
-        content.addView(sliderPanel("Haptic Intensity", "${(current.hapticIntensity * 100).toInt()}%") { label ->
+        // Haptic toggle with animated intensity sub-slider
+        val hapticIntensityPanel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = if (current.hapticsEnabled) View.VISIBLE else View.GONE
+            setPadding(dp(8), dp(6), dp(8), 0)
+        }
+        hapticIntensityPanel.addView(sliderPanel("Haptic Intensity", "${(current.hapticIntensity * 100).toInt()}%") { label ->
             slider(100, (current.hapticIntensity * 100).toInt().coerceIn(0, 100)) { progress ->
                 current = current.copy(hapticIntensity = progress / 100f)
                 label.text = "${(current.hapticIntensity * 100).toInt()}%"
                 onSettingsChanged(current)
             }
         })
+        content.addView(switchPanel("Haptic Feedback", "Vibrate when virtual controls are pressed.", current.hapticsEnabled) { checked ->
+            current = current.copy(hapticsEnabled = checked)
+            onSettingsChanged(current)
+            if (checked) {
+                hapticIntensityPanel.visibility = View.VISIBLE
+                hapticIntensityPanel.alpha = 0f
+                hapticIntensityPanel.translationY = -hapticIntensityPanel.height.toFloat()
+                hapticIntensityPanel.animate().alpha(1f).translationY(0f).setDuration(250)
+                    .setInterpolator(OvershootInterpolator(1.1f)).start()
+            } else {
+                hapticIntensityPanel.animate().alpha(0f).setDuration(180)
+                    .withEndAction { hapticIntensityPanel.visibility = View.GONE }.start()
+            }
+        })
+        content.addView(hapticIntensityPanel)
+        content.addView(spacer(10))
         content.addView(spacer(10))
         content.addView(switchPanel("Show X/Y Buttons", "Extra RPG Maker keys. Usually unnecessary.", current.showExtraButtons) { checked ->
             current = current.copy(showExtraButtons = checked)
@@ -151,14 +168,14 @@ class SettingsScreen(private val context: Context) {
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(14))
-            setBackgroundColor(Color.rgb(3, 3, 4))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setBackgroundColor(Color.argb(180, 3, 3, 4))
 
             addView(
                 TextView(context).apply {
                     text = "Back"
                     setTextColor(ACCENT)
-                    textSize = 15f
+                    textSize = 13f
                     typeface = Typeface.DEFAULT_BOLD
                     gravity = Gravity.CENTER
                     setPadding(dp(8), dp(6), dp(8), dp(6))
@@ -169,22 +186,22 @@ class SettingsScreen(private val context: Context) {
                     }
                     setOnClickListener { onBack() }
                 },
-                LinearLayout.LayoutParams(dp(84), ViewGroup.LayoutParams.WRAP_CONTENT),
+                LinearLayout.LayoutParams(dp(80), ViewGroup.LayoutParams.WRAP_CONTENT),
             )
 
             addView(
                 TextView(context).apply {
-                    text = "Runestone Setup"
+                    text = "Settings"
                     setTextColor(TEXT)
-                    textSize = 21f
-                    letterSpacing = 0.5f
+                    textSize = 16f
+                    letterSpacing = 0.2f
                     gravity = Gravity.CENTER
                     typeface = Typeface.create("serif", Typeface.BOLD)
                 },
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
             )
 
-            addView(View(context), LinearLayout.LayoutParams(dp(84), 1))
+            addView(View(context), LinearLayout.LayoutParams(dp(80), 1))
         }
 
     private fun layoutSelector(selected: LayoutMode, onSelect: (LayoutMode) -> Unit): LinearLayout =
@@ -449,7 +466,8 @@ class SettingsScreen(private val context: Context) {
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     v.animate().cancel()
-                    v.animate().scaleX(1.08f).scaleY(1.08f).setDuration(120).start()
+                    v.scaleX = 1.08f
+                    v.scaleY = 1.08f
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val cx = v.width / 2f
@@ -460,10 +478,16 @@ class SettingsScreen(private val context: Context) {
                     v.translationY = dy
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    v.animate().scaleX(1f).scaleY(1f)
+                    v.animate().cancel()
+                    v.animate()
+                        .scaleX(1f).scaleY(1f)
                         .translationX(0f).translationY(0f)
                         .setDuration(250)
                         .setInterpolator(OvershootInterpolator(1.6f))
+                        .withEndAction {
+                            v.scaleX = 1f; v.scaleY = 1f
+                            v.translationX = 0f; v.translationY = 0f
+                        }
                         .start()
                 }
             }
