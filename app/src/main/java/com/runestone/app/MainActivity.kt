@@ -64,8 +64,9 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "onCreate")
-        // Check if launched from HOME button with a paused game
-        pausedGamePath = intent.getStringExtra("paused_game")
+        // Check for paused game from SharedPreferences
+        pausedGamePath = getSharedPreferences("runestone", MODE_PRIVATE)
+            .getString("paused_game", null)
         settingsStore = SettingsStore(this)
         workspaceManager = WorkspaceManager(this)
         installStateStore = InstallStateStore(workspaceManager)
@@ -131,7 +132,8 @@ class MainActivity : Activity() {
                     if (game != null) {
                         Log.i(TAG, "STOP game: $storageName path=${game.originalPath}")
                         pausedGamePath = null
-                        showHome()  // refresh without resume bar — game stays underneath
+                        getSharedPreferences("runestone", MODE_PRIVATE).edit().remove("paused_game").apply()
+                        showHome()  // refresh without resume bar
                     }
                 }} else null,
             ),
@@ -191,20 +193,21 @@ class MainActivity : Activity() {
         val game = games.find { it.storageName == storageName } ?: return
 
         if (pausedGamePath != null && pausedGamePath == game.originalPath) {
-            // Resume: go back to the game underneath
+            // Resume: clear paused state and return to game
             Log.i(TAG, "RESUME: $storageName")
             pausedGamePath = null
+            getSharedPreferences("runestone", MODE_PRIVATE).edit().remove("paused_game").apply()
             finish()
             return
         }
 
-        // New launch (or resume cleared above)
+        // New launch
         Log.i(TAG, "playGame: $storageName path=${game.originalPath}")
 
-        // If we were paused, clear the stacked game activity by starting
-        // a fresh task. Otherwise the old GameActivity remains in the stack.
-        val wasPaused = pausedGamePath != null
-        pausedGamePath = null
+        // Save paused game path BEFORE launching
+        pausedGamePath = game.originalPath
+        getSharedPreferences("runestone", MODE_PRIVATE).edit()
+            .putString("paused_game", game.originalPath).apply()
 
         val intent = Intent(this, GameActivity::class.java).apply {
             putExtra("game_path", game.originalPath)
@@ -216,11 +219,8 @@ class MainActivity : Activity() {
             putExtra("haptic_intensity", settings.hapticIntensity)
             putExtra("show_extra_btns", settings.showExtraButtons)
             putExtra("audio_ext", settings.forceAudioExt)
-            // Start a fresh task so the old paused game isn't in the back stack
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         }
         startActivity(intent)
-        if (wasPaused) finish()
     }
 
     private fun startFolderImport(requestedName: String? = null) {
@@ -399,6 +399,9 @@ class MainActivity : Activity() {
         super.onResume()
         Log.i(TAG, "onResume importActive=${activeImportProgressView != null}")
         if (activeImportProgressView == null) {
+            // Read paused game state from SharedPreferences
+            pausedGamePath = getSharedPreferences("runestone", MODE_PRIVATE)
+                .getString("paused_game", null)
             refreshGames()
             showHome()
         }

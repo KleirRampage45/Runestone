@@ -13,9 +13,11 @@ package com.runestone.app.ui
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -34,60 +36,80 @@ class ImportProgressScreen(private val context: Context) {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(32, 32, 32, 32)
-            setBackgroundColor(Color.rgb(8, 8, 10))
+            setBackgroundColor(Color.rgb(3, 3, 4))
         }
 
+        // Glass card
+        val card = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(28), dp(28), dp(28), dp(28))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(220, 12, 11, 16))
+                cornerRadius = dp(22).toFloat()
+                setStroke(dp(1), Color.argb(70, 160, 140, 110))
+            }
+            alpha = 0f
+            animate().alpha(1f).setDuration(350)
+                .setInterpolator(OvershootInterpolator(1.1f)).start()
+        }
+        root.addView(card, LinearLayout.LayoutParams(
+            (context.resources.displayMetrics.widthPixels * 0.85f).toInt(),
+            ViewGroup.LayoutParams.WRAP_CONTENT))
+
         // Title
-        root.addView(TextView(context).apply {
+        card.addView(TextView(context).apply {
             text = title
-            setTextColor(Color.WHITE); textSize = 24f
+            setTextColor(Color.rgb(232, 229, 220)); textSize = 22f
             typeface = Typeface.create("serif", Typeface.BOLD); gravity = Gravity.CENTER
         })
 
-        root.addView(spacer(20))
+        card.addView(spacer(20))
 
-        // Indeterminate progress bar (spins)
-        root.addView(ProgressBar(context).apply {
+        // Indeterminate progress bar
+        card.addView(ProgressBar(context).apply {
             isIndeterminate = true
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT)
         })
 
-        root.addView(spacer(28))
+        card.addView(spacer(24))
 
-        // Phase text (e.g. "Copying game files...")
+        // Phase text
         val phaseView = TextView(context).apply {
             text = "Starting..."
-            setTextColor(Color.argb(210, 200, 170, 130)); textSize = 17f
+            setTextColor(Color.rgb(207, 174, 126)); textSize = 16f
             gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD
         }
-        root.addView(phaseView)
+        card.addView(phaseView)
 
-        root.addView(spacer(12))
+        card.addView(spacer(10))
 
-        // Current file being copied
+        // Current file
         val fileView = TextView(context).apply {
             text = ""
             setTextColor(Color.argb(160, 180, 175, 160)); textSize = 12f
             gravity = Gravity.CENTER; maxLines = 1
         }
-        root.addView(fileView)
+        card.addView(fileView)
 
-        root.addView(spacer(8))
+        card.addView(spacer(6))
 
         // File count
         val countView = TextView(context).apply {
             text = ""
-            setTextColor(Color.argb(120, 200, 190, 170)); textSize = 13f
+            setTextColor(Color.rgb(140, 130, 112)); textSize = 13f
             gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD
         }
-        root.addView(countView)
+        card.addView(countView)
 
-        root.addView(spacer(28))
+        card.addView(spacer(16))
 
         // Hint
-        root.addView(TextView(context).apply {
+        card.addView(TextView(context).apply {
             text = "Keep the app open while files are copied."
-            setTextColor(Color.argb(70, 170, 164, 154)); textSize = 11f; gravity = Gravity.CENTER
+            setTextColor(Color.argb(100, 100, 95, 85)); textSize = 11f; gravity = Gravity.CENTER
         })
 
         return ImportProgressView(root, phaseView, fileView, countView)
@@ -96,4 +118,6 @@ class ImportProgressScreen(private val context: Context) {
     private fun spacer(h: Int): View = View(context).apply {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, h)
     }
+
+    private fun dp(v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
 }

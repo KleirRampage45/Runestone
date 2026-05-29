@@ -243,15 +243,16 @@ class GameActivity : Activity() {
             setTextColor(Color.rgb(220, 210, 190))
             typeface = Typeface.DEFAULT_BOLD
             background = GradientDrawable().apply {
-                setColor(Color.argb(140, 30, 25, 20))
-                setStroke(dp(2), Color.argb(90, 180, 160, 130))
+                setColor(Color.argb(200, 12, 11, 16))
+                setStroke(dp(1), Color.argb(70, 160, 140, 110))
                 cornerRadius = dp(16).toFloat()
             }
-            setPadding(dp(10), dp(5), dp(10), dp(5))
+            setPadding(dp(12), dp(6), dp(12), dp(6))
             setOnClickListener {
-                startActivity(Intent(this@GameActivity, MainActivity::class.java).apply {
-                    putExtra("paused_game", gamePath)
-                })
+                // Save paused state and go home
+                getSharedPreferences("runestone", MODE_PRIVATE).edit()
+                    .putString("paused_game", gamePath).apply()
+                startActivity(Intent(this@GameActivity, MainActivity::class.java))
             }
             val ph = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             ph.gravity = Gravity.BOTTOM or Gravity.START
@@ -267,11 +268,11 @@ class GameActivity : Activity() {
             setTextColor(Color.rgb(220, 210, 190))
             typeface = Typeface.DEFAULT_BOLD
             background = GradientDrawable().apply {
-                setColor(Color.argb(140, 30, 25, 20))
-                setStroke(dp(2), Color.argb(90, 180, 160, 130))
+                setColor(Color.argb(200, 12, 11, 16))
+                setStroke(dp(1), Color.argb(70, 160, 140, 110))
                 cornerRadius = dp(16).toFloat()
             }
-            setPadding(dp(10), dp(5), dp(10), dp(5))
+            setPadding(dp(12), dp(6), dp(12), dp(6))
             setOnClickListener { toggleKeyboard() }
             val pk = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             pk.gravity = Gravity.BOTTOM or Gravity.END
@@ -460,9 +461,12 @@ class GameActivity : Activity() {
             engine.evaluateJavascript("TouchInput._onCancel();", null)
             val shouldQuit = engine.handleBack()
             if (shouldQuit) {
+                // Clear paused state — game is done
+                getSharedPreferences("runestone", MODE_PRIVATE).edit().remove("paused_game").apply()
                 super.onBackPressed()
             }
         } else {
+            getSharedPreferences("runestone", MODE_PRIVATE).edit().remove("paused_game").apply()
             super.onBackPressed()
         }
     }

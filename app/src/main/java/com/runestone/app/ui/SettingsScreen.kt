@@ -21,6 +21,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
@@ -64,6 +65,7 @@ class SettingsScreen(private val context: Context) {
             setPadding(dp(16), dp(16), dp(16), dp(28))
         }
         scroll.addView(content)
+        content.alpha = 0f
 
         // Layout Mode
         content.addView(sectionTitle("Play Layout", "Choose how the phone becomes the handheld."))
@@ -129,6 +131,7 @@ class SettingsScreen(private val context: Context) {
         content.addView(spacer(8))
         content.addView(expandableButton("ABOUT — Version & license", ::makeAboutContent))
 
+        content.animate().alpha(1f).setDuration(300).setInterpolator(OvershootInterpolator(1.1f)).start()
         return root
     }
 
@@ -193,11 +196,16 @@ class SettingsScreen(private val context: Context) {
         onSelect: (LayoutMode) -> Unit,
     ): LinearLayout =
         settingsPanel {
-            setOnClickListener { onSelect(mode) }
+            setOnClickListener {
+                animTap(this)
+                onSelect(mode)
+            }
             background = panelBackground(
-                if (selected == mode) Color.rgb(33, 28, 27) else PANEL,
-                stroke = if (selected == mode) ACCENT else Color.argb(48, 255, 255, 255),
+                if (selected == mode) Color.argb(200, 33, 28, 27) else Color.argb(190, 12, 11, 16),
+                stroke = if (selected == mode) ACCENT else Color.argb(60, 207, 174, 126),
+                corner = 16,
             )
+            makeLiquid(this)
             addView(LayoutPreviewView(context, mode), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(122)))
             addView(
                 TextView(context).apply {
@@ -240,10 +248,15 @@ class SettingsScreen(private val context: Context) {
             minHeight = dp(60)
             setPadding(dp(10), dp(10), dp(10), dp(10))
             background = panelBackground(
-                if (selected) Color.rgb(33, 28, 27) else PANEL,
-                stroke = if (selected) ACCENT else Color.argb(48, 255, 255, 255),
+                if (selected) Color.argb(200, 33, 28, 27) else Color.argb(190, 12, 11, 16),
+                stroke = if (selected) ACCENT else Color.argb(60, 207, 174, 126),
+                corner = 16,
             )
-            setOnClickListener { onClick() }
+            makeLiquid(this)
+            setOnClickListener {
+                animTap(this)
+                onClick()
+            }
         }
 
     private fun sectionTitle(title: String, detail: String): LinearLayout =
@@ -280,7 +293,8 @@ class SettingsScreen(private val context: Context) {
         LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(13), dp(13), dp(13), dp(13))
-            background = panelBackground(PANEL, stroke = Color.argb(48, 255, 255, 255))
+            background = glassBg(16, alpha = 200)
+            makeLiquid(this)
             build()
         }
 
@@ -348,7 +362,7 @@ class SettingsScreen(private val context: Context) {
     private fun slider(max: Int, progress: Int, onChange: (Int) -> Unit): GlassSlider =
         GlassSlider(context, max, progress, onChange)
 
-    private fun panelBackground(color: Int, stroke: Int = Color.TRANSPARENT, corner: Int = 12): GradientDrawable =
+    private fun panelBackground(color: Int, stroke: Int = Color.TRANSPARENT, corner: Int = 16): GradientDrawable =
         GradientDrawable().apply {
             setColor(color)
             cornerRadius = dp(corner).toFloat()
@@ -362,6 +376,50 @@ class SettingsScreen(private val context: Context) {
 
     private fun dp(value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
+
+    private fun makeLiquid(view: View) {
+        view.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    v.animate().cancel()
+                    v.animate().scaleX(1.08f).scaleY(1.08f).setDuration(120).start()
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val cx = v.width / 2f
+                    val cy = v.height / 2f
+                    val dx = (event.x - cx) * 0.06f
+                    val dy = (event.y - cy) * 0.06f
+                    v.translationX = dx
+                    v.translationY = dy
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    v.animate().scaleX(1f).scaleY(1f)
+                        .translationX(0f).translationY(0f)
+                        .setDuration(250)
+                        .setInterpolator(OvershootInterpolator(1.6f))
+                        .start()
+                }
+            }
+            false
+        }
+    }
+
+    private fun animTap(v: View) {
+        v.animate().scaleX(0.88f).scaleY(0.88f).setDuration(60)
+            .withEndAction {
+                v.animate().scaleX(1f).scaleY(1f).setDuration(180)
+                    .setInterpolator(OvershootInterpolator(1.5f)).start()
+            }.start()
+    }
+
+    private fun glassBg(radius: Int, alpha: Int = 200, accent: Boolean = false): GradientDrawable =
+        GradientDrawable().apply {
+            setColor(Color.argb(alpha,
+                if (accent) 50 else 22, if (accent) 40 else 20, if (accent) 30 else 26))
+            cornerRadius = dp(radius).toFloat()
+            setStroke(dp(1), Color.argb(if (accent) 80 else 45,
+                if (accent) 180 else 100, if (accent) 140 else 90, if (accent) 100 else 80))
+        }
 
     private class LayoutPreviewView(context: Context, private val mode: LayoutMode) : View(context) {
         private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -473,6 +531,7 @@ class SettingsScreen(private val context: Context) {
         val contentArea = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL; visibility = View.GONE
             setPadding(dp(8), dp(6), dp(8), dp(6))
+            background = glassBg(14, alpha = 160)
         }
         contentBuilder(contentArea)
 
@@ -480,12 +539,10 @@ class SettingsScreen(private val context: Context) {
             text = label; setTextColor(ACCENT); textSize = 13f
             typeface = Typeface.DEFAULT_BOLD
             setPadding(dp(12), dp(12), dp(12), dp(12))
-            background = GradientDrawable().apply {
-                setColor(Color.argb(180, 22, 20, 26))
-                cornerRadius = dp(10).toFloat()
-                setStroke(dp(1), Color.argb(45, 100, 90, 80))
-            }
+            background = glassBg(14, alpha = 180)
+            makeLiquid(this)
             setOnClickListener {
+                animTap(this)
                 if (contentArea.visibility == View.GONE) {
                     contentArea.visibility = View.VISIBLE
                     contentArea.alpha = 0f; contentArea.animate().alpha(1f).setDuration(150).start()
@@ -528,7 +585,7 @@ class SettingsScreen(private val context: Context) {
     private fun makeAboutContent(panel: LinearLayout) {
         panel.addView(TextView(context).apply {
             text = """
-Runestone v0.6.9 — "Glass UI"
+Runestone v0.6.10 — "Glass UI"
 Released: May 2026
 
 Open-source multi-engine game launcher for Android.
@@ -643,7 +700,7 @@ All games must be legally owned by the user.
 
     private companion object {
         val BG: Int = Color.rgb(3, 3, 4)
-        val PANEL: Int = Color.rgb(22, 20, 26)
+        val PANEL: Int = Color.argb(190, 12, 11, 16)
         val TEXT: Int = Color.rgb(232, 229, 220)
         val MUTED: Int = Color.rgb(140, 130, 112)
         val ACCENT: Int = Color.rgb(207, 174, 126)
