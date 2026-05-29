@@ -38,6 +38,7 @@ import com.runestone.app.ui.carousel.InspectOverlay
 import com.runestone.app.ui.carousel.VignetteOverlay
 import com.runestone.app.ui.carousel.GrainOverlay
 import com.runestone.app.ui.carousel.PageIndicator
+import com.runestone.app.ui.carousel.DepthOfFieldController
 import androidx.recyclerview.widget.RecyclerView
 
 data class GameCardInfo(
@@ -134,6 +135,12 @@ class HomeScreen(private val context: Context) {
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
                     ))
+                }
+                UIMode.LIST -> {
+                    content.addView(renderListLayout(games, onPlay, onManage))
+                }
+                UIMode.TILES -> {
+                    content.addView(renderTileLayout(games, onPlay, onManage))
                 }
                 else -> {
                     games.forEach { game ->
@@ -1005,6 +1012,148 @@ class HomeScreen(private val context: Context) {
         // Film grain overlay (subtle noise)
         container.addView(GrainOverlay(context), FrameLayout.LayoutParams(MATCH, MATCH))
 
+        // Depth of Field — blur glow during scroll
+        val dofController = DepthOfFieldController(glowView, recyclerView)
+        dofController.attach()
+
+        return container
+    }
+
+    // ============================================================
+    //  List layout — compact horizontal rows
+    // ============================================================
+
+    private fun renderListLayout(
+        games: List<GameCardInfo>,
+        onPlay: (String) -> Unit,
+        onManage: (String) -> Unit,
+    ): LinearLayout {
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        games.forEach { game ->
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+                background = GradientDrawable().apply {
+                    setColor(cardColor(game.engineType))
+                    cornerRadius = dp(10).toFloat()
+                    setStroke(dp(1), Color.argb(30, 100, 90, 80))
+                }
+                layoutParams = LinearLayout.LayoutParams(MATCH, WRAP).apply {
+                    setMargins(0, 0, 0, dp(6))
+                }
+            }
+            // Engine badge
+            row.addView(TextView(context).apply {
+                text = game.engineType.label.take(2)
+                setTextColor(Color.argb(100, 255, 255, 255))
+                textSize = 18f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = GradientDrawable().apply {
+                    setColor(Color.argb(40, 255, 255, 255))
+                    cornerRadius = dp(8).toFloat()
+                }
+            })
+            row.addView(spacer(dp(10)))
+            // Game info
+            val infoCol = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            infoCol.addView(TextView(context).apply {
+                text = game.displayName
+                setTextColor(TEXT)
+                textSize = 14f
+                typeface = Typeface.create("serif", Typeface.BOLD)
+                maxLines = 1
+            })
+            infoCol.addView(TextView(context).apply {
+                text = "${game.fileCount} files  |  ${game.engineType.label}"
+                setTextColor(MUTED)
+                textSize = 10f
+                setPadding(0, dp(2), 0, 0)
+            })
+            row.addView(infoCol, LinearLayout.LayoutParams(0, WRAP, 1f))
+            // Play arrow
+            row.addView(TextView(context).apply {
+                text = "\u25B6"
+                setTextColor(ACCENT)
+                textSize = 16f
+                gravity = Gravity.CENTER
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                setOnClickListener { onPlay(game.storageName) }
+                makeLiquid(this)
+            })
+            container.addView(row)
+        }
+        return container
+    }
+
+    // ============================================================
+    //  Tiles layout — 2-column grid
+    // ============================================================
+
+    private fun renderTileLayout(
+        games: List<GameCardInfo>,
+        onPlay: (String) -> Unit,
+        onManage: (String) -> Unit,
+    ): LinearLayout {
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val w = context.resources.displayMetrics.widthPixels
+        val tileW = ((w - dp(10) * 3) / 2).toInt()
+        val tileH = (tileW * 0.65f).toInt()
+        var i = 0
+        while (i < games.size) {
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+            }
+            repeat(2) { col ->
+                if (i < games.size) {
+                    val game = games[i]
+                    val tile = FrameLayout(context).apply {
+                        layoutParams = LinearLayout.LayoutParams(tileW, tileH).apply {
+                            setMargins(dp(4), 0, dp(4), dp(8))
+                        }
+                        background = GradientDrawable().apply {
+                            setColor(cardColor(game.engineType))
+                            cornerRadius = dp(12).toFloat()
+                            setStroke(dp(1), Color.argb(40, 100, 90, 80))
+                        }
+                        setOnClickListener { onPlay(game.storageName) }
+                        makeLiquid(this)
+                    }
+                    // Engine watermark
+                    tile.addView(TextView(context).apply {
+                        text = game.engineType.label
+                        setTextColor(Color.argb(40, 255, 255, 255))
+                        textSize = 28f
+                        typeface = Typeface.DEFAULT_BOLD
+                        gravity = Gravity.CENTER
+                        layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
+                    })
+                    // Name at bottom
+                    tile.addView(TextView(context).apply {
+                        text = game.displayName
+                        setTextColor(TEXT)
+                        textSize = 11f
+                        typeface = Typeface.create("serif", Typeface.BOLD)
+                        gravity = Gravity.CENTER
+                        maxLines = 2
+                        setPadding(dp(6), 0, dp(6), dp(6))
+                        layoutParams = FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM)
+                    })
+                    row.addView(tile)
+                }
+                i++
+            }
+            container.addView(row)
+        }
         return container
     }
 
