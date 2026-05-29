@@ -148,17 +148,7 @@ class SourcesManager(private val context: Context) {
                     val gamesArr = json.optJSONArray("games") ?: JSONArray()
 
                     val games = (0 until gamesArr.length()).map { i ->
-                        val obj = gamesArr.getJSONObject(i)
-                        AvailableGame(
-                            id = obj.optString("id", "$i"),
-                            title = obj.optString("title", "Unknown"),
-                            engine = obj.optString("engine", "").ifEmpty { null },
-                            fileSize = obj.optLong("fileSize", -1).let { if (it < 0) null else it },
-                            downloadUrl = obj.optString("downloadUrl", "").ifEmpty { null },
-                            pageUrl = obj.optString("pageUrl", "").ifEmpty { null },
-                            sourceName = obj.optString("sourceName", "Catalogue"),
-                            coverUrl = obj.optString("coverUrl", "").ifEmpty { null },
-                        )
+                        AvailableGame.fromCatalogueJson(gamesArr.getJSONObject(i))
                     }
 
                     onResult(games, null)
@@ -190,13 +180,21 @@ class SourcesManager(private val context: Context) {
 
             return (0 until gamesArr.length()).map { i ->
                 val obj = gamesArr.getJSONObject(i)
+                val optsArr = obj.optJSONArray("downloadOptions")
+                val options = if (optsArr != null) {
+                    (0 until optsArr.length()).map { DownloadOption.fromJson(optsArr.getJSONObject(it)) }
+                } else {
+                    val legacyUrl = obj.optString("downloadUrl", "").ifEmpty { null }
+                    if (legacyUrl != null) {
+                        listOf(DownloadOption(name = "Download", host = "Direct", url = legacyUrl))
+                    } else emptyList()
+                }
                 AvailableGame(
                     id = obj.optString("id", "$i"),
                     title = obj.optString("title", "Unknown"),
                     engine = obj.optString("engine", "").ifEmpty { null },
                     fileSize = obj.optLong("fileSize", -1).let { if (it < 0) null else it },
-                    downloadUrl = obj.optString("downloadUrl", "").ifEmpty { null },
-                    pageUrl = obj.optString("pageUrl", "").ifEmpty { null },
+                    downloadOptions = options,
                     sourceName = source.name,
                     coverUrl = obj.optString("coverUrl", "").ifEmpty { null },
                 )

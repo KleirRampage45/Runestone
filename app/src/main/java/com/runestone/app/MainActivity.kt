@@ -545,9 +545,6 @@ class MainActivity : Activity() {
                 onProviderSettings = { showProviderSettings() },
                 onDownload = { handleDownload(it) },
                 onPauseDownload = { handlePauseDownload(it) },
-                onVisitPage = { url ->
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                },
                 onBack = { dismissOverlay() },
             ),
         )

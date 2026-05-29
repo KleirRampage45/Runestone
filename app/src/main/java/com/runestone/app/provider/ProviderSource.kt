@@ -10,6 +10,7 @@
 
 package com.runestone.app.provider
 
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
@@ -41,37 +42,97 @@ data class ProviderSource(
 
 enum class SourceStatus { PENDING, ACTIVE, FAILED }
 
+data class DownloadOption(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val host: String,
+    val url: String,
+    val fileSize: Long? = null,
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("id", id)
+        put("name", name)
+        put("host", host)
+        put("url", url)
+        put("fileSize", fileSize ?: -1)
+    }
+
+    companion object {
+        fun fromJson(obj: JSONObject): DownloadOption = DownloadOption(
+            id = obj.optString("id", UUID.randomUUID().toString()),
+            name = obj.optString("name", ""),
+            host = obj.optString("host", ""),
+            url = obj.optString("url", ""),
+            fileSize = obj.optLong("fileSize", -1).let { if (it < 0) null else it },
+        )
+    }
+}
+
 data class AvailableGame(
     val id: String,
     val title: String,
     val engine: String?,
     val fileSize: Long?,
-    val downloadUrl: String?,
-    val pageUrl: String?,
+    val downloadOptions: List<DownloadOption>,
     val sourceName: String,
     val coverUrl: String?,
 ) {
+    val downloadUrl: String? get() = downloadOptions.firstOrNull()?.url
+    val pageUrl: String? get() = null
+
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
         put("title", title)
         put("engine", engine ?: "")
         put("fileSize", fileSize ?: -1)
-        put("downloadUrl", downloadUrl ?: "")
-        put("pageUrl", pageUrl ?: "")
         put("sourceName", sourceName)
         put("coverUrl", coverUrl ?: "")
+        val optsArr = JSONArray()
+        downloadOptions.forEach { optsArr.put(it.toJson()) }
+        put("downloadOptions", optsArr)
     }
 
     companion object {
-        fun fromJson(obj: JSONObject): AvailableGame = AvailableGame(
-            id = obj.optString("id", ""),
-            title = obj.optString("title", "Unknown"),
-            engine = obj.optString("engine", "").ifEmpty { null },
-            fileSize = obj.optLong("fileSize", -1).let { if (it < 0) null else it },
-            downloadUrl = obj.optString("downloadUrl", "").ifEmpty { null },
-            pageUrl = obj.optString("pageUrl", "").ifEmpty { null },
-            sourceName = obj.optString("sourceName", ""),
-            coverUrl = obj.optString("coverUrl", "").ifEmpty { null },
-        )
+        fun fromJson(obj: JSONObject): AvailableGame {
+            val optsArr = obj.optJSONArray("downloadOptions")
+            val options = if (optsArr != null) {
+                (0 until optsArr.length()).map { DownloadOption.fromJson(optsArr.getJSONObject(it)) }
+            } else {
+                val legacyUrl = obj.optString("downloadUrl", "").ifEmpty { null }
+                if (legacyUrl != null) {
+                    listOf(DownloadOption(name = "Download", host = "Direct", url = legacyUrl))
+                } else emptyList()
+            }
+            return AvailableGame(
+                id = obj.optString("id", ""),
+                title = obj.optString("title", "Unknown"),
+                engine = obj.optString("engine", "").ifEmpty { null },
+                fileSize = obj.optLong("fileSize", -1).let { if (it < 0) null else it },
+                downloadOptions = options,
+                sourceName = obj.optString("sourceName", ""),
+                coverUrl = obj.optString("coverUrl", "").ifEmpty { null },
+            )
+        }
+
+        fun fromCatalogueJson(obj: JSONObject): AvailableGame {
+            val optsArr = obj.optJSONArray("downloadOptions")
+            val options = if (optsArr != null) {
+                (0 until optsArr.length()).map { DownloadOption.fromJson(optsArr.getJSONObject(it)) }
+            } else {
+                val legacyUrl = obj.optString("downloadUrl", "").ifEmpty { null }
+                if (legacyUrl != null) {
+                    listOf(DownloadOption(name = "Download", host = "Direct", url = legacyUrl))
+                } else emptyList()
+            }
+            return AvailableGame(
+                id = obj.optString("id", ""),
+                title = obj.optString("title", "Unknown"),
+                engine = obj.optString("engine", "").ifEmpty { null },
+                fileSize = obj.optLong("fileSize", -1).let { if (it < 0) null else it },
+                downloadOptions = options,
+                sourceName = obj.optString("sourceName", "Catalogue"),
+                coverUrl = obj.optString("coverUrl", "").ifEmpty { null },
+            )
+        }
     }
 }

@@ -29,6 +29,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.runestone.app.provider.AvailableGame
 import com.runestone.app.provider.DownloadManager
+import com.runestone.app.provider.DownloadOption
 import com.runestone.app.provider.SourcesManager
 
 class AvailableGamesScreen(private val context: Context) {
@@ -43,7 +44,6 @@ class AvailableGamesScreen(private val context: Context) {
         onProviderSettings: () -> Unit,
         onDownload: (AvailableGame) -> Unit,
         onPauseDownload: (String) -> Unit,
-        onVisitPage: ((String) -> Unit)? = null,
         onBack: () -> Unit,
     ): FrameLayout {
         val root = FrameLayout(context).apply {
@@ -124,7 +124,7 @@ class AvailableGamesScreen(private val context: Context) {
             content.addView(makeSearchBar(games, content, onManageSources, onProviderSettings, onRefresh))
             content.addView(spacer(dp(10)))
             games.forEach { game ->
-                content.addView(gameCard(game, downloadStates[game.id], onDownload, onPauseDownload, onVisitPage))
+                content.addView(gameCard(game, downloadStates[game.id], onDownload, onPauseDownload))
                 content.addView(spacer(dp(12)))
             }
         }
@@ -238,7 +238,6 @@ class AvailableGamesScreen(private val context: Context) {
         progress: DownloadManager.DownloadProgress?,
         onDownload: (AvailableGame) -> Unit,
         onPauseDownload: (String) -> Unit,
-        onVisitPage: ((String) -> Unit)?,
     ): LinearLayout {
         val screenW = context.resources.displayMetrics.widthPixels
         val cardW = (screenW * 0.88f).toInt()
@@ -361,14 +360,14 @@ class AvailableGamesScreen(private val context: Context) {
                     animTap(it); onDownload(game)
                 })
             }
-            game.downloadUrl != null -> {
-                actionBar.addView(makeActionBtn("GET", Color.rgb(140, 220, 140), Color.argb(40, 80, 160, 80)) {
-                    animTap(it); onDownload(game)
+            game.downloadOptions.size > 1 -> {
+                actionBar.addView(makeActionBtn("GET (${game.downloadOptions.size})", Color.rgb(140, 220, 140), Color.argb(40, 80, 160, 80)) {
+                    animTap(it); showDownloadOptionsDialog(game, onDownload)
                 })
             }
-            game.pageUrl != null -> {
-                actionBar.addView(makeActionBtn("VISIT", ACCENT, Color.argb(40, 207, 174, 126)) {
-                    animTap(it); onVisitPage?.invoke(game.pageUrl)
+            game.downloadOptions.isNotEmpty() -> {
+                actionBar.addView(makeActionBtn("GET", Color.rgb(140, 220, 140), Color.argb(40, 80, 160, 80)) {
+                    animTap(it); onDownload(game)
                 })
             }
         }
@@ -392,6 +391,130 @@ class AvailableGamesScreen(private val context: Context) {
             setOnClickListener { onClick(this) }
             makeLiquid(this)
         }
+
+    private fun showDownloadOptionsDialog(game: AvailableGame, onDownload: (AvailableGame) -> Unit) {
+        val screenW = context.resources.displayMetrics.widthPixels
+
+        val overlay = FrameLayout(context).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(Color.argb(180, 0, 0, 0))
+            alpha = 0f
+            animate().alpha(1f).setDuration(280).start()
+        }
+
+        val panelW = (screenW * 0.88f).toInt()
+        val panel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(220, 12, 11, 16))
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), Color.argb(70, 160, 140, 110))
+            }
+            translationY = 120f
+            alpha = 0f
+            animate().translationY(0f).alpha(1f).setDuration(350)
+                .setInterpolator(OvershootInterpolator(1.1f)).start()
+        }
+
+        val scroll = ScrollView(context).apply {
+            isFillViewport = false; overScrollMode = ScrollView.OVER_SCROLL_NEVER
+        }
+        scroll.addView(panel)
+
+        panel.addView(TextView(context).apply {
+            text = "CHOOSE DOWNLOAD"; setTextColor(ACCENT); textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+        })
+        panel.addView(spacer(dp(4)))
+        panel.addView(TextView(context).apply {
+            text = game.title; setTextColor(TEXT); textSize = 16f
+            typeface = Typeface.create("serif", Typeface.BOLD)
+        })
+        panel.addView(spacer(dp(14)))
+
+        game.downloadOptions.forEach { option ->
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                background = glassBg(dp(10), alpha = 60)
+                setOnClickListener {
+                    animTap(this)
+                    val singleOptionGame = game.copy(downloadOptions = listOf(option))
+                    onDownload(singleOptionGame)
+                    val rootView = (context as? android.app.Activity)?.window?.decorView
+                        ?.findViewById<ViewGroup>(android.R.id.content)
+                    overlay.animate().alpha(0f).translationY(60f).setDuration(200).withEndAction {
+                        rootView?.removeView(overlay)
+                    }.start()
+                }
+                makeLiquid(this)
+            }
+
+            val infoCol = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            infoCol.addView(TextView(context).apply {
+                text = option.name; setTextColor(TEXT); textSize = 14f
+                typeface = Typeface.DEFAULT_BOLD
+            })
+            row.addView(infoCol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+            row.addView(TextView(context).apply {
+                text = option.host; setTextColor(ACCENT); textSize = 11f
+                typeface = Typeface.DEFAULT_BOLD
+                setPadding(dp(8), dp(3), dp(8), dp(3))
+                background = GradientDrawable().apply {
+                    setColor(Color.argb(40, 200, 170, 130)); cornerRadius = dp(5).toFloat()
+                    setStroke(dp(1), Color.argb(50, 200, 170, 130))
+                }
+            })
+
+            if (option.fileSize != null) {
+                row.addView(spacer(dp(8)))
+                row.addView(TextView(context).apply {
+                    text = formatBytes(option.fileSize); setTextColor(MUTED_DIM); textSize = 11f
+                })
+            }
+
+            panel.addView(row)
+            panel.addView(spacer(dp(6)))
+        }
+
+        panel.addView(spacer(dp(8)))
+        panel.addView(TextView(context).apply {
+            text = "CANCEL"; setTextColor(MUTED); textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setPadding(dp(24), dp(8), dp(24), dp(8))
+            background = glassBg(dp(8), alpha = 60)
+            setOnClickListener {
+                animTap(this)
+                val rootView = (context as? android.app.Activity)?.window?.decorView
+                    ?.findViewById<ViewGroup>(android.R.id.content)
+                overlay.animate().alpha(0f).translationY(60f).setDuration(200).withEndAction {
+                    rootView?.removeView(overlay)
+                }.start()
+            }
+            makeLiquid(this)
+        })
+
+        val rootView = (context as? android.app.Activity)?.window?.decorView
+            ?.findViewById<ViewGroup>(android.R.id.content)
+        overlay.addView(scroll, FrameLayout.LayoutParams(panelW, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER).apply {
+            setMargins(0, dp(30), 0, dp(30))
+        })
+        rootView?.addView(overlay)
+
+        overlay.setOnClickListener {
+            overlay.animate().alpha(0f).translationY(60f).setDuration(200).withEndAction {
+                rootView?.removeView(overlay)
+            }.start()
+        }
+        scroll.setOnTouchListener { _, _ -> false }
+    }
 
     private fun engineLabel(engine: String?): String = when (engine?.lowercase()) {
         "mv", "mz" -> "MV/MZ"
