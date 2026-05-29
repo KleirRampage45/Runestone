@@ -130,11 +130,8 @@ class MainActivity : Activity() {
                     val game = games.find { it.storageName == storageName }
                     if (game != null) {
                         Log.i(TAG, "STOP game: $storageName path=${game.originalPath}")
-                        getSharedPreferences("runestone", MODE_PRIVATE).edit()
-                            .putString("stop_game", game.originalPath)
-                            .apply()
                         pausedGamePath = null
-                        finish()
+                        showHome()  // refresh without resume bar — game stays underneath
                     }
                 }} else null,
             ),

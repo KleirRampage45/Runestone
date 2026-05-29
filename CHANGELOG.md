@@ -1,5 +1,26 @@
 # Runestone Changelog
 
+## v0.6.7 (2026-05-28)
+### Changed
+- **Filter/Sort menu** — complete redesign as a glassmorphism overlay with:
+  - Full-screen dark blurred backdrop (RenderEffect on Android 12+)
+  - Slide-up card animation with OvershootInterpolator
+  - DONE button moved to title row
+  - Clear (X) button in search input — clears text and resets filter
+  - REVERT button now restores ALL initial state (filter, sort, AND search text)
+  - Sort rows now show checkmark ✓ on selection
+  - Animated transitions when switching sort modes (slide + fade)
+  - Glass styling on engine chips (transparent bg, subtle border)
+  - Backdrop tap or Done applies and closes
+- **STOP confirmation dialog** — replaced Android AlertDialog with a custom glass overlay:
+  - Dark blurred backdrop (RenderEffect)
+  - Centered glass card with slide-up entrance animation
+  - "STOP GAME" button in red glass styling
+  - "CANCEL" button in muted glass styling
+  - Both buttons have dismiss animations (fade + scale)
+  - No more blue screen on STOP — uses showHome() instead of finish()
+- **STOP no longer causes blue screen** — uses showHome() to refresh the home screen without finishing MainActivity. Game stays running underneath but resume bar disappears entirely.
+
 ## v0.6.6 (2026-05-28)
 ### Added
 - **STOP button** in resume bar — red button alongside green RESUME. Shows confirmation dialog: "Any unsaved progress will be lost. Save data on disk is NOT affected." On confirm, clears pause state and returns to game, which detects the STOP flag and finishes itself

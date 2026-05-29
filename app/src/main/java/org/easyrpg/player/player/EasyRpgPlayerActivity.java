@@ -160,23 +160,6 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
         }
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        // Check if launcher asked us to stop (STOP button in resume bar)
-        try {
-            android.content.SharedPreferences prefs = getSharedPreferences("runestone", MODE_PRIVATE);
-            String stopPath = prefs.getString("stop_game", null);
-            if (stopPath != null && stopPath.equals(mProjectPath)) {
-                prefs.edit().remove("stop_game").apply();
-                Log.i(TAG, "STOP detected, finishing game: " + mProjectPath);
-                finish();
-            }
-        } catch (Exception e) {
-            // Ignore
-        }
-    }
-
     /**
      * Show the soft keyboard with proper SDL text input setup.
      * Uses SDL's ShowTextInputTask which creates mTextEdit (DummyEdit),
