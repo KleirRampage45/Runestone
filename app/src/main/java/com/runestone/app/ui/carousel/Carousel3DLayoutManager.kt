@@ -26,12 +26,18 @@ class Carousel3DLayoutManager(
     private val context: Context,
 ) : RecyclerView.LayoutManager() {
 
+    interface FocusListener {
+        fun onFocusChanged(adapterPosition: Int)
+    }
+
     private var scrollOffset = 0
     private val cardWidthPx: Int
     private val cardHeightPx: Int
     private val cardSpacingPx: Int
     private val visibleCardCount = 5 // show up to 5 cards at once
     private val centerPercent = 0.35f // card center at 35% from left
+    private var lastFocusedPosition: Int = RecyclerView.NO_POSITION
+    var focusListener: FocusListener? = null
 
     init {
         cardWidthPx = dp(260)
@@ -126,9 +132,17 @@ class Carousel3DLayoutManager(
 
     private fun updateTransforms() {
         val containerCenter = width / 2f
+        var closestPosition = RecyclerView.NO_POSITION
+        var closestDistance = Float.MAX_VALUE
         for (i in 0 until childCount) {
             val child = getChildAt(i) ?: continue
             val childCenter = (child.left + child.right) / 2f
+            // Track closest to center for focus
+            val distance = abs(childCenter - containerCenter)
+            if (distance < closestDistance) {
+                closestDistance = distance
+                closestPosition = getPosition(child)
+            }
             val position = (childCenter - containerCenter) / (cardWidthPx + cardSpacingPx).toFloat()
             val absPos = abs(position)
 
@@ -160,6 +174,11 @@ class Carousel3DLayoutManager(
                     child.setRenderEffect(null)
                 }
             }
+        }
+        // Notify focus change
+        if (closestPosition != lastFocusedPosition && closestPosition != RecyclerView.NO_POSITION) {
+            lastFocusedPosition = closestPosition
+            focusListener?.onFocusChanged(closestPosition)
         }
     }
 

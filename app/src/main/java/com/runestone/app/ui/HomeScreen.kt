@@ -30,7 +30,9 @@ import android.widget.TextView
 import com.runestone.app.R
 import com.runestone.app.data.EngineType
 import com.runestone.app.data.UIMode
+import com.runestone.app.ui.carousel.AmbientGlowView
 import com.runestone.app.ui.carousel.Carousel3DLayoutManager
+import com.runestone.app.ui.carousel.DetailPanel
 import com.runestone.app.ui.carousel.GameCarouselAdapter
 import androidx.recyclerview.widget.RecyclerView
 
@@ -117,7 +119,7 @@ class HomeScreen(private val context: Context) {
             when (uiMode) {
                 UIMode.CAROUSEL_3D -> {
                     scroll.visibility = View.GONE
-                    root.addView(renderCarousel3D(games, onPlay), FrameLayout.LayoutParams(
+                    root.addView(renderCarousel3D(games, onPlay, onManage), FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
                     ))
@@ -861,13 +863,25 @@ class HomeScreen(private val context: Context) {
     private fun renderCarousel3D(
         games: List<GameCardInfo>,
         onPlay: (String) -> Unit,
+        onManage: ((String) -> Unit)? = null,
     ): FrameLayout {
         val container = FrameLayout(context).apply {
             setBackgroundColor(Color.rgb(3, 3, 4))
         }
 
+        // Ambient glow behind everything
+        val glowView = AmbientGlowView(context).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
+        }
+        container.addView(glowView)
+
+        // Carousel in the upper 60%
+        val layoutManager = Carousel3DLayoutManager(context)
         val recyclerView = RecyclerView(context).apply {
-            layoutManager = Carousel3DLayoutManager(context)
+            this.layoutManager = layoutManager
             adapter = GameCarouselAdapter(games) { game ->
                 onPlay(game.storageName)
             }
@@ -877,8 +891,37 @@ class HomeScreen(private val context: Context) {
         }
         container.addView(recyclerView, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT,
+            (context.resources.displayMetrics.heightPixels * 0.6f).toInt(),
+            Gravity.TOP,
         ))
+
+        // Detail panel below carousel
+        val detailPanel = DetailPanel(context).apply {
+            setOnPlayListener { gameName -> onPlay(gameName) }
+            setOnSettingsListener { gameName -> onManage?.invoke(gameName) }
+        }
+        container.addView(detailPanel, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM,
+        ))
+
+        // Wire focus listener
+        layoutManager.focusListener = object : Carousel3DLayoutManager.FocusListener {
+            override fun onFocusChanged(adapterPosition: Int) {
+                if (adapterPosition in games.indices) {
+                    val game = games[adapterPosition]
+                    detailPanel.bind(game)
+                    glowView.transitionToEngine(game.engineType)
+                }
+            }
+        }
+
+        // Initialize with first game
+        if (games.isNotEmpty()) {
+            detailPanel.bind(games[0])
+            glowView.transitionToEngine(games[0].engineType)
+        }
 
         return container
     }
