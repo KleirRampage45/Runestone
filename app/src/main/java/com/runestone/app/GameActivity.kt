@@ -478,6 +478,16 @@ class GameActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        // Check if we should self-destruct from STOP dialog
+        val killPath = getSharedPreferences("runestone", MODE_PRIVATE)
+            .getString("kill_game", null)
+        if (killPath != null && gamePath != null &&
+            (killPath == gamePath || killPath == gamePath.substringAfterLast("/"))) {
+            getSharedPreferences("runestone", MODE_PRIVATE).edit().remove("kill_game").apply()
+            Log.i(TAG, "kill_game signal received for $killPath — finishing")
+            finish()
+            return
+        }
         webViewEngine?.resumeTimers()
         webViewEngine?.onResume()
     }

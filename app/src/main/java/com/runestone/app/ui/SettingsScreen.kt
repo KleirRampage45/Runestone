@@ -40,7 +40,7 @@ class SettingsScreen(private val context: Context) {
 
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(BG)
+            // Transparent — overlay dim layer provides the background
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -699,7 +699,6 @@ All games must be legally owned by the user.
     }
 
     private companion object {
-        val BG: Int = Color.rgb(3, 3, 4)
         val PANEL: Int = Color.argb(190, 12, 11, 16)
         val TEXT: Int = Color.rgb(232, 229, 220)
         val MUTED: Int = Color.rgb(140, 130, 112)

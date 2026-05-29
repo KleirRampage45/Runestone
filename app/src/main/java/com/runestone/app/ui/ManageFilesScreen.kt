@@ -48,7 +48,7 @@ class ManageFilesScreen(private val context: Context) {
     ): LinearLayout {
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(BG)
+            // Transparent — overlay dim layer provides the background
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -399,8 +399,7 @@ class ManageFilesScreen(private val context: Context) {
     private companion object {
         val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
-        val BG = Color.rgb(3, 3, 4)
-        val PANEL = Color.rgb(22, 20, 26)
+        val PANEL = Color.argb(190, 12, 11, 16)
         val TEXT = Color.rgb(232, 229, 220)
         val MUTED = Color.rgb(140, 130, 112)
         val MUTED_DIM = Color.rgb(100, 95, 85)

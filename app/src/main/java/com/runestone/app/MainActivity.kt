@@ -13,8 +13,12 @@ package com.runestone.app
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.Toast
 import com.runestone.app.data.EngineType
 import com.runestone.app.data.RunnerSettings
@@ -51,6 +55,11 @@ class MainActivity : Activity() {
     private var storageCache: Map<String, WorkspaceStorage> = emptyMap()
     private var pendingImportStorage: String? = null
 
+    // Overlay navigation - root container set once, overlays added on top
+    private lateinit var rootContainer: FrameLayout
+    private var activeOverlay: View? = null
+    private var homeContentView: View? = null
+
     companion object {
         private const val REQUEST_IMPORT_FOLDER = 9001
         private const val TAG = "Runestone"
@@ -74,6 +83,16 @@ class MainActivity : Activity() {
         storageReporter = WorkspaceStorageReporter(workspaceManager)
         settings = settingsStore.load()
         refreshGames()
+
+        // Create permanent root frame - setContentView ONCE
+        rootContainer = FrameLayout(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(Color.rgb(3, 3, 4))
+        }
+        setContentView(rootContainer)
         showHome()
     }
 
@@ -91,10 +110,84 @@ class MainActivity : Activity() {
         isPaused = pausedGamePath == g.originalPath,
     )
 
+    // ═══════════════════════════════════════════════════════
+    //  Overlay system — dimmed panels over home screen
+    // ═══════════════════════════════════════════════════════
+
+    /**
+     * Adds a dim overlay on top of the home screen containing [panel].
+     * [panel] fills the available area with margins so the dock stays visible.
+     * [dismissOnBgClick] controls whether tapping the dim background dismisses.
+     */
+    private fun showOverlay(panel: View, dismissOnBgClick: Boolean = true) {
+        // Remove any existing overlay
+        activeOverlay?.let { rootContainer.removeView(it); activeOverlay = null }
+
+        val wrapper = FrameLayout(this).apply {
+            // Semi-transparent black dims the home screen underneath
+            setBackgroundColor(Color.argb(160, 0, 0, 0))
+
+            // Fade in the overlay
+            alpha = 0f
+            animate().alpha(1f).setDuration(250).start()
+
+            // Panel fills available space with margins so the dock peeks through
+            val lp = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            lp.setMargins(dp(8), dp(56), dp(8), dp(8))
+            addView(panel, lp)
+
+            // Prevent clicks on the panel from reaching the dim bg
+            panel.isClickable = true
+
+            // Tap on dim background to dismiss overlay
+            if (dismissOnBgClick) {
+                setOnClickListener { dismissOverlay() }
+            }
+        }
+        rootContainer.addView(wrapper,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT)
+        activeOverlay = wrapper
+    }
+
+    /**
+     * Fades out the active overlay, removes it, then runs [onDismissed].
+     * Default callback refreshes the home screen.
+     */
+    private fun dismissOverlay(onDismissed: () -> Unit = { showHome() }) {
+        activeOverlay?.let { overlay ->
+            overlay.animate().alpha(0f).setDuration(200).withEndAction {
+                rootContainer.removeView(overlay)
+                activeOverlay = null
+                onDismissed()
+            }.start()
+        }
+    }
+
+    /** Density-independent pixels helper. */
+    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
+    // ═══════════════════════════════════════════════════════
+    //  Screen navigation
+    // ═══════════════════════════════════════════════════════
+
     private fun showHome() {
         Log.i(TAG, "showHome")
         manageFilesVisible = false
         activeImportProgressView = null
+
+        // Remove any displayed overlay
+        activeOverlay?.let {
+            rootContainer.removeView(it)
+            activeOverlay = null
+        }
+
+        // Remove old home content
+        homeContentView?.let { rootContainer.removeView(it) }
+
         var filtered = if (activeEngineFilter != null) {
             games.filter { it.engineType == activeEngineFilter }
         } else games
@@ -108,36 +201,48 @@ class MainActivity : Activity() {
         }
         val cards = filtered.map { toCardInfo(it) }
         val pausedGame = cards.find { it.isPaused }
-        setContentView(
-            HomeScreen(this).create(
-                games = cards,
-                onPlay = { playGame(it) },
-                onManage = { showManageFiles(it) },
-                onAddGame = { startFolderImport() },
-                onManageAll = { showManageFiles() },
-                onSettings = { showSettings() },
-                onApplyFilters = { engine, search, sort ->
-                    activeEngineFilter = engine
-                    searchQuery = search
-                    currentSort = sort
+
+        val homeView = HomeScreen(this).create(
+            games = cards,
+            onPlay = { playGame(it) },
+            onManage = { showManageFiles(it) },
+            onAddGame = { startFolderImport() },
+            onManageAll = { showManageFiles() },
+            onSettings = { showSettings() },
+            onApplyFilters = { engine, search, sort ->
+                activeEngineFilter = engine
+                searchQuery = search
+                currentSort = sort
+                showHome()
+            },
+            activeFilter = activeEngineFilter,
+            activeSearch = searchQuery,
+            currentSort = currentSort,
+            pausedGame = pausedGame,
+            onResume = if (pausedGame != null) {{ playGame(pausedGame.storageName) }} else null,
+            onStop = if (pausedGame != null) {{ storageName ->
+                val game = games.find { it.storageName == storageName }
+                if (game != null) {
+                    Log.i(TAG, "STOP game: $storageName path=${game.originalPath}")
+                    pausedGamePath = null
+                    getSharedPreferences("runestone", MODE_PRIVATE).edit()
+                        .remove("paused_game").apply()
+                    // Signal GameActivity to self-destruct
+                    getSharedPreferences("runestone", MODE_PRIVATE).edit()
+                        .putString("kill_game", storageName).apply()
                     showHome()
-                },
-                activeFilter = activeEngineFilter,
-                activeSearch = searchQuery,
-                currentSort = currentSort,
-                pausedGame = pausedGame,
-                onResume = if (pausedGame != null) {{ playGame(pausedGame.storageName) }} else null,
-                onStop = if (pausedGame != null) {{ storageName ->
-                    val game = games.find { it.storageName == storageName }
-                    if (game != null) {
-                        Log.i(TAG, "STOP game: $storageName path=${game.originalPath}")
-                        pausedGamePath = null
-                        getSharedPreferences("runestone", MODE_PRIVATE).edit().remove("paused_game").apply()
-                        showHome()  // refresh without resume bar
-                    }
-                }} else null,
-            ),
+                    // Finish this activity to reveal GameActivity, which will
+                    // check kill_game flag and finish itself immediately
+                    finish()
+                }
+            }} else null,
         )
+        // Add at index 0 so overlays (added later) sit on top
+        rootContainer.addView(homeView, 0,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT))
+        homeContentView = homeView
     }
 
     private fun showManageFiles(storageName: String? = null) {
@@ -147,7 +252,7 @@ class MainActivity : Activity() {
         val mgGames = if (storageName != null) {
             allGames.filter { it.storageName == storageName }
         } else allGames
-        setContentView(
+        showOverlay(
             ManageFilesScreen(this).create(
                 games = mgGames,
                 storageByGame = storageCache,
@@ -157,7 +262,7 @@ class MainActivity : Activity() {
                 onDelete = { sName -> confirmRemoveGameData(sName) },
                 onViewSaves = { sName -> viewSaves(sName) },
                 onChangeEngine = { sName -> showEnginePicker(sName) },
-                onBack = { if (storageName != null) showHome() else showHome() },
+                onBack = { dismissOverlay() },
             ),
         )
         if (storageName == null) refreshStorageReport()
@@ -171,7 +276,7 @@ class MainActivity : Activity() {
                 storageCache = report
                 if (manageFilesVisible) {
                     val mgGames = games.map { ManageFilesScreen.GameInfo(it.storageName, it.displayName, it.engineType, it.fileCount) }
-                    setContentView(
+                    showOverlay(
                         ManageFilesScreen(this).create(
                             games = mgGames,
                             storageByGame = storageCache,
@@ -181,7 +286,7 @@ class MainActivity : Activity() {
                             onDelete = { sName -> confirmRemoveGameData(sName) },
                             onViewSaves = { sName -> viewSaves(sName) },
                             onChangeEngine = { sName -> showEnginePicker(sName) },
-                            onBack = { showHome() },
+                            onBack = { dismissOverlay() },
                         ),
                     )
                 }
@@ -189,11 +294,38 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    private fun showSettings() {
+        manageFilesVisible = false
+        showOverlay(
+            SettingsScreen(this).create(
+                settings = settings,
+                onSettingsChanged = { newSettings ->
+                    settings = newSettings
+                    settingsStore.save(newSettings)
+                    showSettings()
+                },
+                onBack = { dismissOverlay() },
+            ),
+        )
+    }
+
+    private fun showImportProgress(message: String) {
+        Log.i(TAG, "showImportProgress: $message")
+        importMessage = message
+        val progressView = ImportProgressScreen(this).create(title = message)
+        activeImportProgressView = progressView
+        // No bg-click dismiss — an active import must not be dismissed
+        showOverlay(progressView.root, dismissOnBgClick = false)
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  Game operations
+    // ═══════════════════════════════════════════════════════
+
     private fun playGame(storageName: String) {
         val game = games.find { it.storageName == storageName } ?: return
 
         if (pausedGamePath != null && pausedGamePath == game.originalPath) {
-            // Resume: clear paused state and return to game
             Log.i(TAG, "RESUME: $storageName")
             pausedGamePath = null
             getSharedPreferences("runestone", MODE_PRIVATE).edit().remove("paused_game").apply()
@@ -201,10 +333,7 @@ class MainActivity : Activity() {
             return
         }
 
-        // New launch
         Log.i(TAG, "playGame: $storageName path=${game.originalPath}")
-
-        // Save paused game path BEFORE launching
         pausedGamePath = game.originalPath
         getSharedPreferences("runestone", MODE_PRIVATE).edit()
             .putString("paused_game", game.originalPath).apply()
@@ -233,21 +362,6 @@ class MainActivity : Activity() {
             addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
         }
         startActivityForResult(intent, REQUEST_IMPORT_FOLDER)
-    }
-
-    private fun showSettings() {
-        manageFilesVisible = false
-        setContentView(
-            SettingsScreen(this).create(
-                settings = settings,
-                onSettingsChanged = { newSettings ->
-                    settings = newSettings
-                    settingsStore.save(newSettings)
-                    showSettings()
-                },
-                onBack = { showHome() },
-            ),
-        )
     }
 
     private fun confirmRemoveGameData(storageName: String) {
@@ -292,7 +406,6 @@ class MainActivity : Activity() {
             .setSingleChoiceItems(items, engines.indexOf(currentEngine)) { dialog, which ->
                 val selected = engines[which]
                 Log.i(TAG, "Engine override: $storageName -> $selected")
-                // Save to install_state.json
                 val state = installStateStore.load(storageName) ?: GameInstallState(
                     storageName = storageName,
                     engineType = selected,
@@ -314,6 +427,10 @@ class MainActivity : Activity() {
         return if (bytes >= gb) String.format("%.2f GB", bytes / gb) else String.format("%.1f MB", bytes / mb)
     }
 
+    // ═══════════════════════════════════════════════════════
+    //  Activity lifecycle
+    // ═══════════════════════════════════════════════════════
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         Log.i(TAG, "onActivityResult: requestCode=$requestCode resultCode=$resultCode data=$data")
@@ -331,7 +448,6 @@ class MainActivity : Activity() {
             treeUri, data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         ) }
 
-        // Back up saves BEFORE import wipes original/
         if (pendingImportStorage != null) {
             val backedUp = saveManager.syncFromActive(pendingImportStorage!!)
             Log.i(TAG, "Backed up $backedUp saves for $pendingImportStorage before import")
@@ -371,7 +487,8 @@ class MainActivity : Activity() {
                         saveManager.restoreToActive(result.storageName)
                         activeImportProgressView = null
                         refreshGames()
-                        showHome()
+                        // Fade out import overlay, show refreshed home
+                        dismissOverlay()
                     }
                     is SafImportResult.Failure -> {
                         Log.e(TAG, "Import FAILED: ${result.reason}")
@@ -379,7 +496,8 @@ class MainActivity : Activity() {
                         if (pv != null) { pv.phaseView.text = "[FAIL] Import failed"; pv.fileView.text = result.reason; pv.countView.text = "" }
                         importMessage = "Import failed: ${result.reason}"
                         android.os.Handler(mainLooper).postDelayed({
-                            refreshGames(); activeImportProgressView = null; showManageFiles()
+                            refreshGames(); activeImportProgressView = null
+                            dismissOverlay { showManageFiles() }
                         }, 3000)
                     }
                 }
@@ -387,19 +505,10 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    private fun showImportProgress(message: String) {
-        Log.i(TAG, "showImportProgress: $message")
-        importMessage = message
-        activeImportProgressView = ImportProgressScreen(this).create(title = message)
-        setContentView(activeImportProgressView?.root)
-        Log.i(TAG, "showImportProgress: content view set")
-    }
-
     override fun onResume() {
         super.onResume()
         Log.i(TAG, "onResume importActive=${activeImportProgressView != null}")
         if (activeImportProgressView == null) {
-            // Read paused game state from SharedPreferences
             pausedGamePath = getSharedPreferences("runestone", MODE_PRIVATE)
                 .getString("paused_game", null)
             refreshGames()
@@ -410,8 +519,8 @@ class MainActivity : Activity() {
     override fun onBackPressed() {
         if (activeImportProgressView != null) {
             Toast.makeText(this, "Operation still running.", Toast.LENGTH_SHORT).show()
-        } else if (manageFilesVisible) {
-            showHome()
+        } else if (activeOverlay != null) {
+            dismissOverlay()
         } else if (activeEngineFilter != null) {
             activeEngineFilter = null
             showHome()

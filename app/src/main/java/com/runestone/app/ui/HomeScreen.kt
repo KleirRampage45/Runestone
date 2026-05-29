@@ -138,51 +138,55 @@ class HomeScreen(private val context: Context) {
                         layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
                         setBackgroundColor(Color.argb(180, 0, 0, 0))
                         alpha = 0f; animate().alpha(1f).setDuration(250).start()
-                        setOnClickListener {} // block clicks through
                     }
 
-                    // Glass card
+                    // Glass card — COMPACT
                     val card = LinearLayout(context).apply {
-                        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-                        setPadding(dp(24), dp(20), dp(24), dp(20))
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(dp(18), dp(16), dp(18), dp(16))
+                        background = GradientDrawable().apply {
+                            setColor(Color.argb(230, 15, 14, 20))
+                            cornerRadius = dp(22).toFloat()
+                            setStroke(dp(1), Color.argb(80, 160, 140, 110))
+                        }
                         translationY = 200f; alpha = 0f
                         animate().translationY(0f).alpha(1f).setDuration(350)
                             .setInterpolator(OvershootInterpolator(1.15f)).start()
                     }
 
-                    val cardBg = GradientDrawable().apply {
-                        setColor(Color.argb(230, 15, 14, 20))
-                        cornerRadius = dp(22).toFloat()
-                        setStroke(dp(1), Color.argb(80, 160, 140, 110))
-                    }
-                    card.background = cardBg
+                    // Icon row
+                    card.addView(TextView(context).apply {
+                        text = "STOP GAME"; setTextColor(Color.rgb(240, 120, 120)); textSize = 11f
+                        typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                        setPadding(0, 0, 0, dp(4))
+                    })
 
                     // Title
                     card.addView(TextView(context).apply {
-                        text = "Stop ${pausedGame.displayName}?"
-                        setTextColor(Color.rgb(232, 229, 220)); textSize = 17f
+                        text = pausedGame.displayName
+                        setTextColor(Color.rgb(232, 229, 220)); textSize = 16f
                         typeface = Typeface.create("serif", Typeface.BOLD)
-                        gravity = Gravity.CENTER; setPadding(0, 0, 0, dp(8))
+                        gravity = Gravity.CENTER
                     })
 
                     // Message
                     card.addView(TextView(context).apply {
-                        text = "Any unsaved progress will be lost. Save data on disk is NOT affected."
-                        setTextColor(Color.rgb(160, 150, 135)); textSize = 12f
-                        gravity = Gravity.CENTER; maxLines = 3
-                        setPadding(0, 0, 0, dp(20))
+                        text = "Unsaved progress will be lost. Saves are safe."
+                        setTextColor(Color.rgb(160, 150, 135)); textSize = 11f
+                        gravity = Gravity.CENTER; maxLines = 2
+                        setPadding(0, dp(6), 0, dp(16))
                     })
 
-                    // Button row
+                    // Button row — equal width, side by side
                     val btnRow = LinearLayout(context).apply {
                         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
                     }
 
                     // Cancel
                     btnRow.addView(TextView(context).apply {
-                        text = "CANCEL"; setTextColor(Color.rgb(160, 150, 135)); textSize = 12f
+                        text = "CANCEL"; setTextColor(MUTED); textSize = 12f
                         typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                        setPadding(dp(24), dp(10), dp(24), dp(10))
+                        setPadding(dp(12), dp(10), dp(12), dp(10))
                         background = glassBg(dp(10), alpha = 60)
                         setOnClickListener {
                             dimOverlay.animate().alpha(0f).scaleY(0.9f).setDuration(180)
@@ -190,32 +194,41 @@ class HomeScreen(private val context: Context) {
                                     (dimOverlay.parent as? ViewGroup)?.removeView(dimOverlay)
                                 }.start()
                         }
+                        makeLiquid(this)
+                    }, LinearLayout.LayoutParams(0, WRAP, 1f).apply {
+                        setMargins(0, 0, dp(4), 0)
                     })
-                    btnRow.addView(spacer(dp(12)))
 
                     // STOP
                     btnRow.addView(TextView(context).apply {
-                        text = "STOP GAME"; setTextColor(Color.rgb(240, 120, 120)); textSize = 12f
+                        text = "CLOSE GAME"; setTextColor(Color.rgb(240, 120, 120)); textSize = 12f
                         typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                        setPadding(dp(24), dp(10), dp(24), dp(10))
+                        setPadding(dp(12), dp(10), dp(12), dp(10))
                         background = GradientDrawable().apply {
-                            setColor(Color.argb(80, 200, 80, 80))
+                            setColor(Color.argb(60, 200, 80, 80))
                             cornerRadius = dp(10).toFloat()
-                            setStroke(dp(1), Color.argb(100, 200, 100, 100))
+                            setStroke(dp(1), Color.argb(80, 200, 100, 100))
                         }
                         setOnClickListener {
+                            // Set kill flag so GameActivity self-destructs
+                            val prefs = context.getSharedPreferences("runestone", Context.MODE_PRIVATE)
+                            prefs.edit().putString("kill_game", pausedGame.storageName).apply()
                             dimOverlay.animate().alpha(0f).scaleY(0.9f).setDuration(120)
                                 .withEndAction {
                                     (dimOverlay.parent as? ViewGroup)?.removeView(dimOverlay)
                                     onStop?.invoke(pausedGame.storageName)
                                 }.start()
                         }
+                        makeLiquid(this)
+                    }, LinearLayout.LayoutParams(0, WRAP, 1f).apply {
+                        setMargins(dp(4), 0, 0, 0)
                     })
+
                     card.addView(btnRow)
 
                     // Mount
                     val lp = FrameLayout.LayoutParams(
-                        (context.resources.displayMetrics.widthPixels * 0.8f).toInt(),
+                        (context.resources.displayMetrics.widthPixels * 0.78f).toInt(),
                         WRAP, Gravity.CENTER)
                     dimOverlay.addView(card, lp)
 
@@ -265,9 +278,9 @@ class HomeScreen(private val context: Context) {
         val bar = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
             background = GradientDrawable().apply {
-                setColor(Color.argb(200, 12, 11, 16))
+                setColor(Color.argb(140, 12, 11, 16))
                 cornerRadius = dp(24).toFloat()
-                setStroke(dp(1), Color.argb(40, 160, 140, 110))
+                setStroke(dp(1), Color.argb(30, 160, 140, 110))
             }
             setPadding(dp(4), dp(4), dp(4), dp(4))
         }
@@ -343,7 +356,7 @@ class HomeScreen(private val context: Context) {
                 SortMode.DATE_ADDED -> "NEW"
             }
             val filterBtn = TextView(context).apply {
-                text = "$filterLabel$searchBadge  |  $sortLabel"; setTextColor(ACCENT); textSize = 11f
+                text = "▤ $filterLabel$searchBadge  |  $sortLabel"; setTextColor(ACCENT); textSize = 11f
                 typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
                 setPadding(dp(10), dp(6), dp(10), dp(6))
                 background = glassBg(dp(12))
