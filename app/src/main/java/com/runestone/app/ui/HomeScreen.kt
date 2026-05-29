@@ -6,6 +6,7 @@
 package com.runestone.app.ui
 
 import android.animation.ValueAnimator
+import android.app.AlertDialog
 import android.app.Dialog
 import android.content.Context
 import android.graphics.Color
@@ -62,6 +63,7 @@ class HomeScreen(private val context: Context) {
         currentSort: SortMode = SortMode.NAME_ASC,
         pausedGame: GameCardInfo? = null,
         onResume: (() -> Unit)? = null,
+        onStop: ((String) -> Unit)? = null,
     ): FrameLayout {
         // ── Single-selection tracker ──
         val selectedCard = SelectedCardRef(null, null, null)
@@ -113,22 +115,53 @@ class HomeScreen(private val context: Context) {
             }
         }
 
-        // RESUME bar
+        // RESUME bar — side by side STOP + RESUME
         if (pausedGame != null && onResume != null) {
-            val resumeBar = TextView(context).apply {
-                text = "RESUME — ${pausedGame.displayName}"
+            val barRow = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                background = GradientDrawable().apply {
+                    setColor(Color.argb(200, 15, 15, 18))
+                    cornerRadius = dp(14).toFloat()
+                    setStroke(dp(1), Color.argb(100, 100, 100, 100))
+                }
+            }
+
+            // STOP button (red)
+            val stopBtn = TextView(context).apply {
+                text = "STOP — ${pausedGame.displayName}"
+                setTextColor(Color.rgb(240, 120, 120)); textSize = 11f
+                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+                setOnClickListener {
+                    AlertDialog.Builder(context)
+                        .setTitle("Stop ${pausedGame.displayName}?")
+                        .setMessage("Any unsaved progress will be lost. Save data on disk is NOT affected.")
+                        .setPositiveButton("STOP") { _: android.content.DialogInterface, _: Int -> onStop?.invoke(pausedGame.storageName) }
+                        .setNegativeButton("Cancel") { _: android.content.DialogInterface, _: Int -> }
+                        .show()
+                }
+            }
+            barRow.addView(stopBtn, LinearLayout.LayoutParams(0, WRAP, 1f))
+
+            // Divider
+            barRow.addView(TextView(context).apply {
+                text = "  |  "; setTextColor(Color.argb(60, 200, 200, 200))
+                textSize = 12f; gravity = Gravity.CENTER
+            })
+
+            // RESUME button (green)
+            val resumeBtn = TextView(context).apply {
+                text = "RESUME"
                 setTextColor(Color.rgb(140, 240, 140)); textSize = 12f
                 typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setPadding(dp(10), dp(8), dp(10), dp(8))
-                background = GradientDrawable().apply {
-                    setColor(Color.argb(200, 15, 40, 15))
-                    cornerRadius = dp(12).toFloat()
-                    setStroke(dp(1), Color.argb(160, 80, 220, 80))
-                }
+                setPadding(dp(8), dp(8), dp(8), dp(8))
                 setOnClickListener { onResume() }
-                makeLiquid(this)
             }
-            root.addView(resumeBar, FrameLayout.LayoutParams(
+            barRow.addView(resumeBtn, LinearLayout.LayoutParams(0, WRAP, 1f))
+
+            root.addView(barRow, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, WRAP, Gravity.BOTTOM).apply {
                 setMargins(dp(10), 0, dp(10), dp(56))
             })

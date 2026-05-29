@@ -126,6 +126,17 @@ class MainActivity : Activity() {
                 currentSort = currentSort,
                 pausedGame = pausedGame,
                 onResume = if (pausedGame != null) {{ playGame(pausedGame.storageName) }} else null,
+                onStop = if (pausedGame != null) {{ storageName ->
+                    val game = games.find { it.storageName == storageName }
+                    if (game != null) {
+                        Log.i(TAG, "STOP game: $storageName path=${game.originalPath}")
+                        getSharedPreferences("runestone", MODE_PRIVATE).edit()
+                            .putString("stop_game", game.originalPath)
+                            .apply()
+                        pausedGamePath = null
+                        finish()
+                    }
+                }} else null,
             ),
         )
     }
@@ -190,10 +201,29 @@ class MainActivity : Activity() {
             return
         }
 
-        // New launch
+        // New launch (or resume cleared above)
         Log.i(TAG, "playGame: $storageName path=${game.originalPath}")
+
+        // If we were paused, clear the stacked game activity by starting
+        // a fresh task. Otherwise the old GameActivity remains in the stack.
+        val wasPaused = pausedGamePath != null
         pausedGamePath = null
-        GameActivity.start(this, game.originalPath, game.engineType.name, settings)
+
+        val intent = Intent(this, GameActivity::class.java).apply {
+            putExtra("game_path", game.originalPath)
+            putExtra("engine_type", game.engineType.name)
+            putExtra("layout_mode", settings.layoutMode.name)
+            putExtra("touch_opacity", settings.touchOpacity)
+            putExtra("touch_scale", settings.touchScale)
+            putExtra("haptics", settings.hapticsEnabled)
+            putExtra("haptic_intensity", settings.hapticIntensity)
+            putExtra("show_extra_btns", settings.showExtraButtons)
+            putExtra("audio_ext", settings.forceAudioExt)
+            // Start a fresh task so the old paused game isn't in the back stack
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        }
+        startActivity(intent)
+        if (wasPaused) finish()
     }
 
     private fun startFolderImport(requestedName: String? = null) {

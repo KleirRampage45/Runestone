@@ -116,6 +116,7 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
 
         // Set config path to app's private data dir (writable)
         mConfigPath = getFilesDir().getAbsolutePath() + "/easyrpg";
+        new java.io.File(mConfigPath).mkdirs();
         Log.i(TAG, "Config path: " + mConfigPath);
 
         // Forward GAME_PATH + LAYOUT_MODE to mkxp-z parent
@@ -139,12 +140,14 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
             return;
         }
         try {
-            // The KBD button is a TextView with text "KBD" added last (right-aligned)
+            // Find the KBD/⌨ floating button and replace its behavior
             for (int i = 0; i < mLayout.getChildCount(); i++) {
                 View child = mLayout.getChildAt(i);
                 if (child instanceof android.widget.TextView) {
                     android.widget.TextView tv = (android.widget.TextView) child;
-                    if ("KBD".equals(tv.getText().toString())) {
+                    String text = tv.getText().toString();
+                    if ("KBD".equals(text) || "\u2328".equals(text)) {
+                        tv.setText("\u2328");
                         tv.setOnClickListener(v -> showSystemKeyboard());
                         Log.i(TAG, "KBD button replaced with showTextInput");
                         return;
@@ -154,6 +157,23 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
             Log.w(TAG, "KBD button not found in layout");
         } catch (Exception e) {
             Log.e(TAG, "Error replacing KBD button: " + e.getMessage());
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Check if launcher asked us to stop (STOP button in resume bar)
+        try {
+            android.content.SharedPreferences prefs = getSharedPreferences("runestone", MODE_PRIVATE);
+            String stopPath = prefs.getString("stop_game", null);
+            if (stopPath != null && stopPath.equals(mProjectPath)) {
+                prefs.edit().remove("stop_game").apply();
+                Log.i(TAG, "STOP detected, finishing game: " + mProjectPath);
+                finish();
+            }
+        } catch (Exception e) {
+            // Ignore
         }
     }
 

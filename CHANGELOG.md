@@ -1,5 +1,20 @@
 # Runestone Changelog
 
+## v0.6.6 (2026-05-28)
+### Added
+- **STOP button** in resume bar — red button alongside green RESUME. Shows confirmation dialog: "Any unsaved progress will be lost. Save data on disk is NOT affected." On confirm, clears pause state and returns to game, which detects the STOP flag and finishes itself
+- **Shared-preference stop_game flag** — both mkxp-z and EasyRPG engines check for this in `onResume()`. When the launcher sets it, the game finishes cleanly on next resume
+
+### Fixed
+- **Multi-game launch**: launching a new game while the previous one is paused now uses `FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_CLEAR_TASK` and finishes MainActivity — old game is removed from the stack instead of staying underneath
+- **Keyboard for ALL engines**: mkxp-z MainActivity's KBD button now calls `SDLActivity.showTextInput()` instead of `toggleSoftInput()` — same fix as EasyRPG in v0.6.5. Properly creates `mTextEdit`, requests focus, and shows IME so text input works in Blacksouls too
+- **Keyboard icon**: KBD button text changed from "KBD" to "⌨" in both mkxp-z and EasyRPG
+- **OFF crash**: added `mkdirs()` for config path directory — EasyRPG native code couldn't write `config.ini` if the `/easyrpg/` dir didn't exist
+- **Config path dirs**: ensured `mkdirs()` is called for both config and save paths
+
+### Changed
+- Version bump: 0.6.5 → 0.6.6 (code 12)
+
 ## v0.6.5 (2026-05-28)
 ### Fixed
 - **Portrait mode**: `launchEasyRpgGame()` now passes `EXTRA_LAYOUT_MODE`, `GAME_PATH`, and all touch/haptic extras to the EasyRPG activity — game respects your chosen layout mode
