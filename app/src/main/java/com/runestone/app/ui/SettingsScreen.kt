@@ -18,11 +18,11 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
 import com.runestone.app.data.LayoutMode
@@ -145,7 +145,13 @@ class SettingsScreen(private val context: Context) {
                     setTextColor(ACCENT)
                     textSize = 15f
                     typeface = Typeface.DEFAULT_BOLD
-                    setPadding(0, dp(8), dp(12), dp(8))
+                    gravity = Gravity.CENTER
+                    setPadding(dp(8), dp(6), dp(8), dp(6))
+                    background = GradientDrawable().apply {
+                        setColor(Color.argb(40, 207, 174, 126))
+                        cornerRadius = dp(8).toFloat()
+                        setStroke(dp(1), Color.argb(60, 207, 174, 126))
+                    }
                     setOnClickListener { onBack() }
                 },
                 LinearLayout.LayoutParams(dp(84), ViewGroup.LayoutParams.WRAP_CONTENT),
@@ -156,7 +162,7 @@ class SettingsScreen(private val context: Context) {
                     text = "Runestone Setup"
                     setTextColor(TEXT)
                     textSize = 21f
-                    letterSpacing = 0f
+                    letterSpacing = 0.5f
                     gravity = Gravity.CENTER
                     typeface = Typeface.create("serif", Typeface.BOLD)
                 },
@@ -278,7 +284,7 @@ class SettingsScreen(private val context: Context) {
             build()
         }
 
-    private fun sliderPanel(title: String, value: String, sliderFactory: (TextView) -> SeekBar): LinearLayout =
+    private fun sliderPanel(title: String, value: String, sliderFactory: (TextView) -> GlassSlider): LinearLayout =
         settingsPanel {
             val label = TextView(context).apply {
                 text = value
@@ -339,22 +345,10 @@ class SettingsScreen(private val context: Context) {
             addView(row)
         }
 
-    private fun slider(max: Int, progress: Int, onChange: (Int) -> Unit): SeekBar =
-        SeekBar(context).apply {
-            this.max = max
-            this.progress = progress
-            setOnSeekBarChangeListener(
-                object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(seekBar: SeekBar?, value: Int, fromUser: Boolean) {
-                        if (fromUser) onChange(value)
-                    }
-                    override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
-                    override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
-                },
-            )
-        }
+    private fun slider(max: Int, progress: Int, onChange: (Int) -> Unit): GlassSlider =
+        GlassSlider(context, max, progress, onChange)
 
-    private fun panelBackground(color: Int, stroke: Int = Color.TRANSPARENT, corner: Int = 8): GradientDrawable =
+    private fun panelBackground(color: Int, stroke: Int = Color.TRANSPARENT, corner: Int = 12): GradientDrawable =
         GradientDrawable().apply {
             setColor(color)
             cornerRadius = dp(corner).toFloat()
@@ -387,6 +381,10 @@ class SettingsScreen(private val context: Context) {
             color = Color.rgb(42, 32, 36)
             style = Paint.Style.FILL
         }
+        private val accentPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(207, 174, 126)
+            style = Paint.Style.FILL
+        }
         private val rect = RectF()
 
         override fun onDraw(canvas: Canvas) {
@@ -417,17 +415,48 @@ class SettingsScreen(private val context: Context) {
                 canvas.drawCircle(left + pw * 0.28f, top + ph * 0.70f, ph * 0.06f, game)
                 // Buttons on right side
                 drawButtonDots(canvas, left + pw * 0.72f, top + ph * 0.70f, pw * 0.05f)
-            } else {
-                // Landscape/gamepad: full game area
+            } else if (mode == LayoutMode.LANDSCAPE) {
+                // Landscape: full game area with side controls
                 canvas.drawRoundRect(left + inset, top + inset, left + pw - inset, top + ph - inset, 8f, 8f, game)
-                // Inner screen (black center)
                 val scInset = inset * 1.4f
                 canvas.drawRoundRect(left + scInset, top + scInset, left + pw - scInset, top + ph - scInset, 6f, 6f, phone)
-                if (mode == LayoutMode.LANDSCAPE) {
-                    // D-pad on left
-                    canvas.drawCircle(left + pw * 0.22f, top + ph * 0.58f, ph * 0.07f, controls)
-                    drawButtonDots(canvas, left + pw * 0.78f, top + ph * 0.58f, ph * 0.04f)
-                }
+                // D-pad on left
+                canvas.drawCircle(left + pw * 0.22f, top + ph * 0.58f, ph * 0.07f, controls)
+                drawButtonDots(canvas, left + pw * 0.78f, top + ph * 0.58f, ph * 0.04f)
+            } else {
+                // Gamepad mode: phone with controller icon overlay
+                canvas.drawRoundRect(left + inset, top + inset, left + pw - inset, top + ph - inset, 8f, 8f, game)
+                val scInset = inset * 1.4f
+                canvas.drawRoundRect(left + scInset, top + scInset, left + pw - scInset, top + ph - scInset, 6f, 6f, phone)
+                // Controller body
+                val cx = left + pw / 2f
+                val cy = top + ph / 2f
+                val cw = pw * 0.35f
+                val ch = ph * 0.20f
+                // Controller body (rounded rect)
+                val bodyRect = RectF(cx - cw, cy - ch * 0.5f, cx + cw, cy + ch * 0.5f)
+                canvas.drawRoundRect(bodyRect, ch * 0.5f, ch * 0.5f, controls)
+                canvas.drawRoundRect(bodyRect, ch * 0.5f, ch * 0.5f, Paint().apply {
+                    color = Color.argb(60, 207, 174, 126)
+                    style = Paint.Style.STROKE
+                    strokeWidth = 1.5f
+                })
+                // Left stick
+                canvas.drawCircle(cx - cw * 0.45f, cy, ch * 0.25f, game)
+                // Right stick
+                canvas.drawCircle(cx + cw * 0.45f, cy, ch * 0.25f, game)
+                // D-pad cross
+                val dpx = cx - cw * 0.18f
+                val dpy = cy
+                val ds = ch * 0.08f
+                canvas.drawRoundRect(dpx - ds, dpy - ds * 2.2f, dpx + ds, dpy + ds * 2.2f, 2f, 2f, accentPaint)
+                canvas.drawRoundRect(dpx - ds * 2.2f, dpy - ds, dpx + ds * 2.2f, dpy + ds, 2f, 2f, accentPaint)
+                // Face buttons (ABXY)
+                val fcx = cx + cw * 0.18f
+                canvas.drawCircle(fcx + ds * 1.6f, cy - ds * 1.6f, ds * 0.6f, accentPaint)
+                canvas.drawCircle(fcx - ds * 1.6f, cy - ds * 1.6f, ds * 0.6f, accentPaint)
+                canvas.drawCircle(fcx, cy - ds * 3f, ds * 0.6f, accentPaint)
+                canvas.drawCircle(fcx, cy + ds * 0.4f, ds * 0.6f, accentPaint)
             }
         }
 
@@ -473,19 +502,23 @@ class SettingsScreen(private val context: Context) {
     private fun makeHelpContent(panel: LinearLayout) {
         panel.addView(TextView(context).apply {
             text = """
-1. ADD A GAME — Tap the dock bar + ADD. Select the game's root folder (containing www/, Game.exe, or data/).
+1. ADD A GAME — Tap the dock bar [+ ADD]. Select the game's root folder (containing www/, Game.exe, or Data/).
 
-2. PLAY — Tap the game card, then tap PLAY. The game launches with auto-detected engine.
+2. PLAY — Tap a game card to select it, then tap PLAY. The game launches with auto-detected engine.
 
-3. OPTIONS — Tap a card, then tap OPTIONS (gear). This opens per-game settings: reimport, change engine, view saves, remove.
+3. RESUME — If a game was running, a RESUME bar appears at the bottom of the home screen. Tap RESUME to continue, or STOP to end the session.
 
-4. FILTER — Use the filter button (top-right) to filter by engine type and sort (A-Z, recent, date added).
+4. OPTIONS — Tap a game card to select it, then tap OPTIONS. This opens per-game settings: reimport data, change engine, view saves, or remove the game.
 
-5. SETTINGS — Layout mode (Portrait Console / Landscape / Gamepad), touch opacity/scale, haptics, audio fallback.
+5. FILTER & SORT — Tap the filter button (top-right) to filter games by engine type (MV/MZ, VX/ACE, XP, 2000, RNPY) or search by name. Sort by name, recently played, or date added.
 
-6. KEYBOARD — In-game, tap the keyboard button (bottom-right) to summon phone keyboard.
+6. SETTINGS — Tap the gear icon on the dock. Configure layout mode (Portrait Console / Landscape / Gamepad), touch opacity, touch scale, haptics, and audio fallback format.
 
-7. SAVES — Game saves are protected in a separate saves/ folder. When reimporting or deleting, saves are preserved and auto-restored.
+7. KEYBOARD — In-game, tap the keyboard button (bottom-right) to show the phone keyboard for text input.
+
+8. SAVES — Game saves are protected in a separate saves/ folder. When reimporting or deleting game data, saves are preserved and auto-restored.
+
+9. IMPORT — Games are stored as a single copy. Reimporting replaces game data but keeps saves intact.
             """.trimIndent()
             setTextColor(MUTED); textSize = 11f; setPadding(0, dp(2), 0, dp(2))
             setLineSpacing(2f, 1f)
@@ -495,17 +528,28 @@ class SettingsScreen(private val context: Context) {
     private fun makeAboutContent(panel: LinearLayout) {
         panel.addView(TextView(context).apply {
             text = """
-Runestone v0.3.0 — "Glass"
+Runestone v0.6.9 — "Glass UI"
 Released: May 2026
 
 Open-source multi-engine game launcher for Android.
-Supports RPG Maker XP/VX/VX Ace (mkxp-z), MV/MZ (WebView), TyranoBuilder, Construct 2/3, and more planned.
+Supports RPG Maker XP/VX/VX Ace (mkxp-z), MV/MZ (WebView),
+TyranoBuilder, Construct 2/3, and more planned.
 
 License: GPLv2+
 GitHub: github.com/KleirRampage45/Runestone
 
-Built with Kotlin (no XML layouts).
+Built with Kotlin — 100% programmatic UI, no XML layouts.
 Uses SDL2, mkxp-z, Ruby, OpenAL, and system WebView.
+
+Features:
+- Engine auto-detection from game files
+- Glassmorphism UI with blur effects
+- Portrait Console / Landscape / Gamepad layouts
+- Virtual touch controls with adjustable opacity and scale
+- Haptic feedback support
+- Protected save storage (survives reimports)
+- SAF-based folder import
+- Single-copy game storage
 
 No copyrighted game files included.
 All games must be legally owned by the user.
@@ -513,6 +557,88 @@ All games must be legally owned by the user.
             setTextColor(MUTED); textSize = 11f; setPadding(0, dp(2), 0, dp(2))
             setLineSpacing(2f, 1f)
         })
+    }
+
+    /**
+     * GlassSlider — custom drawn slider with glass aesthetic
+     */
+    private inner class GlassSlider(
+        context: Context,
+        private val maxVal: Int,
+        private var currentProgress: Int,
+        private val onChanged: (Int) -> Unit,
+    ) : View(context) {
+        private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(60, 255, 255, 255)
+            style = Paint.Style.FILL
+        }
+        private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(207, 174, 126)
+            style = Paint.Style.FILL
+        }
+        private val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(232, 229, 220)
+            style = Paint.Style.FILL
+        }
+        private val thumbStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(207, 174, 126)
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+        }
+        private var isTracking = false
+        private val trackH = dp(6)
+        private val thumbR = dp(12)
+
+        init {
+            minimumHeight = dp(40)
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            val w = width.toFloat()
+            val h = height.toFloat()
+            val cy = h / 2f
+            val trackL = thumbR.toFloat()
+            val trackR = w - thumbR
+            val frac = currentProgress.toFloat() / maxVal.coerceAtLeast(1)
+            val thumbX = trackL + (trackR - trackL) * frac
+
+            // Track background
+            canvas.drawRoundRect(trackL, cy - trackH / 2f, trackR, cy + trackH / 2f, trackH / 2f, trackH / 2f, bgPaint)
+            // Filled track
+            canvas.drawRoundRect(trackL, cy - trackH / 2f, thumbX, cy + trackH / 2f, trackH / 2f, trackH / 2f, fillPaint)
+            // Thumb
+            val scale = if (isTracking) 1.25f else 1f
+            canvas.drawCircle(thumbX, cy, thumbR * scale, thumbPaint)
+            canvas.drawCircle(thumbX, cy, thumbR * scale, thumbStroke)
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean = when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                isTracking = true
+                updateProgress(event.x)
+                true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                updateProgress(event.x)
+                true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                isTracking = false
+                invalidate()
+                true
+            }
+            else -> false
+        }
+
+        private fun updateProgress(x: Float) {
+            val w = width.toFloat()
+            val trackL = thumbR.toFloat()
+            val trackR = w - thumbR
+            val frac = ((x - trackL) / (trackR - trackL)).coerceIn(0f, 1f)
+            currentProgress = (frac * maxVal).toInt().coerceIn(0, maxVal)
+            onChanged(currentProgress)
+            invalidate()
+        }
     }
 
     private companion object {

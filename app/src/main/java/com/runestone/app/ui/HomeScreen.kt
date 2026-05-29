@@ -137,10 +137,6 @@ class HomeScreen(private val context: Context) {
                     val dimOverlay = FrameLayout(context).apply {
                         layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
                         setBackgroundColor(Color.argb(180, 0, 0, 0))
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            setRenderEffect(android.graphics.RenderEffect.createBlurEffect(20f, 20f,
-                                android.graphics.Shader.TileMode.CLAMP))
-                        }
                         alpha = 0f; animate().alpha(1f).setDuration(250).start()
                         setOnClickListener {} // block clicks through
                     }
@@ -268,40 +264,44 @@ class HomeScreen(private val context: Context) {
     private fun makeDockBar(onAdd: () -> Unit, onManage: () -> Unit, onSettings: () -> Unit): LinearLayout {
         val bar = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
-            background = glassBg(dp(24))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(200, 12, 11, 16))
+                cornerRadius = dp(24).toFloat()
+                setStroke(dp(1), Color.argb(40, 160, 140, 110))
+            }
             setPadding(dp(4), dp(4), dp(4), dp(4))
         }
 
         // + ADD icon
         val addIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_add)
-            setOnClickListener { onAdd() }
             makeLiquid(this)
         }
-        bar.addView(iconWrap(addIcon), LinearLayout.LayoutParams(0, MATCH, 1f))
+        bar.addView(dockItem(addIcon) { onAdd() })
         bar.addView(dockSep())
 
         // FILES folder icon
         val folderIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_folder)
-            setOnClickListener { onManage() }
             makeLiquid(this)
         }
-        bar.addView(iconWrap(folderIcon), LinearLayout.LayoutParams(0, MATCH, 1f))
+        bar.addView(dockItem(folderIcon) { onManage() })
         bar.addView(dockSep())
 
         // SET gear icon
         val gearIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_gear)
-            setOnClickListener { spinAnim(this); onSettings() }
             makeLiquid(this)
         }
-        bar.addView(iconWrap(gearIcon), LinearLayout.LayoutParams(0, MATCH, 1f))
+        bar.addView(dockItem(gearIcon) { spinAnim(it); onSettings() })
         return bar
     }
 
-    private fun iconWrap(view: View): FrameLayout = FrameLayout(context).apply {
-        addView(view, FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER))
+    private fun dockItem(icon: View, onClick: (View) -> Unit): FrameLayout = FrameLayout(context).apply {
+        layoutParams = LinearLayout.LayoutParams(0, MATCH, 1f)
+        addView(icon, FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER))
+        setOnClickListener { onClick(this) }
+        makeLiquid(this)
     }
 
     private fun dockSep(): View = View(context).apply {
@@ -335,9 +335,15 @@ class HomeScreen(private val context: Context) {
             val filterLabel = activeFilter?.let { e ->
                 when (e) { EngineType.MV, EngineType.MZ -> "MV/MZ"; EngineType.RGSS_VX_ACE -> "VX/ACE"; EngineType.RGSS_XP -> "XP"; EngineType.EASYRPG -> "2000"; EngineType.RENPY -> "RNPY"; else -> e.name.take(4) }
             } ?: "ALL"
-            val searchBadge = if (activeSearch.isNotEmpty()) "  \uD83D\uDD0D" else ""
+            val searchBadge = if (activeSearch.isNotEmpty()) " [S]" else ""
+            val sortLabel = when (currentSort) {
+                SortMode.NAME_ASC -> "A-Z"
+                SortMode.NAME_DESC -> "Z-A"
+                SortMode.RECENT -> "REC"
+                SortMode.DATE_ADDED -> "NEW"
+            }
             val filterBtn = TextView(context).apply {
-                text = "$filterLabel$searchBadge  |  A-Z"; setTextColor(ACCENT); textSize = 11f
+                text = "$filterLabel$searchBadge  |  $sortLabel"; setTextColor(ACCENT); textSize = 11f
                 typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
                 setPadding(dp(10), dp(6), dp(10), dp(6))
                 background = glassBg(dp(12))
@@ -384,11 +390,7 @@ class HomeScreen(private val context: Context) {
         // ── Overlay root ──
         val overlay = FrameLayout(context).apply {
             layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
-            setBackgroundColor(Color.argb(160, 0, 0, 0))
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                setRenderEffect(android.graphics.RenderEffect.createBlurEffect(18f, 18f,
-                    android.graphics.Shader.TileMode.CLAMP))
-            }
+            setBackgroundColor(Color.argb(180, 0, 0, 0))
             alpha = 0f
             animate().alpha(1f).setDuration(280).start()
         }
@@ -414,20 +416,12 @@ class HomeScreen(private val context: Context) {
         }
         scroll.addView(panel)
 
-        // ── Title + Done button ──
+        // ── Title ──
         val titleRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             addView(TextView(context).apply {
                 text = "FILTER & SORT"; setTextColor(ACCENT); textSize = 14f
                 typeface = Typeface.DEFAULT_BOLD
-            }, LinearLayout.LayoutParams(0, WRAP, 1f))
-            addView(TextView(context).apply {
-                text = "DONE"; setTextColor(Color.rgb(220, 200, 160)); textSize = 11f
-                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setPadding(dp(16), dp(6), dp(16), dp(6))
-                background = glassBg(dp(8), alpha = 120, accent = true)
-                setOnClickListener { animTap(this); doApply() }
-                makeLiquid(this)
             })
         }
         panel.addView(titleRow)
@@ -468,12 +462,11 @@ class HomeScreen(private val context: Context) {
         panel.addView(searchRow)
         panel.addView(spacer(dp(12)))
 
-        // Live search
+        // Live search — debounced, accumulates locally, applies on DONE
         searchInput.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) {
                 searchText = s?.toString()?.trim() ?: ""
                 clearSearchBtn.visibility = if (searchText.isNotEmpty()) View.VISIBLE else View.INVISIBLE
-                onApplyFilters(selectedFilter, searchText, selectedSort)
             }
             override fun beforeTextChanged(s: CharSequence?, st: Int, co: Int, af: Int) {}
             override fun onTextChanged(s: CharSequence?, st: Int, be: Int, co: Int) {}
@@ -536,10 +529,10 @@ class HomeScreen(private val context: Context) {
         })
         data class SortOption(val mode: SortMode, val label: String, val icon: String)
         val sorts = listOf(
-            SortOption(SortMode.NAME_ASC, "Name (A to Z)", "\u2191A"),
-            SortOption(SortMode.NAME_DESC, "Name (Z to A)", "Z\u2193"),
-            SortOption(SortMode.RECENT, "Recently Played", "\u23F1"),
-            SortOption(SortMode.DATE_ADDED, "Date Added", "\uD83D\uDCC5"),
+            SortOption(SortMode.NAME_ASC, "Name (A to Z)", "A>Z"),
+            SortOption(SortMode.NAME_DESC, "Name (Z to A)", "Z>A"),
+            SortOption(SortMode.RECENT, "Recently Played", "[>]"),
+            SortOption(SortMode.DATE_ADDED, "Date Added", "[+]"),
         )
         val sortContainer = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         fun rebuildSorts() {
@@ -558,13 +551,6 @@ class HomeScreen(private val context: Context) {
                         animTap(this)
                         selectedSort = mode
                         rebuildSorts()
-                        // Slide animation when switching sort
-                        sortContainer.animate().translationX(30f).alpha(0.6f).setDuration(80)
-                            .withEndAction {
-                                sortContainer.translationX = -30f
-                                sortContainer.animate().translationX(0f).alpha(1f).setDuration(200)
-                                    .setInterpolator(OvershootInterpolator(1.2f)).start()
-                            }.start()
                     }
                     makeLiquid(this)
                     // Icon
@@ -594,26 +580,35 @@ class HomeScreen(private val context: Context) {
         panel.addView(sortContainer)
         panel.addView(spacer(dp(12)))
 
-        // ── REVERT button ──
+        // ── DONE + CLEAR buttons ──
         panel.addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
+            // DONE
             addView(TextView(context).apply {
-                text = "REVERT"; setTextColor(MUTED); textSize = 12f
+                text = "DONE"; setTextColor(Color.rgb(220, 200, 160)); textSize = 12f
                 typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setPadding(dp(20), dp(8), dp(20), dp(8))
+                setPadding(dp(24), dp(8), dp(24), dp(8))
+                background = glassBg(dp(8), alpha = 120, accent = true)
+                setOnClickListener { animTap(this); doApply() }
+                makeLiquid(this)
+            }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { setMargins(dp(4), 0, dp(4), 0) })
+            // CLEAR
+            addView(TextView(context).apply {
+                text = "CLEAR"; setTextColor(MUTED); textSize = 12f
+                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setPadding(dp(24), dp(8), dp(24), dp(8))
                 background = glassBg(dp(8), alpha = 60)
                 setOnClickListener {
                     animTap(this)
-                    selectedFilter = initialFilter
-                    selectedSort = initialSort
-                    searchInput.setText(initialSearch)
-                    searchText = initialSearch
-                    clearSearchBtn.visibility = if (initialSearch.isNotEmpty()) View.VISIBLE else View.INVISIBLE
+                    selectedFilter = null
+                    selectedSort = SortMode.DATE_ADDED
+                    searchInput.setText("")
+                    searchText = ""
+                    clearSearchBtn.visibility = View.INVISIBLE
                     rebuildChips(); rebuildSorts()
-                    onApplyFilters(initialFilter, initialSearch, initialSort)
                 }
                 makeLiquid(this)
-            })
+            }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { setMargins(dp(4), 0, dp(4), 0) })
         })
 
         // ── Mount overlay ──

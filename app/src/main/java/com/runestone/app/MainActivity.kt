@@ -58,7 +58,7 @@ class MainActivity : Activity() {
 
     private var pausedGamePath: String? = null
     private var activeEngineFilter: EngineType? = null
-    private var currentSort: SortMode = SortMode.NAME_ASC
+    private var currentSort: SortMode = SortMode.DATE_ADDED
     private var searchQuery: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -376,7 +376,7 @@ class MainActivity : Activity() {
                     is SafImportResult.Failure -> {
                         Log.e(TAG, "Import FAILED: ${result.reason}")
                         val pv = activeImportProgressView
-                        if (pv != null) { pv.phaseView.text = "❌ Import failed"; pv.fileView.text = result.reason; pv.countView.text = "" }
+                        if (pv != null) { pv.phaseView.text = "[FAIL] Import failed"; pv.fileView.text = result.reason; pv.countView.text = "" }
                         importMessage = "Import failed: ${result.reason}"
                         android.os.Handler(mainLooper).postDelayed({
                             refreshGames(); activeImportProgressView = null; showManageFiles()
