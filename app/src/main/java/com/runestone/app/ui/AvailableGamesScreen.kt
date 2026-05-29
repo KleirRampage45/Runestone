@@ -121,12 +121,22 @@ class AvailableGamesScreen(private val context: Context) {
             content.addView(spacer(dp(20)))
             content.addView(makeActionButton("MANAGE SOURCES", false) { onManageSources() })
         } else {
-            content.addView(makeSearchBar(games, content, onManageSources, onProviderSettings, onRefresh))
-            content.addView(spacer(dp(10)))
-            games.forEach { game ->
-                content.addView(gameCard(game, downloadStates[game.id], onDownload, onPauseDownload))
-                content.addView(spacer(dp(12)))
+            val gamesContainer = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
             }
+
+            val searchRow = makeSearchBar { query ->
+                val filtered = if (query.isBlank()) games
+                else games.filter { it.title.contains(query, ignoreCase = true) }
+                renderGameList(gamesContainer, filtered, downloadStates, onDownload, onPauseDownload)
+            }
+            content.addView(searchRow)
+            content.addView(spacer(dp(10)))
+
+            content.addView(gamesContainer, ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            renderGameList(gamesContainer, games, downloadStates, onDownload, onPauseDownload)
         }
 
         return root
@@ -174,12 +184,22 @@ class AvailableGamesScreen(private val context: Context) {
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
 
+    private fun renderGameList(
+        container: LinearLayout,
+        games: List<AvailableGame>,
+        downloadStates: Map<String, DownloadManager.DownloadProgress>,
+        onDownload: (AvailableGame) -> Unit,
+        onPauseDownload: (String) -> Unit,
+    ) {
+        container.removeAllViews()
+        games.forEach { game ->
+            container.addView(gameCard(game, downloadStates[game.id], onDownload, onPauseDownload))
+            container.addView(spacer(dp(12)))
+        }
+    }
+
     private fun makeSearchBar(
-        allGames: List<AvailableGame>,
-        content: LinearLayout,
-        onManageSources: () -> Unit,
-        onProviderSettings: () -> Unit,
-        onRefresh: () -> Unit,
+        onSearchChanged: (String) -> Unit,
     ): LinearLayout {
         val searchRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -210,6 +230,7 @@ class AvailableGamesScreen(private val context: Context) {
         searchInput.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) {
                 clearBtn.visibility = if (s.isNullOrEmpty()) View.INVISIBLE else View.VISIBLE
+                onSearchChanged(s?.toString() ?: "")
             }
             override fun beforeTextChanged(s: CharSequence?, st: Int, co: Int, af: Int) {}
             override fun onTextChanged(s: CharSequence?, st: Int, be: Int, co: Int) {}

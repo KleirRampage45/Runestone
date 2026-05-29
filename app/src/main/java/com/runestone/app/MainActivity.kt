@@ -240,6 +240,14 @@ class MainActivity : Activity() {
         extractionManager.extract(zipPath, outputDir, object : ExtractionManager.ExtractionCallback {
             override fun onProgress(progress: ExtractionManager.ExtractionProgress) {
                 Log.d(TAG, "Extracting: ${progress.currentFile} (${progress.filesExtracted}/${progress.totalFiles})")
+                val notification = Notification.Builder(this@MainActivity, NOTIFICATION_CHANNEL)
+                    .setSmallIcon(android.R.drawable.stat_sys_download)
+                    .setContentTitle("Extracting game files")
+                    .setContentText("${progress.currentFile} (${progress.filesExtracted}/${progress.totalFiles})")
+                    .setOngoing(true)
+                    .build()
+                val nm = getSystemService(NotificationManager::class.java)
+                nm.notify(NOTIFICATION_ID_DOWNLOAD, notification)
             }
 
             override fun onComplete(result: ExtractionManager.ExtractionResult) {
@@ -265,6 +273,12 @@ class MainActivity : Activity() {
                                 }
                             }
                         }
+                    }
+
+                    val zipFile = File(zipPath)
+                    if (zipFile.exists()) {
+                        zipFile.delete()
+                        Log.i(TAG, "Deleted ZIP: $zipPath")
                     }
 
                     workspaceManager.ensureWorkspace(gameDir.name)
