@@ -25,13 +25,18 @@ import com.runestone.app.data.RunnerSettings
 import com.runestone.app.ui.SortMode
 import com.runestone.app.importer.SafGameImporter
 import com.runestone.app.importer.SafImportResult
+import com.runestone.app.ui.AvailableGamesScreen
 import com.runestone.app.ui.GameCardInfo
 import com.runestone.app.ui.HomeScreen
 import com.runestone.app.ui.ImportProgressScreen
 import com.runestone.app.ui.ImportProgressView
 import com.runestone.app.ui.ManageFilesScreen
+import com.runestone.app.ui.ProviderSettingsScreen
 import com.runestone.app.ui.SettingsScreen
 import com.runestone.app.ui.SettingsStore
+import com.runestone.app.ui.SourcesScreen
+import com.runestone.app.provider.AvailableGame
+import com.runestone.app.provider.SourcesManager
 import com.runestone.app.workspace.GameInstallState
 import com.runestone.app.workspace.InstallStateStore
 import com.runestone.app.workspace.SaveManager
@@ -47,6 +52,7 @@ class MainActivity : Activity() {
     private lateinit var installStateStore: InstallStateStore
     private lateinit var saveManager: SaveManager
     private lateinit var storageReporter: WorkspaceStorageReporter
+    private lateinit var sourcesManager: SourcesManager
     private var settings = RunnerSettings()
     private var games: List<WorkspaceManager.GameInfo> = emptyList()
     private var importMessage: String? = null
@@ -69,6 +75,9 @@ class MainActivity : Activity() {
     private var activeEngineFilter: EngineType? = null
     private var currentSort: SortMode = SortMode.DATE_ADDED
     private var searchQuery: String = ""
+    private var availableGames: List<AvailableGame> = emptyList()
+    private var isLoadingGames = false
+    private var gamesErrorMessage: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -81,6 +90,7 @@ class MainActivity : Activity() {
         installStateStore = InstallStateStore(workspaceManager)
         saveManager = SaveManager(workspaceManager)
         storageReporter = WorkspaceStorageReporter(workspaceManager)
+        sourcesManager = SourcesManager(this)
         settings = settingsStore.load()
         refreshGames()
 
@@ -207,6 +217,7 @@ class MainActivity : Activity() {
             onPlay = { playGame(it) },
             onManage = { showManageFiles(it) },
             onAddGame = { startFolderImport() },
+            onBrowse = { showAvailableGames() },
             onManageAll = { showManageFiles() },
             onSettings = { showSettings() },
             onApplyFilters = { engine, search, sort ->
@@ -305,6 +316,68 @@ class MainActivity : Activity() {
                     showSettings()
                 },
                 onBack = { dismissOverlay() },
+            ),
+        )
+    }
+
+    private fun showAvailableGames() {
+        manageFilesVisible = false
+        isLoadingGames = true
+        gamesErrorMessage = null
+        renderAvailableGamesScreen()
+
+        sourcesManager.fetchGamesFromSources { games, error ->
+            runOnUiThread {
+                availableGames = games
+                isLoadingGames = false
+                gamesErrorMessage = error
+                renderAvailableGamesScreen()
+            }
+        }
+    }
+
+    private fun renderAvailableGamesScreen() {
+        showOverlay(
+            AvailableGamesScreen(this).create(
+                games = availableGames,
+                isLoading = isLoadingGames,
+                errorMessage = gamesErrorMessage,
+                onRefresh = { showAvailableGames() },
+                onManageSources = { showSources() },
+                onProviderSettings = { showProviderSettings() },
+                onBack = { dismissOverlay() },
+            ),
+        )
+    }
+
+    private fun showSources() {
+        manageFilesVisible = false
+        showOverlay(
+            SourcesScreen(this).create(
+                sources = sourcesManager.getSources(),
+                onAddSource = { url ->
+                    sourcesManager.addSource(url)
+                    showSources()
+                },
+                onRemoveSource = { id ->
+                    sourcesManager.removeSource(id)
+                    showSources()
+                },
+                onBack = { dismissOverlay() },
+            ),
+        )
+    }
+
+    private fun showProviderSettings() {
+        manageFilesVisible = false
+        showOverlay(
+            ProviderSettingsScreen(this).create(
+                sourcesManager = sourcesManager,
+                onBack = { dismissOverlay() },
+                onClearAll = {
+                    sourcesManager.clearSources()
+                    showProviderSettings()
+                },
             ),
         )
     }

@@ -53,6 +53,7 @@ class HomeScreen(private val context: Context) {
         onPlay: (String) -> Unit,
         onManage: (String) -> Unit,
         onAddGame: () -> Unit,
+        onBrowse: (() -> Unit)? = null,
         onManageAll: () -> Unit,
         onSettings: () -> Unit,
         onApplyFilters: ((engine: EngineType?, search: String, sort: SortMode) -> Unit)? = null,
@@ -262,7 +263,7 @@ class HomeScreen(private val context: Context) {
         }
 
         // Dock bar
-        val dock = makeDockBar(onAddGame, onManageAll, onSettings)
+        val dock = makeDockBar(onAddGame, onBrowse ?: {}, onManageAll, onSettings)
         root.addView(dock, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(44), Gravity.BOTTOM).apply {
             setMargins(dp(10), 0, dp(10), dp(8))
@@ -274,7 +275,7 @@ class HomeScreen(private val context: Context) {
     //  Dock
     // ============================================================
 
-    private fun makeDockBar(onAdd: () -> Unit, onManage: () -> Unit, onSettings: () -> Unit): LinearLayout {
+    private fun makeDockBar(onAdd: () -> Unit, onBrowse: () -> Unit, onManage: () -> Unit, onSettings: () -> Unit): LinearLayout {
         val bar = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
             background = GradientDrawable().apply {
@@ -291,6 +292,14 @@ class HomeScreen(private val context: Context) {
             makeLiquid(this)
         }
         bar.addView(dockItem(addIcon) { onAdd() })
+        bar.addView(dockSep())
+
+        // STORE icon
+        val storeIcon = ImageView(context).apply {
+            setImageResource(R.drawable.ic_store)
+            makeLiquid(this)
+        }
+        bar.addView(dockItem(storeIcon) { onBrowse() })
         bar.addView(dockSep())
 
         // FILES folder icon
