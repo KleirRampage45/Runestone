@@ -83,7 +83,15 @@ class DownloadManager(private val context: Context) {
         setState(gameId, DownloadState.DOWNLOADING)
 
         val thread = Thread {
-            download(gameId, url, fileName)
+            val resolvedUrl = try {
+                HosterResolver.resolve(url)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to resolve URL for $gameId: ${e.message}", e)
+                setState(gameId, DownloadState.FAILED)
+                callback?.onError(gameId, "URL resolution failed: ${e.message}")
+                return@Thread
+            }
+            download(gameId, resolvedUrl, fileName)
         }
         activeDownloads[gameId] = thread
         thread.start()
@@ -100,7 +108,15 @@ class DownloadManager(private val context: Context) {
         setState(gameId, DownloadState.DOWNLOADING)
 
         val thread = Thread {
-            download(gameId, url, fileName)
+            val resolvedUrl = try {
+                HosterResolver.resolve(url)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to resolve URL for $gameId: ${e.message}", e)
+                setState(gameId, DownloadState.FAILED)
+                callback?.onError(gameId, "URL resolution failed: ${e.message}")
+                return@Thread
+            }
+            download(gameId, resolvedUrl, fileName)
         }
         activeDownloads[gameId] = thread
         thread.start()
