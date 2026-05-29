@@ -157,7 +157,7 @@ class Carousel3DLayoutManager(
             child.alpha = alpha
 
             // Elevation
-            child.elevation = lerp(14f, 2f, (absPos / 2f).coerceIn(0f, 1f))
+            child.elevation = lerp(dp(14).toFloat(), dp(2).toFloat(), (absPos / 2f).coerceIn(0f, 1f))
 
             // Blur for edge cards (API 31+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

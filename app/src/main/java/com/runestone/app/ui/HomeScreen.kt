@@ -39,6 +39,10 @@ import com.runestone.app.ui.carousel.VignetteOverlay
 import com.runestone.app.ui.carousel.GrainOverlay
 import com.runestone.app.ui.carousel.PageIndicator
 import com.runestone.app.ui.carousel.DepthOfFieldController
+import com.runestone.app.ui.carousel.BloomOverlay
+import com.runestone.app.ui.carousel.GameColorExtractor
+import com.runestone.app.ui.carousel.ItemTouchHelperCallback
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 
 data class GameCardInfo(
@@ -912,6 +916,8 @@ class HomeScreen(private val context: Context) {
         }
         container.addView(glowView)
 
+        val colorExtractor = GameColorExtractor(context)
+
         // RESUME banner (if a game is paused)
         if (pausedGame != null && onResume != null) {
             val barRow = LinearLayout(context).apply {
@@ -974,6 +980,32 @@ class HomeScreen(private val context: Context) {
             MATCH, carouselHeight, Gravity.TOP,
         ))
 
+        // Drag-to-reorder
+        val gameOrder = mutableListOf<String>()
+        gameOrder.addAll(games.map { it.storageName })
+
+        val touchHelper = ItemTouchHelper(ItemTouchHelperCallback { from, to ->
+            val fromGame = gameOrder.removeAt(from)
+            gameOrder.add(to, fromGame)
+            val reordered = games.sortedBy { gameOrder.indexOf(it.storageName) }
+            recyclerView.adapter = GameCarouselAdapter(
+                games = reordered,
+                onCardClicked = { game -> onPlay(game.storageName) },
+                onCardLongPressed = { game ->
+                    val overlay = InspectOverlay(
+                        context = context,
+                        game = game,
+                        onPlay = { name -> onPlay(name) },
+                        onSettings = { name -> onManage?.invoke(name) },
+                        onDismiss = { },
+                    )
+                    container.addView(overlay)
+                },
+            )
+            recyclerView.layoutManager = layoutManager
+        })
+        touchHelper.attachToRecyclerView(recyclerView)
+
         // Page indicator — small dots below the carousel
         container.addView(pageIndicator, FrameLayout.LayoutParams(
             WRAP,
@@ -990,13 +1022,30 @@ class HomeScreen(private val context: Context) {
             MATCH, WRAP, Gravity.BOTTOM,
         ))
 
+        // Vignette overlay (cinematic corners)
+        container.addView(VignetteOverlay(context), FrameLayout.LayoutParams(MATCH, MATCH))
+
+        // Film grain overlay (subtle noise)
+        container.addView(GrainOverlay(context), FrameLayout.LayoutParams(MATCH, MATCH))
+
+        // Bloom overlay (accent glow)
+        val bloomOverlay = BloomOverlay(context)
+        container.addView(bloomOverlay, FrameLayout.LayoutParams(MATCH, MATCH))
+
+        // Depth of Field — blur glow during scroll
+        val dofController = DepthOfFieldController(glowView, recyclerView)
+        dofController.attach()
+
         // Wire focus listener — updates detail panel + glow + page indicator
         layoutManager.focusListener = object : Carousel3DLayoutManager.FocusListener {
             override fun onFocusChanged(adapterPosition: Int) {
                 if (adapterPosition in games.indices) {
                     val game = games[adapterPosition]
                     detailPanel.bind(game)
-                    glowView.transitionToEngine(game.engineType)
+                    colorExtractor.getColor(game.displayName, game.coverUrl, game.engineType) { color ->
+                        glowView.transitionToColor(color)
+                        bloomOverlay.setAccentColor(color)
+                    }
                     pageIndicator.setActive(adapterPosition)
                 }
             }
@@ -1004,17 +1053,10 @@ class HomeScreen(private val context: Context) {
 
         // Initialize with first game
         detailPanel.bind(games[0])
-        glowView.transitionToEngine(games[0].engineType)
-
-        // Vignette overlay (cinematic corners)
-        container.addView(VignetteOverlay(context), FrameLayout.LayoutParams(MATCH, MATCH))
-
-        // Film grain overlay (subtle noise)
-        container.addView(GrainOverlay(context), FrameLayout.LayoutParams(MATCH, MATCH))
-
-        // Depth of Field — blur glow during scroll
-        val dofController = DepthOfFieldController(glowView, recyclerView)
-        dofController.attach()
+        colorExtractor.getColor(games[0].displayName, games[0].coverUrl, games[0].engineType) { color ->
+            glowView.transitionToColor(color)
+            bloomOverlay.setAccentColor(color)
+        }
 
         return container
     }
