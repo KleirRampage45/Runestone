@@ -34,6 +34,10 @@ import com.runestone.app.ui.carousel.AmbientGlowView
 import com.runestone.app.ui.carousel.Carousel3DLayoutManager
 import com.runestone.app.ui.carousel.DetailPanel
 import com.runestone.app.ui.carousel.GameCarouselAdapter
+import com.runestone.app.ui.carousel.InspectOverlay
+import com.runestone.app.ui.carousel.VignetteOverlay
+import com.runestone.app.ui.carousel.GrainOverlay
+import com.runestone.app.ui.carousel.PageIndicator
 import androidx.recyclerview.widget.RecyclerView
 
 data class GameCardInfo(
@@ -119,7 +123,14 @@ class HomeScreen(private val context: Context) {
             when (uiMode) {
                 UIMode.CAROUSEL_3D -> {
                     scroll.visibility = View.GONE
-                    root.addView(renderCarousel3D(games, onPlay, onManage), FrameLayout.LayoutParams(
+                    root.addView(renderCarousel3D(
+                        games = games,
+                        onPlay = onPlay,
+                        onManage = onManage,
+                        pausedGame = pausedGame,
+                        onResume = onResume,
+                        onStop = onStop,
+                    ), FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
                     ))
@@ -864,64 +875,135 @@ class HomeScreen(private val context: Context) {
         games: List<GameCardInfo>,
         onPlay: (String) -> Unit,
         onManage: ((String) -> Unit)? = null,
+        pausedGame: GameCardInfo? = null,
+        onResume: (() -> Unit)? = null,
+        onStop: ((String) -> Unit)? = null,
     ): FrameLayout {
         val container = FrameLayout(context).apply {
             setBackgroundColor(Color.rgb(3, 3, 4))
         }
 
+        // Empty state
+        if (games.isEmpty()) {
+            val emptyLabel = TextView(context).apply {
+                text = "No games yet"
+                setTextColor(Color.rgb(140, 130, 112))
+                textSize = 16f
+                gravity = Gravity.CENTER
+            }
+            container.addView(emptyLabel, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER,
+            ))
+            return container
+        }
+
         // Ambient glow behind everything
         val glowView = AmbientGlowView(context).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-            )
+            layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
         }
         container.addView(glowView)
 
-        // Carousel in the upper 60%
+        // RESUME banner (if a game is paused)
+        if (pausedGame != null && onResume != null) {
+            val barRow = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                background = GradientDrawable().apply {
+                    setColor(Color.argb(200, 15, 15, 18))
+                    cornerRadius = dp(14).toFloat()
+                    setStroke(dp(1), Color.argb(100, 100, 100, 100))
+                }
+            }
+            val stopBtn = TextView(context).apply {
+                text = "STOP — ${pausedGame.displayName}"
+                setTextColor(Color.rgb(240, 120, 120)); textSize = 11f
+                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+                setOnClickListener { onStop?.invoke(pausedGame.storageName) }
+            }
+            barRow.addView(stopBtn, LinearLayout.LayoutParams(0, WRAP, 1f))
+
+            val resumeBtn = TextView(context).apply {
+                text = "▶ RESUME"; setTextColor(Color.rgb(140, 220, 140)); textSize = 11f
+                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+                setOnClickListener { onResume() }
+            }
+            barRow.addView(resumeBtn, LinearLayout.LayoutParams(WRAP, WRAP))
+
+            container.addView(barRow, FrameLayout.LayoutParams(
+                MATCH, WRAP, Gravity.TOP
+            ))
+        }
+
+        // Carousel
+        val carouselHeight = (context.resources.displayMetrics.heightPixels * 0.55f).toInt()
         val layoutManager = Carousel3DLayoutManager(context)
+        val pageIndicator = PageIndicator(context, games.size, 0)
         val recyclerView = RecyclerView(context).apply {
             this.layoutManager = layoutManager
-            adapter = GameCarouselAdapter(games) { game ->
-                onPlay(game.storageName)
-            }
+            adapter = GameCarouselAdapter(
+                games = games,
+                onCardClicked = { game -> onPlay(game.storageName) },
+                onCardLongPressed = { game ->
+                    val overlay = InspectOverlay(
+                        context = context,
+                        game = game,
+                        onPlay = { name -> onPlay(name) },
+                        onSettings = { name -> onManage?.invoke(name) },
+                        onDismiss = { /* nothing */ },
+                    )
+                    container.addView(overlay)
+                },
+            )
             overScrollMode = RecyclerView.OVER_SCROLL_NEVER
             clipToPadding = false
             isNestedScrollingEnabled = false
         }
         container.addView(recyclerView, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            (context.resources.displayMetrics.heightPixels * 0.6f).toInt(),
-            Gravity.TOP,
+            MATCH, carouselHeight, Gravity.TOP,
         ))
 
-        // Detail panel below carousel
+        // Page indicator — small dots below the carousel
+        container.addView(pageIndicator, FrameLayout.LayoutParams(
+            WRAP,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.CENTER_HORIZONTAL or Gravity.TOP,
+        ).also { it.topMargin = carouselHeight + dp(4) })
+
+        // Detail panel at bottom
         val detailPanel = DetailPanel(context).apply {
             setOnPlayListener { gameName -> onPlay(gameName) }
             setOnSettingsListener { gameName -> onManage?.invoke(gameName) }
         }
         container.addView(detailPanel, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            Gravity.BOTTOM,
+            MATCH, WRAP, Gravity.BOTTOM,
         ))
 
-        // Wire focus listener
+        // Wire focus listener — updates detail panel + glow + page indicator
         layoutManager.focusListener = object : Carousel3DLayoutManager.FocusListener {
             override fun onFocusChanged(adapterPosition: Int) {
                 if (adapterPosition in games.indices) {
                     val game = games[adapterPosition]
                     detailPanel.bind(game)
                     glowView.transitionToEngine(game.engineType)
+                    pageIndicator.setActive(adapterPosition)
                 }
             }
         }
 
         // Initialize with first game
-        if (games.isNotEmpty()) {
-            detailPanel.bind(games[0])
-            glowView.transitionToEngine(games[0].engineType)
-        }
+        detailPanel.bind(games[0])
+        glowView.transitionToEngine(games[0].engineType)
+
+        // Vignette overlay (cinematic corners)
+        container.addView(VignetteOverlay(context), FrameLayout.LayoutParams(MATCH, MATCH))
+
+        // Film grain overlay (subtle noise)
+        container.addView(GrainOverlay(context), FrameLayout.LayoutParams(MATCH, MATCH))
 
         return container
     }

@@ -17,6 +17,7 @@ import com.runestone.app.ui.GameCardInfo
 class GameCarouselAdapter(
     private val games: List<GameCardInfo>,
     private val onCardClicked: (GameCardInfo) -> Unit,
+    private val onCardLongPressed: (GameCardInfo) -> Unit = {},
 ) : RecyclerView.Adapter<GameCarouselAdapter.ViewHolder>() {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -28,6 +29,10 @@ class GameCarouselAdapter(
         val game = games[position]
         holder.card.bind(game)
         holder.itemView.setOnClickListener { onCardClicked(game) }
+        holder.itemView.setOnLongClickListener {
+            onCardLongPressed(game)
+            true
+        }
     }
 
     override fun getItemCount() = games.size
