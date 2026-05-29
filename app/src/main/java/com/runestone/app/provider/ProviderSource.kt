@@ -47,6 +47,7 @@ data class AvailableGame(
     val engine: String?,
     val fileSize: Long?,
     val downloadUrl: String?,
+    val pageUrl: String?,
     val sourceName: String,
     val coverUrl: String?,
 ) {
@@ -56,6 +57,7 @@ data class AvailableGame(
         put("engine", engine ?: "")
         put("fileSize", fileSize ?: -1)
         put("downloadUrl", downloadUrl ?: "")
+        put("pageUrl", pageUrl ?: "")
         put("sourceName", sourceName)
         put("coverUrl", coverUrl ?: "")
     }
@@ -67,6 +69,7 @@ data class AvailableGame(
             engine = obj.optString("engine", "").ifEmpty { null },
             fileSize = obj.optLong("fileSize", -1).let { if (it < 0) null else it },
             downloadUrl = obj.optString("downloadUrl", "").ifEmpty { null },
+            pageUrl = obj.optString("pageUrl", "").ifEmpty { null },
             sourceName = obj.optString("sourceName", ""),
             coverUrl = obj.optString("coverUrl", "").ifEmpty { null },
         )

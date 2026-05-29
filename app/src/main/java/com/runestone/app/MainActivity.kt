@@ -13,6 +13,7 @@ package com.runestone.app
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.net.Uri
 import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
@@ -544,6 +545,9 @@ class MainActivity : Activity() {
                 onProviderSettings = { showProviderSettings() },
                 onDownload = { handleDownload(it) },
                 onPauseDownload = { handlePauseDownload(it) },
+                onVisitPage = { url ->
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                },
                 onBack = { dismissOverlay() },
             ),
         )

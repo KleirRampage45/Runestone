@@ -155,6 +155,7 @@ class SourcesManager(private val context: Context) {
                             engine = obj.optString("engine", "").ifEmpty { null },
                             fileSize = obj.optLong("fileSize", -1).let { if (it < 0) null else it },
                             downloadUrl = obj.optString("downloadUrl", "").ifEmpty { null },
+                            pageUrl = obj.optString("pageUrl", "").ifEmpty { null },
                             sourceName = obj.optString("sourceName", "Catalogue"),
                             coverUrl = obj.optString("coverUrl", "").ifEmpty { null },
                         )
@@ -195,6 +196,7 @@ class SourcesManager(private val context: Context) {
                     engine = obj.optString("engine", "").ifEmpty { null },
                     fileSize = obj.optLong("fileSize", -1).let { if (it < 0) null else it },
                     downloadUrl = obj.optString("downloadUrl", "").ifEmpty { null },
+                    pageUrl = obj.optString("pageUrl", "").ifEmpty { null },
                     sourceName = source.name,
                     coverUrl = obj.optString("coverUrl", "").ifEmpty { null },
                 )
