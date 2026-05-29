@@ -1,9 +1,12 @@
 package org.easyrpg.player.player;
 
 import android.content.Intent;
+import android.content.Context;
 import android.content.res.AssetManager;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
+import android.view.inputmethod.InputMethodManager;
 
 /**
  * Minimal JNI surface for libeasyrpg_android.so (APK v0.8.1).
@@ -15,9 +18,9 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
 
     private static final String TAG = "EasyRPGWrapper";
     private static final String EXTRA_PROJECT_PATH = "project_path";
-    private static final String EXTRA_COMMAND_LINE = "command_line";
 
     private String mProjectPath;
+    private String mConfigPath;
 
     // ═══════════════════════════════════════════════
     // Static JNI methods — called by native code
@@ -56,7 +59,11 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
     @Override
     protected String[] getArguments() {
         if (mProjectPath != null) {
-            return new String[] { "--project-path", mProjectPath };
+            return new String[] {
+                "--project-path", mProjectPath,
+                "--config-path", mConfigPath,
+                "--save-path", mConfigPath + "/saves"
+            };
         }
         return new String[0];
     }
@@ -98,6 +105,7 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
     protected void onCreate(Bundle savedInstanceState) {
         Intent intent = getIntent();
 
+        // Read project path from intent
         mProjectPath = intent.getStringExtra(EXTRA_PROJECT_PATH);
         if (mProjectPath == null || mProjectPath.isEmpty()) {
             mProjectPath = intent.getStringExtra("game_path");
@@ -106,9 +114,55 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
             mProjectPath = android.os.Environment.getExternalStorageDirectory() + "/easyrpg-games";
         }
 
-        Log.i(TAG, "Project path: " + mProjectPath);
+        // Set config path to app's private data dir (writable)
+        mConfigPath = getFilesDir().getAbsolutePath() + "/easyrpg";
+        Log.i(TAG, "Config path: " + mConfigPath);
 
+        // Forward GAME_PATH + LAYOUT_MODE to mkxp-z parent
         intent.putExtra("com.grimmobile.runner.extra.GAME_PATH", mProjectPath);
+        // NOTE: LAYOUT_MODE, TOUCH_* and HAPTICS_* are passed from GameActivity.kt
+
         super.onCreate(savedInstanceState);
+
+        // Replace the parent's KBD button with one that properly sets up
+        // SDL text input (mTextEdit visible + focused) before showing IME.
+        replaceKbdButton();
+    }
+
+    /**
+     * Find the parent's KBD floating button and replace its onClickListener
+     * to call showTextInput() instead of just toggling the IME.
+     */
+    private void replaceKbdButton() {
+        if (mLayout == null) {
+            Log.w(TAG, "mLayout null, cannot replace KBD button");
+            return;
+        }
+        try {
+            // The KBD button is a TextView with text "KBD" added last (right-aligned)
+            for (int i = 0; i < mLayout.getChildCount(); i++) {
+                View child = mLayout.getChildAt(i);
+                if (child instanceof android.widget.TextView) {
+                    android.widget.TextView tv = (android.widget.TextView) child;
+                    if ("KBD".equals(tv.getText().toString())) {
+                        tv.setOnClickListener(v -> showSystemKeyboard());
+                        Log.i(TAG, "KBD button replaced with showTextInput");
+                        return;
+                    }
+                }
+            }
+            Log.w(TAG, "KBD button not found in layout");
+        } catch (Exception e) {
+            Log.e(TAG, "Error replacing KBD button: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Show the soft keyboard with proper SDL text input setup.
+     * Uses SDL's ShowTextInputTask which creates mTextEdit (DummyEdit),
+     * makes it visible, requests focus, then shows the IME.
+     */
+    public void showSystemKeyboard() {
+        org.libsdl.app.SDLActivity.showTextInput(0, 0, 1, 1);
     }
 }

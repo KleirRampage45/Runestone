@@ -1,5 +1,38 @@
 # Runestone Changelog
 
+## v0.6.5 (2026-05-28)
+### Fixed
+- **Portrait mode**: `launchEasyRpgGame()` now passes `EXTRA_LAYOUT_MODE`, `GAME_PATH`, and all touch/haptic extras to the EasyRPG activity — game respects your chosen layout mode
+- **Config warning**: added `--config-path` and `--save-path` CLI arguments pointing to app's private data dir — eliminates "Could not determine config path" startup noise
+- **Keyboard input**: replaced mkxp-z KBD button behavior — now calls `SDLActivity.showTextInput()` which properly creates `mTextEdit`, requests focus, and shows the IME. Previously just called `toggleSoftInput()` with no text input target
+- `getRtpPath()`: returned null → SIGABRT in `FileFinder_RTP` constructor
+
+### Changed
+- Version bump: 0.6.4 → 0.6.5 (code 11)
+
+## v0.6.4 (2026-05-28)
+### Fixed
+- EasyRPG crash: missing `getRtpPath()` instance method → `NoSuchMethodError` → SIGABRT in `Scene_Logo::DetectGame()` → app restart loop
+
+### Changed
+- Version bump: 0.6.3 → 0.6.4 (code 10)
+
+## v0.6.3 (2026-05-28)
+### Fixed
+- EasyRPG crash: game path passed as raw `argv[0]` but skipped per Unix convention — now passes `--project-path <dir>` which `ParseCommandLine()` properly handles
+- Config dialog showing "Invalid --project-path" instead of crashing
+
+### Changed
+- Version bump: 0.6.2 → 0.6.3 (code 9)
+
+## v0.6.2 (2026-05-28)
+### Fixed
+- EasyRPG crash: `getAssetManager()` missing static JNI method → `NoSuchMethodError` → `SIGABRT` in `filesystem_apk.cpp`
+- EasyRPG crash: `getHandleForPath()` missing static JNI method → `NoSuchMethodError` → `SIGABRT` in `filesystem_saf.cpp`
+
+### Changed
+- Version bump: 0.6.1 → 0.6.2 (code 8)
+
 ## v0.6.1 (2026-05-28)
 ### Fixed
 - Single-selection UI: tapping a game card now deselects the previous card

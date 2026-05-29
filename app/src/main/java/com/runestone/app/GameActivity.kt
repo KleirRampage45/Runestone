@@ -388,6 +388,12 @@ class GameActivity : Activity() {
         val intent = Intent().apply {
             setClassName(packageName, "org.easyrpg.player.player.EasyRpgPlayerActivity")
             putExtra("project_path", gameDir.absolutePath)
+            putExtra("com.grimmobile.runner.extra.GAME_PATH", gameDir.absolutePath)
+            putExtra("com.grimmobile.runner.extra.LAYOUT_MODE", settings.layoutMode.name)
+            putExtra("com.grimmobile.runner.extra.TOUCH_OPACITY", settings.touchOpacity)
+            putExtra("com.grimmobile.runner.extra.TOUCH_SCALE", settings.touchScale)
+            putExtra("com.grimmobile.runner.extra.HAPTICS_ENABLED", settings.hapticsEnabled)
+            putExtra("com.grimmobile.runner.extra.HAPTIC_INTENSITY", settings.hapticIntensity)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         startActivity(intent)
