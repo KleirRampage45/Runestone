@@ -20,6 +20,10 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.Toast
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.os.Build
 import com.runestone.app.data.EngineType
 import com.runestone.app.data.RunnerSettings
 import com.runestone.app.ui.SortMode
@@ -36,6 +40,9 @@ import com.runestone.app.ui.SettingsScreen
 import com.runestone.app.ui.SettingsStore
 import com.runestone.app.ui.SourcesScreen
 import com.runestone.app.provider.AvailableGame
+import com.runestone.app.provider.DownloadManager
+import com.runestone.app.provider.ExtractionManager
+import com.runestone.app.provider.GameDetector
 import com.runestone.app.provider.SourcesManager
 import com.runestone.app.workspace.GameInstallState
 import com.runestone.app.workspace.InstallStateStore
@@ -53,6 +60,8 @@ class MainActivity : Activity() {
     private lateinit var saveManager: SaveManager
     private lateinit var storageReporter: WorkspaceStorageReporter
     private lateinit var sourcesManager: SourcesManager
+    private lateinit var downloadManager: DownloadManager
+    private lateinit var extractionManager: ExtractionManager
     private var settings = RunnerSettings()
     private var games: List<WorkspaceManager.GameInfo> = emptyList()
     private var importMessage: String? = null
@@ -60,6 +69,7 @@ class MainActivity : Activity() {
     private var manageFilesVisible = false
     private var storageCache: Map<String, WorkspaceStorage> = emptyMap()
     private var pendingImportStorage: String? = null
+    private var downloadProgressMap = mutableMapOf<String, DownloadManager.DownloadProgress>()
 
     // Overlay navigation - root container set once, overlays added on top
     private lateinit var rootContainer: FrameLayout
@@ -69,6 +79,8 @@ class MainActivity : Activity() {
     companion object {
         private const val REQUEST_IMPORT_FOLDER = 9001
         private const val TAG = "Runestone"
+        private const val NOTIFICATION_CHANNEL = "runestone_downloads"
+        private const val NOTIFICATION_ID_DOWNLOAD = 2001
     }
 
     private var pausedGamePath: String? = null
@@ -91,8 +103,12 @@ class MainActivity : Activity() {
         saveManager = SaveManager(workspaceManager)
         storageReporter = WorkspaceStorageReporter(workspaceManager)
         sourcesManager = SourcesManager(this)
+        downloadManager = DownloadManager(this)
+        extractionManager = ExtractionManager(this)
         settings = settingsStore.load()
         refreshGames()
+        createNotificationChannel()
+        setupDownloadCallbacks()
 
         // Create permanent root frame - setContentView ONCE
         rootContainer = FrameLayout(this).apply {
@@ -109,6 +125,178 @@ class MainActivity : Activity() {
     private fun refreshGames() {
         games = workspaceManager.scanInstalledGames()
         Log.i(TAG, "refreshGames: found ${games.size} games")
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                NOTIFICATION_CHANNEL,
+                "Downloads",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Game download progress"
+            }
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun setupDownloadCallbacks() {
+        downloadManager.setCallback(object : DownloadManager.DownloadCallback {
+            override fun onProgress(gameId: String, progress: DownloadManager.DownloadProgress) {
+                runOnUiThread {
+                    downloadProgressMap[gameId] = progress
+                    showDownloadNotification(gameId, progress)
+                    if (activeOverlay != null) renderAvailableGamesScreen()
+                }
+            }
+
+            override fun onComplete(gameId: String, filePath: String) {
+                runOnUiThread {
+                    downloadProgressMap[gameId] = DownloadManager.DownloadProgress(
+                        bytesDownloaded = 0, totalBytes = 0, speed = 0f,
+                        state = DownloadManager.DownloadState.COMPLETED
+                    )
+                    showInstallNotification(gameId)
+                    startExtraction(gameId, filePath)
+                }
+            }
+
+            override fun onError(gameId: String, message: String) {
+                runOnUiThread {
+                    downloadProgressMap[gameId] = DownloadManager.DownloadProgress(
+                        bytesDownloaded = 0, totalBytes = 0, speed = 0f,
+                        state = DownloadManager.DownloadState.FAILED, error = message
+                    )
+                    showErrorNotification(gameId, message)
+                    if (activeOverlay != null) renderAvailableGamesScreen()
+                }
+            }
+        })
+    }
+
+    private fun showDownloadNotification(gameId: String, progress: DownloadManager.DownloadProgress) {
+        val percent = if (progress.totalBytes > 0) {
+            (progress.bytesDownloaded * 100 / progress.totalBytes).toInt()
+        } else 0
+
+        val game = availableGames.find { it.id == gameId }
+        val title = game?.title ?: gameId
+
+        val notification = Notification.Builder(this, NOTIFICATION_CHANNEL)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("Downloading $title")
+            .setContentText("$percent%")
+            .setOngoing(true)
+            .build()
+
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.notify(NOTIFICATION_ID_DOWNLOAD + gameId.hashCode() % 100, notification)
+    }
+
+    private fun showInstallNotification(gameId: String) {
+        val game = availableGames.find { it.id == gameId }
+        val title = game?.title ?: gameId
+
+        val notification = Notification.Builder(this, NOTIFICATION_CHANNEL)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle("Download complete")
+            .setContentText("$title — extracting...")
+            .setAutoCancel(true)
+            .build()
+
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.notify(NOTIFICATION_ID_DOWNLOAD + gameId.hashCode() % 100, notification)
+    }
+
+    private fun showErrorNotification(gameId: String, error: String) {
+        val game = availableGames.find { it.id == gameId }
+        val title = game?.title ?: gameId
+
+        val notification = Notification.Builder(this, NOTIFICATION_CHANNEL)
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setContentTitle("Download failed")
+            .setContentText("$title: $error")
+            .setAutoCancel(true)
+            .build()
+
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.notify(NOTIFICATION_ID_DOWNLOAD + gameId.hashCode() % 100, notification)
+    }
+
+    private fun startExtraction(gameId: String, zipPath: String) {
+        val game = availableGames.find { it.id == gameId } ?: return
+        val outputDir = workspaceManager.allocateGameDir(game.title)
+
+        extractionManager.extract(zipPath, outputDir, object : ExtractionManager.ExtractionCallback {
+            override fun onProgress(progress: ExtractionManager.ExtractionProgress) {
+                Log.d(TAG, "Extracting: ${progress.currentFile} (${progress.filesExtracted}/${progress.totalFiles})")
+            }
+
+            override fun onComplete(result: ExtractionManager.ExtractionResult) {
+                runOnUiThread {
+                    val detected = GameDetector.detect(result.gameRoot)
+                    Log.i(TAG, "Detected engine: ${detected.engineType} for ${detected.suggestedName}")
+
+                    val gameDir = workspaceManager.allocateGameDir(detected.suggestedName)
+                    if (gameDir != result.outputDir) {
+                        result.outputDir.renameTo(gameDir)
+                    }
+
+                    val originalDir = File(gameDir, "original")
+                    if (!originalDir.exists()) {
+                        val inner = gameDir.listFiles()?.firstOrNull { it.isDirectory }
+                        if (inner != null && inner.name != "original") {
+                            inner.renameTo(originalDir)
+                        } else {
+                            originalDir.mkdirs()
+                            gameDir.listFiles()?.forEach { f ->
+                                if (f.name != "original" && f.name != "saves" && f.name != "incoming") {
+                                    f.renameTo(File(originalDir, f.name))
+                                }
+                            }
+                        }
+                    }
+
+                    workspaceManager.ensureWorkspace(gameDir.name)
+                    downloadManager.cleanup(gameId)
+                    downloadProgressMap.remove(gameId)
+                    refreshGames()
+                    dismissOverlay()
+                    Toast.makeText(this@MainActivity, "${detected.suggestedName} installed!", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            override fun onError(message: String) {
+                runOnUiThread {
+                    Log.e(TAG, "Extraction failed: $message")
+                    Toast.makeText(this@MainActivity, "Extraction failed: $message", Toast.LENGTH_SHORT).show()
+                }
+            }
+        })
+    }
+
+    private fun handleDownload(game: AvailableGame) {
+        val url = game.downloadUrl ?: return
+        val fileName = "${game.id}.zip"
+        downloadManager.setFileName(game.id, fileName)
+        downloadManager.startDownload(game.id, url, fileName)
+        downloadProgressMap[game.id] = DownloadManager.DownloadProgress(
+            bytesDownloaded = 0, totalBytes = 0, speed = 0f,
+            state = DownloadManager.DownloadState.DOWNLOADING
+        )
+        renderAvailableGamesScreen()
+    }
+
+    private fun handlePauseDownload(gameId: String) {
+        downloadManager.pauseDownload(gameId)
+        downloadProgressMap[gameId] = DownloadManager.DownloadProgress(
+            bytesDownloaded = downloadManager.getDownloadedBytes(gameId),
+            totalBytes = downloadManager.getTotalBytes(gameId),
+            speed = 0f,
+            state = DownloadManager.DownloadState.PAUSED
+        )
+        renderAvailableGamesScreen()
     }
 
     private fun toCardInfo(g: WorkspaceManager.GameInfo) = GameCardInfo(
@@ -342,9 +530,12 @@ class MainActivity : Activity() {
                 games = availableGames,
                 isLoading = isLoadingGames,
                 errorMessage = gamesErrorMessage,
+                downloadStates = downloadProgressMap,
                 onRefresh = { showAvailableGames() },
                 onManageSources = { showSources() },
                 onProviderSettings = { showProviderSettings() },
+                onDownload = { handleDownload(it) },
+                onPauseDownload = { handlePauseDownload(it) },
                 onBack = { dismissOverlay() },
             ),
         )

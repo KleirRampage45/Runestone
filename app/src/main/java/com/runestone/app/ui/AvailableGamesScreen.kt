@@ -28,6 +28,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import com.runestone.app.provider.AvailableGame
+import com.runestone.app.provider.DownloadManager
 import com.runestone.app.provider.SourcesManager
 
 class AvailableGamesScreen(private val context: Context) {
@@ -36,9 +37,12 @@ class AvailableGamesScreen(private val context: Context) {
         games: List<AvailableGame>,
         isLoading: Boolean,
         errorMessage: String?,
+        downloadStates: Map<String, DownloadManager.DownloadProgress> = emptyMap(),
         onRefresh: () -> Unit,
         onManageSources: () -> Unit,
         onProviderSettings: () -> Unit,
+        onDownload: (AvailableGame) -> Unit,
+        onPauseDownload: (String) -> Unit,
         onBack: () -> Unit,
     ): FrameLayout {
         val root = FrameLayout(context).apply {
@@ -119,7 +123,7 @@ class AvailableGamesScreen(private val context: Context) {
             content.addView(makeSearchBar(games, content, onManageSources, onProviderSettings, onRefresh))
             content.addView(spacer(dp(8)))
             games.forEach { game ->
-                content.addView(gameCard(game))
+                content.addView(gameCard(game, downloadStates[game.id], onDownload, onPauseDownload))
                 content.addView(spacer(dp(8)))
             }
         }
@@ -228,16 +232,23 @@ class AvailableGamesScreen(private val context: Context) {
             )
         }
 
-    private fun gameCard(game: AvailableGame): LinearLayout {
+    private fun gameCard(
+        game: AvailableGame,
+        progress: DownloadManager.DownloadProgress?,
+        onDownload: (AvailableGame) -> Unit,
+        onPauseDownload: (String) -> Unit,
+    ): LinearLayout {
         val card = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(12), dp(14), dp(12))
             background = glassBg(dp(12))
-            makeLiquid(this)
         }
 
-        // Icon placeholder (colored by engine)
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
         val engineColor = engineColor(game.engine)
         val iconBox = FrameLayout(context).apply {
             background = GradientDrawable().apply {
@@ -251,9 +262,8 @@ class AvailableGamesScreen(private val context: Context) {
             setTextColor(Color.argb(120, 255, 255, 255))
             textSize = 10f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
         }, FrameLayout.LayoutParams(dp(42), dp(42), Gravity.CENTER))
-        card.addView(iconBox, LinearLayout.LayoutParams(dp(42), dp(42)))
+        row.addView(iconBox, LinearLayout.LayoutParams(dp(42), dp(42)))
 
-        // Info column
         val info = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), 0, 0, 0)
@@ -288,18 +298,123 @@ class AvailableGamesScreen(private val context: Context) {
         })
         info.addView(metaRow)
 
-        card.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
-        // Download indicator
         if (game.downloadUrl != null) {
-            card.addView(TextView(context).apply {
-                text = "GET"; setTextColor(Color.rgb(140, 220, 140)); textSize = 11f
-                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setPadding(dp(8), dp(4), dp(8), dp(4))
-                background = GradientDrawable().apply {
-                    setColor(Color.argb(40, 80, 160, 80)); cornerRadius = dp(6).toFloat()
-                    setStroke(dp(1), Color.argb(50, 80, 160, 80))
+            val state = progress?.state
+            when {
+                state == DownloadManager.DownloadState.DOWNLOADING -> {
+                    val pauseBtn = TextView(context).apply {
+                        text = "||"
+                        setTextColor(Color.rgb(220, 200, 160)); textSize = 14f
+                        typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                        setPadding(dp(10), dp(4), dp(10), dp(4))
+                        background = GradientDrawable().apply {
+                            setColor(Color.argb(40, 200, 170, 130)); cornerRadius = dp(6).toFloat()
+                            setStroke(dp(1), Color.argb(50, 200, 170, 130))
+                        }
+                        setOnClickListener { animTap(this); onPauseDownload(game.id) }
+                        makeLiquid(this)
+                    }
+                    row.addView(pauseBtn)
                 }
+                state == DownloadManager.DownloadState.PAUSED -> {
+                    val resumeBtn = TextView(context).apply {
+                        text = "RESUME"
+                        setTextColor(Color.rgb(200, 200, 160)); textSize = 11f
+                        typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                        setPadding(dp(8), dp(4), dp(8), dp(4))
+                        background = GradientDrawable().apply {
+                            setColor(Color.argb(40, 200, 170, 80)); cornerRadius = dp(6).toFloat()
+                            setStroke(dp(1), Color.argb(50, 200, 170, 80))
+                        }
+                        setOnClickListener { animTap(this); onDownload(game) }
+                        makeLiquid(this)
+                    }
+                    row.addView(resumeBtn)
+                }
+                state == DownloadManager.DownloadState.COMPLETED -> {
+                    val doneBtn = TextView(context).apply {
+                        text = "DONE"
+                        setTextColor(Color.rgb(140, 220, 140)); textSize = 11f
+                        typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                        setPadding(dp(8), dp(4), dp(8), dp(4))
+                        background = GradientDrawable().apply {
+                            setColor(Color.argb(40, 80, 160, 80)); cornerRadius = dp(6).toFloat()
+                            setStroke(dp(1), Color.argb(50, 80, 160, 80))
+                        }
+                    }
+                    row.addView(doneBtn)
+                }
+                state == DownloadManager.DownloadState.FAILED -> {
+                    val retryBtn = TextView(context).apply {
+                        text = "RETRY"
+                        setTextColor(Color.rgb(220, 160, 140)); textSize = 11f
+                        typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                        setPadding(dp(8), dp(4), dp(8), dp(4))
+                        background = GradientDrawable().apply {
+                            setColor(Color.argb(40, 200, 100, 80)); cornerRadius = dp(6).toFloat()
+                            setStroke(dp(1), Color.argb(50, 200, 100, 80))
+                        }
+                        setOnClickListener { animTap(this); onDownload(game) }
+                        makeLiquid(this)
+                    }
+                    row.addView(retryBtn)
+                }
+                else -> {
+                    val getBtn = TextView(context).apply {
+                        text = "GET"; setTextColor(Color.rgb(140, 220, 140)); textSize = 11f
+                        typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                        setPadding(dp(8), dp(4), dp(8), dp(4))
+                        background = GradientDrawable().apply {
+                            setColor(Color.argb(40, 80, 160, 80)); cornerRadius = dp(6).toFloat()
+                            setStroke(dp(1), Color.argb(50, 80, 160, 80))
+                        }
+                        setOnClickListener { animTap(this); onDownload(game) }
+                        makeLiquid(this)
+                    }
+                    row.addView(getBtn)
+                }
+            }
+        }
+
+        card.addView(row)
+
+        if (progress != null && progress.state == DownloadManager.DownloadState.DOWNLOADING) {
+            card.addView(spacer(dp(8)))
+            val progressContainer = FrameLayout(context).apply {
+                background = GradientDrawable().apply {
+                    setColor(Color.argb(30, 255, 255, 255)); cornerRadius = dp(4).toFloat()
+                }
+            }
+            val progressBar = View(context).apply {
+                background = GradientDrawable().apply {
+                    setColor(Color.argb(160, 207, 174, 126)); cornerRadius = dp(4).toFloat()
+                }
+            }
+            val percent = if (progress.totalBytes > 0) {
+                (progress.bytesDownloaded * 100 / progress.totalBytes).toInt()
+            } else 0
+
+            val containerWidth = (context.resources.displayMetrics.widthPixels * 0.7f).toInt()
+            val barWidth = (containerWidth * percent / 100f).toInt().coerceAtLeast(dp(2))
+
+            progressContainer.addView(progressBar, FrameLayout.LayoutParams(barWidth, dp(6)))
+            card.addView(progressContainer, LinearLayout.LayoutParams(containerWidth, dp(6)))
+
+            card.addView(spacer(dp(4)))
+            card.addView(TextView(context).apply {
+                text = "$percent%  |  ${formatBytes(progress.bytesDownloaded)} / ${formatBytes(progress.totalBytes)}"
+                setTextColor(MUTED_DIM); textSize = 10f; gravity = Gravity.CENTER
+            })
+        }
+
+        if (progress != null && progress.state == DownloadManager.DownloadState.FAILED) {
+            card.addView(spacer(dp(4)))
+            card.addView(TextView(context).apply {
+                text = progress.error ?: "Download failed"
+                setTextColor(Color.rgb(200, 120, 100)); textSize = 10f
+                setPadding(dp(4), 0, 0, 0)
             })
         }
 
