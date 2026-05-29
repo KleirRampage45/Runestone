@@ -24,6 +24,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import com.runestone.app.MainActivity
 import com.runestone.app.provider.SourcesManager
 
 class ProviderSettingsScreen(private val context: Context) {
@@ -61,24 +62,19 @@ class ProviderSettingsScreen(private val context: Context) {
         content.alpha = 0f
         content.animate().alpha(1f).setDuration(300).setInterpolator(OvershootInterpolator(1.1f)).start()
 
-        // API URL section
-        content.addView(sectionTitle("Provider API", "Backend server URL for fetching game catalogs."))
-        content.addView(apiUrlPanel(sourcesManager))
+        // Game Catalogue URL section
+        content.addView(sectionTitle("Game Catalogue", "Paste a raw JSON URL or use the public catalogue."))
+        content.addView(catalogueUrlPanel(sourcesManager))
         content.addView(spacer(dp(16)))
 
-        // Default Sources section
-        content.addView(sectionTitle("Default Sources", "Pre-configured game source URLs."))
-        content.addView(defaultSourcesPanel(sourcesManager))
+        // How to get a catalogue
+        content.addView(sectionTitle("How to Get a Catalogue", ""))
+        content.addView(helpPanel())
         content.addView(spacer(dp(16)))
 
         // Danger zone
         content.addView(sectionTitle("Danger Zone", "Irreversible actions."))
         content.addView(dangerPanel(onClearAll))
-        content.addView(spacer(dp(16)))
-
-        // Info
-        content.addView(sectionTitle("How It Works", ""))
-        content.addView(infoPanel())
 
         return root
     }
@@ -130,16 +126,39 @@ class ProviderSettingsScreen(private val context: Context) {
             }
         }
 
-    private fun apiUrlPanel(sourcesManager: SourcesManager): LinearLayout {
+    private fun catalogueUrlPanel(sourcesManager: SourcesManager): LinearLayout {
         val panel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(14), dp(14), dp(14))
             background = glassBg(dp(14))
         }
 
+        // USE PUBLIC CATALOGUE button
+        panel.addView(TextView(context).apply {
+            text = "USE PUBLIC CATALOGUE"
+            setTextColor(Color.rgb(220, 200, 160)); textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            background = glassBg(dp(10), alpha = 120, accent = true)
+            setOnClickListener {
+                animTap(this)
+                sourcesManager.setApiUrl(MainActivity.DEFAULT_CATALOGUE_URL)
+                urlInput.setText(MainActivity.DEFAULT_CATALOGUE_URL)
+            }
+            makeLiquid(this)
+        })
+        panel.addView(spacer(dp(12)))
+
+        // Divider
+        panel.addView(TextView(context).apply {
+            text = "or enter a custom URL"; setTextColor(MUTED_DIM); textSize = 11f
+            gravity = Gravity.CENTER; setPadding(0, dp(2), 0, dp(8))
+        })
+
+        // URL input
         val currentUrl = sourcesManager.getApiUrl()
-        val urlInput = EditText(context).apply {
-            hint = "https://api.example.com"
+        urlInput = EditText(context).apply {
+            hint = "https://raw.githubusercontent.com/.../games.json"
             setHintTextColor(Color.argb(80, 200, 180, 130))
             setTextColor(TEXT); textSize = 13f
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
@@ -162,6 +181,7 @@ class ProviderSettingsScreen(private val context: Context) {
         panel.addView(inputWrapper)
         panel.addView(spacer(dp(10)))
 
+        // SAVE URL button
         panel.addView(TextView(context).apply {
             text = "SAVE URL"; setTextColor(Color.rgb(220, 200, 160)); textSize = 12f
             typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
@@ -177,56 +197,34 @@ class ProviderSettingsScreen(private val context: Context) {
         return panel
     }
 
-    private fun defaultSourcesPanel(sourcesManager: SourcesManager): LinearLayout {
+    // Shared reference so the button can set text
+    private lateinit var urlInput: EditText
+
+    private fun helpPanel(): LinearLayout {
         val panel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(14), dp(14), dp(14))
             background = glassBg(dp(14))
         }
 
-        val defaults = listOf(
-            "Community RPG Maker Games" to "https://rpg-games.example.com",
-            "Indie Game Catalog" to "https://indie-catalog.example.com",
-        )
+        panel.addView(TextView(context).apply {
+            text = """
+Runestone can load games from a static JSON catalogue or a REST API.
 
-        defaults.forEach { (name, url) ->
-            val row = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(8), dp(8), dp(8), dp(8))
-                background = GradientDrawable().apply {
-                    setColor(Color.argb(15, 255, 255, 255)); cornerRadius = dp(8).toFloat()
-                }
-            }
-            row.addView(LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(TextView(context).apply {
-                    text = name; setTextColor(TEXT); textSize = 13f; typeface = Typeface.DEFAULT_BOLD
-                })
-                addView(TextView(context).apply {
-                    text = url; setTextColor(MUTED_DIM); textSize = 10f
-                    setPadding(0, dp(2), 0, 0)
-                })
-            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+\u2022 Static Catalogue — A raw JSON file with a "games" array
+\u2022 REST API — A backend server with /games?source= endpoints
 
-            row.addView(TextView(context).apply {
-                text = "ADD"; setTextColor(ACCENT); textSize = 11f
-                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setPadding(dp(10), dp(4), dp(10), dp(4))
-                background = GradientDrawable().apply {
-                    setColor(Color.argb(30, 207, 174, 126)); cornerRadius = dp(6).toFloat()
-                    setStroke(dp(1), Color.argb(40, 207, 174, 126))
-                }
-                setOnClickListener {
-                    animTap(this)
-                    sourcesManager.addSource(url)
-                }
-                makeLiquid(this)
-            })
+To create your own catalogue:
+1. Fork the runestone-catalogue repo on GitHub
+2. Edit games.json with your game entries
+3. Paste the raw URL above
 
-            panel.addView(row)
-            panel.addView(spacer(dp(6)))
-        }
+Each game entry needs: id, title, engine, downloadUrl.
+            """.trimIndent()
+            setTextColor(MUTED); textSize = 11f
+            setPadding(0, dp(2), 0, dp(2))
+            setLineSpacing(2f, 1f)
+        })
 
         return panel
     }
@@ -242,12 +240,12 @@ class ProviderSettingsScreen(private val context: Context) {
         }
 
         panel.addView(TextView(context).apply {
-            text = "Clear All Sources"
+            text = "Clear Catalogue URL"
             setTextColor(Color.rgb(200, 140, 140)); textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
         })
         panel.addView(TextView(context).apply {
-            text = "Remove all configured sources. This cannot be undone."
+            text = "Remove the configured catalogue URL. This cannot be undone."
             setTextColor(MUTED); textSize = 11f
             setPadding(0, dp(4), 0, dp(10))
         })
@@ -264,39 +262,6 @@ class ProviderSettingsScreen(private val context: Context) {
                 onClearAll()
             }
             makeLiquid(this)
-        })
-
-        return panel
-    }
-
-    private fun infoPanel(): LinearLayout {
-        val panel = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(14), dp(14), dp(14))
-            background = glassBg(dp(14))
-        }
-
-        panel.addView(TextView(context).apply {
-            text = """
-The Provider System lets you browse and download games from configured sources.
-
-\u2022 API Server — A backend that aggregates game catalogs from multiple sources
-\u2022 Sources — URLs pointing to individual game catalogs
-\u2022 The app fetches available games from each source via the API
-
-To set up your own provider:
-1. Deploy a compatible API server
-2. Enter the API URL above
-3. Add source URLs that the API can query
-
-Status indicators:
-\u25CF Green = source active and reachable
-\u25CF Yellow = source pending (not yet checked)
-\u25CF Red = source unreachable or failed
-            """.trimIndent()
-            setTextColor(MUTED); textSize = 11f
-            setPadding(0, dp(2), 0, dp(2))
-            setLineSpacing(2f, 1f)
         })
 
         return panel

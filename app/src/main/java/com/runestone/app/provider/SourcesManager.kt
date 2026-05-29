@@ -80,10 +80,18 @@ class SourcesManager(private val context: Context) {
         }
     }
 
+    fun isStaticCatalogueUrl(url: String): Boolean =
+        url.endsWith(".json") || url.contains("raw.githubusercontent.com")
+
     fun fetchGamesFromSources(onResult: (List<AvailableGame>, String?) -> Unit) {
         val apiUrl = getApiUrl()
         if (apiUrl.isEmpty()) {
-            onResult(emptyList(), "Configure API Server")
+            onResult(emptyList(), "Set up a game catalogue to browse games")
+            return
+        }
+
+        if (isStaticCatalogueUrl(apiUrl)) {
+            fetchGamesFromCatalogue(apiUrl, onResult)
             return
         }
 
@@ -118,6 +126,47 @@ class SourcesManager(private val context: Context) {
             } catch (e: Exception) {
                 Log.e(TAG, "Fetch failed", e)
                 onResult(emptyList(), e.message ?: "Network error")
+            }
+        }.start()
+    }
+
+    fun fetchGamesFromCatalogue(url: String, onResult: (List<AvailableGame>, String?) -> Unit) {
+        Thread {
+            try {
+                val conn = URL(url).openConnection() as HttpURLConnection
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+                conn.setRequestProperty("Accept", "application/json")
+
+                try {
+                    if (conn.responseCode != 200) {
+                        throw RuntimeException("HTTP ${conn.responseCode}")
+                    }
+
+                    val body = BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
+                    val json = JSONObject(body)
+                    val gamesArr = json.optJSONArray("games") ?: JSONArray()
+
+                    val games = (0 until gamesArr.length()).map { i ->
+                        val obj = gamesArr.getJSONObject(i)
+                        AvailableGame(
+                            id = obj.optString("id", "$i"),
+                            title = obj.optString("title", "Unknown"),
+                            engine = obj.optString("engine", "").ifEmpty { null },
+                            fileSize = obj.optLong("fileSize", -1).let { if (it < 0) null else it },
+                            downloadUrl = obj.optString("downloadUrl", "").ifEmpty { null },
+                            sourceName = obj.optString("sourceName", "Catalogue"),
+                            coverUrl = obj.optString("coverUrl", "").ifEmpty { null },
+                        )
+                    }
+
+                    onResult(games, null)
+                } finally {
+                    conn.disconnect()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Catalogue fetch failed", e)
+                onResult(emptyList(), e.message ?: "Failed to load catalogue")
             }
         }.start()
     }

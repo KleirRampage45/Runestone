@@ -81,6 +81,7 @@ class MainActivity : Activity() {
         private const val TAG = "Runestone"
         private const val NOTIFICATION_CHANNEL = "runestone_downloads"
         private const val NOTIFICATION_ID_DOWNLOAD = 2001
+        const val DEFAULT_CATALOGUE_URL = "https://raw.githubusercontent.com/KleirRampage45/runestone-catalogue/main/games.json"
     }
 
     private var pausedGamePath: String? = null
@@ -109,6 +110,7 @@ class MainActivity : Activity() {
         refreshGames()
         createNotificationChannel()
         setupDownloadCallbacks()
+        setupDefaultCatalogue()
 
         // Create permanent root frame - setContentView ONCE
         rootContainer = FrameLayout(this).apply {
@@ -138,6 +140,12 @@ class MainActivity : Activity() {
             }
             val notificationManager = getSystemService(NotificationManager::class.java)
             notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun setupDefaultCatalogue() {
+        if (sourcesManager.getApiUrl().isEmpty()) {
+            sourcesManager.setApiUrl(DEFAULT_CATALOGUE_URL)
         }
     }
 
