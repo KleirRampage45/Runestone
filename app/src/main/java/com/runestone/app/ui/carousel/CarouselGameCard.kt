@@ -11,18 +11,22 @@
 package com.runestone.app.ui.carousel
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.runestone.app.ui.GameCardInfo
+import java.net.URL
 
 class CarouselGameCard(context: Context) : FrameLayout(context) {
 
+    private val coverImage: ImageView
     private val titleView: TextView
     private val engineBadge: TextView
 
@@ -32,56 +36,113 @@ class CarouselGameCard(context: Context) : FrameLayout(context) {
             ViewGroup.LayoutParams.WRAP_CONTENT,
         )
 
-        // Card background — glass style matching existing UI
+        // Card background — glass style
         background = GradientDrawable().apply {
             setColor(Color.argb(220, 12, 11, 16))
             cornerRadius = dp(22).toFloat()
             setStroke(dp(1), Color.argb(60, 207, 174, 126))
         }
 
-        // Content layout
-        val inner = LinearLayout(context).apply {
+        // Cover image area (takes up top portion of card)
+        coverImage = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
+        }
+        addView(coverImage)
+
+        // Bottom overlay for title + badge
+        val bottomOverlay = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(20), dp(24), dp(20), dp(24))
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(200, 3, 3, 4))
+                cornerRadii = floatArrayOf(
+                    0f, 0f, 0f, 0f,
+                    dp(22).toFloat(), dp(22).toFloat(),
+                    dp(22).toFloat(), dp(22).toFloat(),
+                )
+            }
         }
 
-        // Game title
         titleView = TextView(context).apply {
-            textSize = 18f
-            setTextColor(Color.rgb(220, 210, 200))
+            textSize = 14f
+            setTextColor(Color.rgb(232, 229, 220))
             typeface = Typeface.create("serif", Typeface.BOLD)
             gravity = Gravity.CENTER
-            maxLines = 3
+            maxLines = 2
         }
-        inner.addView(titleView)
+        bottomOverlay.addView(titleView)
 
-        // Spacer
-        inner.addView(TextView(context).apply {
-            height = dp(12)
-        })
-
-        // Engine badge
         engineBadge = TextView(context).apply {
-            textSize = 11f
+            textSize = 10f
             setTextColor(Color.rgb(207, 174, 126))
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            setPadding(dp(10), dp(4), dp(10), dp(4))
+            setPadding(dp(8), dp(3), dp(8), dp(3))
             background = GradientDrawable().apply {
                 setColor(Color.argb(40, 200, 170, 130))
-                cornerRadius = dp(5).toFloat()
-                setStroke(dp(1), Color.argb(50, 200, 170, 130))
+                cornerRadius = dp(4).toFloat()
+                setStroke(dp(1), Color.argb(40, 200, 170, 130))
             }
         }
-        inner.addView(engineBadge)
+        bottomOverlay.addView(engineBadge)
 
-        addView(inner)
+        addView(bottomOverlay, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM,
+        ))
     }
 
     fun bind(game: GameCardInfo) {
         titleView.text = game.displayName
         engineBadge.text = game.engineType.label
+
+        // Always set engine-themed gradient first as base
+        setEngineGradient(game.engineType.label)
+
+        // Try to load cover art in background
+        val url = game.coverUrl
+        if (!url.isNullOrBlank()) {
+            Thread {
+                try {
+                    val bitmap = BitmapFactory.decodeStream(URL(url).openStream())
+                    if (bitmap != null) {
+                        post {
+                            coverImage.setImageBitmap(bitmap)
+                            coverImage.alpha = 0f
+                            coverImage.animate().alpha(1f).setDuration(300).start()
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Fallback: gradient stays as-is
+                }
+            }.start()
+        }
+    }
+
+    private fun setEngineGradient(engine: String) {
+        val colors = when {
+            engine.contains("RGSS", ignoreCase = true) -> intArrayOf(
+                Color.rgb(60, 40, 20), Color.rgb(20, 15, 25),
+            )
+            engine.contains("MV", ignoreCase = true) || engine.contains("MZ", ignoreCase = true) -> intArrayOf(
+                Color.rgb(20, 40, 60), Color.rgb(15, 15, 25),
+            )
+            engine.contains("2K", ignoreCase = true) || engine.contains("2k", ignoreCase = true) -> intArrayOf(
+                Color.rgb(30, 50, 30), Color.rgb(15, 20, 15),
+            )
+            else -> intArrayOf(
+                Color.rgb(30, 25, 35), Color.rgb(15, 12, 18),
+            )
+        }
+        val gradient = GradientDrawable(GradientDrawable.Orientation.TL_BR, colors)
+        gradient.cornerRadius = dp(22).toFloat()
+        coverImage.setImageDrawable(gradient)
     }
 
     private fun dp(value: Int): Int =

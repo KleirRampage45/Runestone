@@ -41,6 +41,7 @@ data class GameCardInfo(
     val fileCount: Int,
     val isReady: Boolean,
     val isPaused: Boolean = false,
+    val coverUrl: String? = null,
 )
 
 /** Tracks the currently selected card's views for single-selection UX */

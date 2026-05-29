@@ -467,7 +467,15 @@ class MainActivity : Activity() {
             SortMode.NAME_DESC -> filtered.sortedByDescending { it.displayName.lowercase() }
             else -> filtered
         }
-        val cards = filtered.map { toCardInfo(it) }
+        val cards = filtered.map { toCardInfo(it) }.map { card ->
+            // Try to find matching cover from available games by title
+            val coverUrl = availableGames.firstOrNull {
+                it.title.equals(card.displayName, ignoreCase = true) ||
+                it.title.contains(card.displayName, ignoreCase = true) ||
+                card.displayName.contains(it.title, ignoreCase = true)
+            }?.coverUrl
+            card.copy(coverUrl = coverUrl)
+        }
         val pausedGame = cards.find { it.isPaused }
 
         val homeView = HomeScreen(this).create(

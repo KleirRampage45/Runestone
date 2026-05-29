@@ -11,8 +11,16 @@
 package com.runestone.app.ui.carousel
 
 import android.content.Context
+import android.graphics.RenderEffect
+import android.graphics.Shader
+import android.os.Build
 import android.view.ViewGroup
+import androidx.recyclerview.widget.LinearSmoothScroller
 import androidx.recyclerview.widget.RecyclerView
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sign
 
 class Carousel3DLayoutManager(
     private val context: Context,
@@ -66,6 +74,7 @@ class Carousel3DLayoutManager(
             child.layout(left, top, right, bottom)
             currentX += cardWidthPx + cardSpacingPx
         }
+        updateTransforms()
     }
 
     override fun canScrollHorizontally() = true
@@ -84,6 +93,7 @@ class Carousel3DLayoutManager(
         }
         scrollOffset += consumed
         offsetChildrenHorizontal(-consumed)
+        updateTransforms()
         return consumed
     }
 
@@ -98,10 +108,72 @@ class Carousel3DLayoutManager(
         state: RecyclerView.State,
         position: Int,
     ) {
-        val targetX = position * (cardWidthPx + cardSpacingPx)
-        recyclerView.smoothScrollBy(targetX - scrollOffset, 0)
+        val scroller = CenterSnapScroller(recyclerView.context)
+        scroller.targetPosition = position
+        startSmoothScroll(scroller)
+    }
+
+    override fun onAttachedToWindow(view: RecyclerView?) {
+        super.onAttachedToWindow(view)
+        view?.cameraDistance = 8000f * context.resources.displayMetrics.density
     }
 
     private fun dp(value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
+
+    private fun lerp(start: Float, end: Float, t: Float): Float =
+        start + (end - start) * t.coerceIn(0f, 1f)
+
+    private fun updateTransforms() {
+        val containerCenter = width / 2f
+        for (i in 0 until childCount) {
+            val child = getChildAt(i) ?: continue
+            val childCenter = (child.left + child.right) / 2f
+            val position = (childCenter - containerCenter) / (cardWidthPx + cardSpacingPx).toFloat()
+            val absPos = abs(position)
+
+            // 3D transforms
+            val scale = lerp(1.0f, 0.65f, (absPos / 2f).coerceIn(0f, 1f))
+            val rotation = sign(position) * lerp(0f, 45f, (absPos / 2f).coerceIn(0f, 1f))
+            val alpha = lerp(1.0f, 0.45f, (absPos / 2f).coerceIn(0f, 1f))
+
+            child.scaleX = scale
+            child.scaleY = scale
+            child.rotationY = rotation
+            child.alpha = alpha
+
+            // Elevation
+            child.elevation = lerp(14f, 2f, (absPos / 2f).coerceIn(0f, 1f))
+
+            // Blur for edge cards (API 31+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val blurRadius = when {
+                    absPos < 0.5f -> 0f
+                    absPos < 1.5f -> 2f
+                    else -> 4f
+                }
+                if (blurRadius > 0f) {
+                    child.setRenderEffect(RenderEffect.createBlurEffect(
+                        blurRadius, blurRadius, Shader.TileMode.CLAMP
+                    ))
+                } else {
+                    child.setRenderEffect(null)
+                }
+            }
+        }
+    }
+
+    private class CenterSnapScroller(context: Context) : LinearSmoothScroller(context) {
+        override fun calculateDtToFit(
+            viewStart: Int, viewEnd: Int,
+            boxStart: Int, boxEnd: Int,
+            viewVelocity: Int
+        ): Int {
+            val viewCenter = (viewStart + viewEnd) / 2
+            val containerCenter = (boxStart + boxEnd) / 2
+            return (containerCenter - viewCenter) / 2
+        }
+
+        override fun getVerticalSnapPreference() = SNAP_TO_START
+    }
 }
