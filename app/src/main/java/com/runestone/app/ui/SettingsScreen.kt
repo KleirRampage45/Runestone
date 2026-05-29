@@ -28,6 +28,7 @@ import android.widget.Switch
 import android.widget.TextView
 import com.runestone.app.data.LayoutMode
 import com.runestone.app.data.RunnerSettings
+import com.runestone.app.data.UIMode
 
 class SettingsScreen(private val context: Context) {
 
@@ -72,6 +73,17 @@ class SettingsScreen(private val context: Context) {
         content.addView(
             layoutSelector(current.layoutMode) { selected ->
                 current = current.copy(layoutMode = selected)
+                onSettingsChanged(current)
+            },
+        )
+
+        content.addView(spacer(14))
+
+        // UI Mode
+        content.addView(sectionTitle("UI Mode", "Choose how your library is displayed."))
+        content.addView(
+            uiModeSelector(current.uiMode) { selected ->
+                current = current.copy(uiMode = selected)
                 onSettingsChanged(current)
             },
         )
@@ -140,7 +152,7 @@ class SettingsScreen(private val context: Context) {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(16), dp(14), dp(16), dp(14))
-            setBackgroundColor(Color.rgb(15, 14, 18))
+            setBackgroundColor(Color.rgb(3, 3, 4))
 
             addView(
                 TextView(context).apply {
@@ -224,6 +236,61 @@ class SettingsScreen(private val context: Context) {
                     textSize = 11f
                     gravity = Gravity.CENTER
                     setPadding(dp(2), dp(4), dp(2), 0)
+                },
+            )
+        }
+
+    private fun uiModeSelector(selected: UIMode, onSelect: (UIMode) -> Unit): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(
+                twoColumn(
+                    uiModeCard(UIMode.GRID, selected, onSelect),
+                    uiModeCard(UIMode.CAROUSEL_3D, selected, onSelect),
+                ),
+            )
+            addView(spacer(10))
+            addView(
+                twoColumn(
+                    uiModeCard(UIMode.LIST, selected, onSelect),
+                    uiModeCard(UIMode.TILES, selected, onSelect),
+                ),
+            )
+        }
+
+    private fun uiModeCard(
+        mode: UIMode,
+        selected: UIMode,
+        onSelect: (UIMode) -> Unit,
+    ): LinearLayout =
+        settingsPanel {
+            setOnClickListener {
+                animTap(this)
+                onSelect(mode)
+            }
+            background = panelBackground(
+                if (selected == mode) Color.argb(200, 33, 28, 27) else Color.argb(190, 12, 11, 16),
+                stroke = if (selected == mode) ACCENT else Color.argb(60, 207, 174, 126),
+                corner = 16,
+            )
+            makeLiquid(this)
+            addView(
+                TextView(context).apply {
+                    text = mode.label
+                    setTextColor(TEXT)
+                    textSize = 16f
+                    typeface = Typeface.DEFAULT_BOLD
+                    gravity = Gravity.CENTER
+                    setPadding(0, dp(14), 0, 0)
+                },
+            )
+            addView(
+                TextView(context).apply {
+                    text = mode.description
+                    setTextColor(MUTED)
+                    textSize = 12f
+                    gravity = Gravity.CENTER
+                    setPadding(dp(4), dp(4), dp(4), dp(14))
                 },
             )
         }

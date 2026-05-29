@@ -15,11 +15,14 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
 import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
 import android.util.Log
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.TextView
 import android.widget.Toast
 import android.app.Notification
 import android.app.NotificationChannel
@@ -27,6 +30,7 @@ import android.app.NotificationManager
 import android.os.Build
 import com.runestone.app.data.EngineType
 import com.runestone.app.data.RunnerSettings
+import com.runestone.app.data.UIMode
 import com.runestone.app.ui.SortMode
 import com.runestone.app.importer.SafGameImporter
 import com.runestone.app.importer.SafImportResult
@@ -122,7 +126,7 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(3, 3, 4))
         }
         setContentView(rootContainer)
-        showHome()
+        showSplash()
     }
 
     private fun refreshGames() {
@@ -348,9 +352,10 @@ class MainActivity : Activity() {
             // Semi-transparent black dims the home screen underneath
             setBackgroundColor(Color.argb(160, 0, 0, 0))
 
-            // Fade in the overlay
+            // Start below final position so it slides up while fading in
             alpha = 0f
-            animate().alpha(1f).setDuration(250).start()
+            translationY = resources.displayMetrics.heightPixels * 0.08f
+            animate().alpha(1f).translationY(0f).setDuration(250).start()
 
             // Panel fills available space with margins so the dock peeks through
             val lp = FrameLayout.LayoutParams(
@@ -380,7 +385,7 @@ class MainActivity : Activity() {
      */
     private fun dismissOverlay(onDismissed: () -> Unit = { showHome() }) {
         activeOverlay?.let { overlay ->
-            overlay.animate().alpha(0f).setDuration(200).withEndAction {
+            overlay.animate().alpha(0f).translationY(resources.displayMetrics.heightPixels * 0.08f).setDuration(200).withEndAction {
                 rootContainer.removeView(overlay)
                 activeOverlay = null
                 onDismissed()
@@ -390,6 +395,48 @@ class MainActivity : Activity() {
 
     /** Density-independent pixels helper. */
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
+    private fun showSplash() {
+        val splash = FrameLayout(this).apply {
+            setBackgroundColor(Color.rgb(3, 3, 4))
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+
+            val titleText = TextView(this@MainActivity).apply {
+                text = "RUNESTONE"
+                setTextColor(Color.rgb(207, 174, 126)) // ACCENT color
+                textSize = 32f
+                typeface = Typeface.create("serif", Typeface.BOLD)
+                letterSpacing = 0.3f
+                gravity = Gravity.CENTER
+            }
+            addView(titleText, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+
+            // Subtitle
+            val sub = TextView(this@MainActivity).apply {
+                text = "Multi-Engine Game Launcher"
+                setTextColor(Color.argb(140, 180, 160, 130))
+                textSize = 13f
+                letterSpacing = 0.2f
+                gravity = Gravity.CENTER
+            }
+            val subLp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+            subLp.topMargin = dp(60)
+            addView(sub, subLp)
+
+            alpha = 0f
+        }
+        rootContainer.addView(splash, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+
+        // Fade in quickly, hold, then fade out and show home
+        splash.animate().alpha(1f).setDuration(400).withEndAction {
+            splash.postDelayed({
+                splash.animate().alpha(0f).setDuration(400).withEndAction {
+                    rootContainer.removeView(splash)
+                    showHome()
+                }.start()
+            }, 600)
+        }.start()
+    }
 
     // ═══════════════════════════════════════════════════════
     //  Screen navigation
@@ -441,6 +488,7 @@ class MainActivity : Activity() {
             activeSearch = searchQuery,
             currentSort = currentSort,
             pausedGame = pausedGame,
+            uiMode = settings.uiMode,
             onResume = if (pausedGame != null) {{ playGame(pausedGame.storageName) }} else null,
             onStop = if (pausedGame != null) {{ storageName ->
                 val game = games.find { it.storageName == storageName }
@@ -535,25 +583,28 @@ class MainActivity : Activity() {
         manageFilesVisible = false
         isLoadingGames = true
         gamesErrorMessage = null
-        renderAvailableGamesScreen()
+        val installedTitles = games.map { it.displayName }.toSet()
+        renderAvailableGamesScreen(installedGameTitles = installedTitles)
 
         sourcesManager.fetchGamesFromSources { games, error ->
             runOnUiThread {
                 availableGames = games
                 isLoadingGames = false
                 gamesErrorMessage = error
-                renderAvailableGamesScreen()
+                val installedTitles = this.games.map { it.displayName }.toSet()
+                renderAvailableGamesScreen(installedGameTitles = installedTitles)
             }
         }
     }
 
-    private fun renderAvailableGamesScreen() {
+    private fun renderAvailableGamesScreen(installedGameTitles: Set<String> = emptySet()) {
         showOverlay(
             AvailableGamesScreen(this).create(
                 games = availableGames,
                 isLoading = isLoadingGames,
                 errorMessage = gamesErrorMessage,
                 downloadStates = downloadProgressMap,
+                installedGameTitles = installedGameTitles,
                 onRefresh = { showAvailableGames() },
                 onManageSources = { showSources() },
                 onProviderSettings = { showProviderSettings() },

@@ -13,6 +13,7 @@ package com.runestone.app.ui
 import android.content.Context
 import com.runestone.app.data.LayoutMode
 import com.runestone.app.data.RunnerSettings
+import com.runestone.app.data.UIMode
 
 class SettingsStore(context: Context) {
     private val prefs = context.getSharedPreferences("runestone-settings-v1", Context.MODE_PRIVATE)
@@ -32,6 +33,9 @@ class SettingsStore(context: Context) {
             smoothScaling = prefs.getBoolean("smoothScaling", defaults.smoothScaling),
             textScale = defaults.textScale,
             forceAudioExt = prefs.getString("forceAudioExt", defaults.forceAudioExt) ?: defaults.forceAudioExt,
+            uiMode = runCatching {
+                UIMode.valueOf(prefs.getString("uiMode", defaults.uiMode.name).orEmpty())
+            }.getOrDefault(defaults.uiMode),
         )
 
     fun save(settings: RunnerSettings) {
@@ -46,6 +50,7 @@ class SettingsStore(context: Context) {
             .putBoolean("smoothScaling", settings.smoothScaling)
             .putFloat("textScale", 1.0f)
             .putString("forceAudioExt", settings.forceAudioExt)
+            .putString("uiMode", settings.uiMode.name)
             .apply()
     }
 }

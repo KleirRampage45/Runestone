@@ -29,6 +29,10 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.runestone.app.R
 import com.runestone.app.data.EngineType
+import com.runestone.app.data.UIMode
+import com.runestone.app.ui.carousel.Carousel3DLayoutManager
+import com.runestone.app.ui.carousel.GameCarouselAdapter
+import androidx.recyclerview.widget.RecyclerView
 
 data class GameCardInfo(
     val storageName: String,
@@ -63,6 +67,7 @@ class HomeScreen(private val context: Context) {
         pausedGame: GameCardInfo? = null,
         onResume: (() -> Unit)? = null,
         onStop: ((String) -> Unit)? = null,
+        uiMode: UIMode = UIMode.GRID,
     ): FrameLayout {
         // ── Single-selection tracker ──
         val selectedCard = SelectedCardRef(null, null, null)
@@ -108,9 +113,20 @@ class HomeScreen(private val context: Context) {
                 setPadding(0, dp(4), 0, 0)
             })
         } else {
-            games.forEach { game ->
-                content.addView(createHeroCard(game, onPlay, onManage, ::deselectCurrent, selectedCard))
-                content.addView(spacer(dp(10)))
+            when (uiMode) {
+                UIMode.CAROUSEL_3D -> {
+                    scroll.visibility = View.GONE
+                    root.addView(renderCarousel3D(games, onPlay), FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                    ))
+                }
+                else -> {
+                    games.forEach { game ->
+                        content.addView(createHeroCard(game, onPlay, onManage, ::deselectCurrent, selectedCard))
+                        content.addView(spacer(dp(10)))
+                    }
+                }
             }
         }
 
@@ -839,6 +855,31 @@ class HomeScreen(private val context: Context) {
                 view.animate().scaleX(1f).scaleY(1f).rotationBy(180f).setDuration(280)
                     .setInterpolator(OvershootInterpolator(1.5f)).start()
             }.start()
+    }
+
+    private fun renderCarousel3D(
+        games: List<GameCardInfo>,
+        onPlay: (String) -> Unit,
+    ): FrameLayout {
+        val container = FrameLayout(context).apply {
+            setBackgroundColor(Color.rgb(3, 3, 4))
+        }
+
+        val recyclerView = RecyclerView(context).apply {
+            layoutManager = Carousel3DLayoutManager(context)
+            adapter = GameCarouselAdapter(games) { game ->
+                onPlay(game.storageName)
+            }
+            overScrollMode = RecyclerView.OVER_SCROLL_NEVER
+            clipToPadding = false
+            isNestedScrollingEnabled = false
+        }
+        container.addView(recyclerView, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+
+        return container
     }
 
     // ============================================================

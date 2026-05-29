@@ -39,6 +39,7 @@ class AvailableGamesScreen(private val context: Context) {
         isLoading: Boolean,
         errorMessage: String?,
         downloadStates: Map<String, DownloadManager.DownloadProgress> = emptyMap(),
+        installedGameTitles: Set<String> = emptySet(),
         onRefresh: () -> Unit,
         onManageSources: () -> Unit,
         onProviderSettings: () -> Unit,
@@ -84,16 +85,8 @@ class AvailableGamesScreen(private val context: Context) {
         ))
 
         if (isLoading) {
-            content.addView(spacer(dp(48)))
-            content.addView(TextView(context).apply {
-                text = "Fetching games..."
-                setTextColor(MUTED); textSize = 14f; gravity = Gravity.CENTER
-            })
-            content.addView(spacer(dp(8)))
-            content.addView(TextView(context).apply {
-                text = "Please wait"
-                setTextColor(MUTED_DIM); textSize = 11f; gravity = Gravity.CENTER
-            })
+            content.addView(spacer(dp(12)))
+            content.addView(loadingSkeleton())
         } else if (errorMessage != null) {
             content.addView(spacer(dp(36)))
             content.addView(TextView(context).apply {
@@ -108,7 +101,12 @@ class AvailableGamesScreen(private val context: Context) {
             content.addView(spacer(dp(8)))
             content.addView(makeActionButton("REFRESH", true) { onRefresh() })
         } else if (games.isEmpty()) {
-            content.addView(spacer(dp(48)))
+            content.addView(spacer(dp(36)))
+            content.addView(TextView(context).apply {
+                text = "📦"
+                textSize = 48f; gravity = Gravity.CENTER
+            })
+            content.addView(spacer(dp(12)))
             content.addView(TextView(context).apply {
                 text = "No games available"
                 setTextColor(MUTED); textSize = 16f; gravity = Gravity.CENTER
@@ -129,14 +127,14 @@ class AvailableGamesScreen(private val context: Context) {
             val searchRow = makeSearchBar { query ->
                 val filtered = if (query.isBlank()) games
                 else games.filter { it.title.contains(query, ignoreCase = true) }
-                renderGameList(gamesContainer, filtered, downloadStates, onDownload, onPauseDownload)
+                renderGameList(gamesContainer, filtered, downloadStates, onDownload, onPauseDownload, installedGameTitles)
             }
             content.addView(searchRow)
             content.addView(spacer(dp(10)))
 
             content.addView(gamesContainer, ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            renderGameList(gamesContainer, games, downloadStates, onDownload, onPauseDownload)
+            renderGameList(gamesContainer, games, downloadStates, onDownload, onPauseDownload, installedGameTitles)
         }
 
         return root
@@ -150,7 +148,7 @@ class AvailableGamesScreen(private val context: Context) {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(12), dp(12), dp(12), dp(10))
-        setBackgroundColor(Color.rgb(15, 14, 18))
+        setBackgroundColor(Color.rgb(3, 3, 4))
 
         addView(TextView(context).apply {
             text = "Back"
@@ -190,10 +188,11 @@ class AvailableGamesScreen(private val context: Context) {
         downloadStates: Map<String, DownloadManager.DownloadProgress>,
         onDownload: (AvailableGame) -> Unit,
         onPauseDownload: (String) -> Unit,
+        installedGameTitles: Set<String> = emptySet(),
     ) {
         container.removeAllViews()
         games.forEach { game ->
-            container.addView(gameCard(game, downloadStates[game.id], onDownload, onPauseDownload))
+            container.addView(gameCard(game, downloadStates[game.id], onDownload, onPauseDownload, installedGameTitles))
             container.addView(spacer(dp(12)))
         }
     }
@@ -259,6 +258,7 @@ class AvailableGamesScreen(private val context: Context) {
         progress: DownloadManager.DownloadProgress?,
         onDownload: (AvailableGame) -> Unit,
         onPauseDownload: (String) -> Unit,
+        installedGameTitles: Set<String> = emptySet(),
     ): LinearLayout {
         val screenW = context.resources.displayMetrics.widthPixels
         val cardW = (screenW * 0.88f).toInt()
@@ -381,6 +381,9 @@ class AvailableGamesScreen(private val context: Context) {
                     animTap(it); onDownload(game)
                 })
             }
+            game.title in installedGameTitles -> {
+                actionBar.addView(makeActionBtn("INSTALLED", Color.rgb(140, 220, 140), Color.argb(40, 80, 160, 80)) {})
+            }
             game.downloadOptions.size > 1 -> {
                 actionBar.addView(makeActionBtn("GET (${game.downloadOptions.size})", Color.rgb(140, 220, 140), Color.argb(40, 80, 160, 80)) {
                     animTap(it); showDownloadOptionsDialog(game, onDownload)
@@ -390,6 +393,9 @@ class AvailableGamesScreen(private val context: Context) {
                 actionBar.addView(makeActionBtn("GET", Color.rgb(140, 220, 140), Color.argb(40, 80, 160, 80)) {
                     animTap(it); onDownload(game)
                 })
+            }
+            else -> {
+                actionBar.addView(makeActionBtn("NO DOWNLOADS", Color.rgb(160, 150, 130), Color.argb(40, 120, 110, 90)) {})
             }
         }
 
@@ -591,6 +597,77 @@ class AvailableGamesScreen(private val context: Context) {
 
     private fun spacer(h: Int): View = View(context).apply {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, if (h > 0) h else 1)
+    }
+
+    // ── Loading skeleton ──
+
+    private fun loadingSkeleton(): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        val screenW = context.resources.displayMetrics.widthPixels
+        val cardW = (screenW * 0.88f).toInt()
+        repeat(3) { i ->
+            if (i > 0) addView(spacer(dp(12)))
+            addView(skeletonCard(cardW, i))
+        }
+    }
+
+    private fun skeletonCard(cardW: Int, index: Int): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        layoutParams = LinearLayout.LayoutParams(cardW, dp(120))
+        background = glassBg(dp(14), alpha = 200)
+        gravity = Gravity.CENTER_HORIZONTAL
+
+        // Title placeholder bar
+        addView(spacer(dp(16)))
+        addView(View(context).apply {
+            layoutParams = LinearLayout.LayoutParams((cardW * 0.55f).toInt(), dp(14))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(30, 255, 255, 255))
+                cornerRadius = dp(4).toFloat()
+            }
+        })
+
+        // Subtitle placeholder bar
+        addView(spacer(dp(10)))
+        addView(View(context).apply {
+            layoutParams = LinearLayout.LayoutParams((cardW * 0.35f).toInt(), dp(10))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(20, 255, 255, 255))
+                cornerRadius = dp(3).toFloat()
+            }
+        })
+
+        // Flexible spacer to push button area to bottom
+        addView(spacer(0), LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+
+        // Button area placeholder (bottom bar of the card)
+        addView(View(context).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(20, 255, 255, 255))
+                cornerRadii = floatArrayOf(
+                    0f, 0f, 0f, 0f,
+                    dp(14).toFloat(), dp(14).toFloat(), dp(14).toFloat(), dp(14).toFloat()
+                )
+            }
+        })
+
+        // Staggered pulsing animation — each card starts with a delay
+        postDelayed({
+            startPulse(this)
+        }, (index * 250L))
+    }
+
+    private fun startPulse(view: View) {
+        if (!view.isAttachedToWindow) return
+        view.animate().alpha(0.4f).setDuration(800).withEndAction {
+            if (!view.isAttachedToWindow) return@withEndAction
+            view.animate().alpha(0.8f).setDuration(800).withEndAction {
+                startPulse(view)
+            }.start()
+        }.start()
     }
 
     private fun dp(v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
