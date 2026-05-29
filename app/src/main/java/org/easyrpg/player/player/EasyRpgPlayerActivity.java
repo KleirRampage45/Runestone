@@ -62,8 +62,17 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
     }
 
     // ═══════════════════════════════════════════════
-    // JNI callbacks
+    // JNI callbacks — called by native code
     // ═══════════════════════════════════════════════
+
+    /**
+     * Called by native RTP file finder to locate RPG Maker 2000/2003 RTP.
+     * Returns empty string — most games include RTP resources bundled.
+     */
+    public String getRtpPath() {
+        Log.d(TAG, "getRtpPath — RTP not bundled, returning empty");
+        return "";
+    }
 
     public void openSettings() { Log.d(TAG, "openSettings"); }
 
