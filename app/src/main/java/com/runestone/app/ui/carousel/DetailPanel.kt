@@ -107,12 +107,15 @@ class DetailPanel(context: Context) : LinearLayout(context) {
         TextView(context).apply {
             text = label; setTextColor(textColor); textSize = 13f
             typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setPadding(dp(16), dp(10), dp(16), dp(10))
+            setPadding(dp(20), dp(10), dp(20), dp(10))
             background = GradientDrawable().apply {
                 setColor(bgColor); cornerRadius = dp(10).toFloat()
                 setStroke(dp(1), Color.argb(50, 160, 140, 110))
             }
-            layoutParams = LayoutParams(dp(140), ViewGroup.LayoutParams.WRAP_CONTENT)
+            layoutParams = LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
         }
 
     private fun spacer(h: Int, w: Int = 0): View =

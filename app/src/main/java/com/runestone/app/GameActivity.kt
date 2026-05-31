@@ -458,7 +458,6 @@ class GameActivity : Activity() {
     override fun onBackPressed() {
         val engine = webViewEngine
         if (engine != null) {
-            engine.evaluateJavascript("TouchInput._onCancel();", null)
             val shouldQuit = engine.handleBack()
             if (shouldQuit) {
                 // Clear paused state — game is done

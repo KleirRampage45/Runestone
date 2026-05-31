@@ -220,7 +220,7 @@ class WebViewEngine(context: Context) : WebView(context) {
      */
     fun handleBack(): Boolean {
         if (!config.backButtonQuits) {
-            evaluateJavascript("TouchInput._onCancel();", null)
+            evaluateJavascript("(function(){if(typeof TouchInput!=='undefined'&&TouchInput._onCancel)TouchInput._onCancel();})();", null)
             return false // Don't quit
         }
         return true // Let the activity handle quitting
