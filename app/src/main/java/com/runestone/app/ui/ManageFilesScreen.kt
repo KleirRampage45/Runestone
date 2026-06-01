@@ -44,6 +44,7 @@ class ManageFilesScreen(private val context: Context) {
         onDelete: (storageName: String) -> Unit,
         onViewSaves: (storageName: String) -> Unit,
         onChangeEngine: (storageName: String) -> Unit,
+        onPerGameSettings: (storageName: String) -> Unit,
         onBack: () -> Unit,
     ): LinearLayout {
         val root = LinearLayout(context).apply {
@@ -91,6 +92,7 @@ class ManageFilesScreen(private val context: Context) {
                     onDelete = onDelete,
                     onViewSaves = onViewSaves,
                     onChangeEngine = onChangeEngine,
+                    onPerGameSettings = onPerGameSettings,
                 ),
             )
             content.addView(spacer(14))
@@ -178,6 +180,7 @@ class ManageFilesScreen(private val context: Context) {
         onDelete: (String) -> Unit,
         onViewSaves: (String) -> Unit,
         onChangeEngine: (String) -> Unit,
+        onPerGameSettings: (String) -> Unit,
     ): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(16), dp(16), dp(16), dp(16))
@@ -193,7 +196,7 @@ class ManageFilesScreen(private val context: Context) {
         addView(spacer(12))
         addView(storageBlock(storage))
         addView(spacer(14))
-        addView(actionBlock(game, onImport, onDelete, onViewSaves, onChangeEngine))
+        addView(actionBlock(game, onImport, onDelete, onViewSaves, onChangeEngine, onPerGameSettings))
     }
 
     // ============================================================
@@ -261,9 +264,12 @@ class ManageFilesScreen(private val context: Context) {
         onDelete: (String) -> Unit,
         onViewSaves: (String) -> Unit,
         onChangeEngine: (String) -> Unit,
+        onPerGameSettings: (String) -> Unit,
     ): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
 
+        addView(glassBigButton("PER-GAME SETTINGS", "Customize settings for this game", Color.argb(58, 180, 140, 100)) { onPerGameSettings(game.storageName) })
+        addView(spacer(9))
         addView(glassBigButton("REIMPORT GAME", "Replace game files, keep saves", Color.argb(64, 132, 36, 42)) { onImport(game.storageName) })
         addView(spacer(9))
         addView(twoButtonRow(

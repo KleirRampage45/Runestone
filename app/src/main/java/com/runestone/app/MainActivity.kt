@@ -41,6 +41,7 @@ import com.runestone.app.ui.HomeScreen
 import com.runestone.app.ui.ImportProgressScreen
 import com.runestone.app.ui.ImportProgressView
 import com.runestone.app.ui.ManageFilesScreen
+import com.runestone.app.ui.PerGameSettingsScreen
 import com.runestone.app.ui.ProviderSettingsScreen
 import com.runestone.app.ui.SettingsScreen
 import com.runestone.app.ui.SettingsStore
@@ -591,6 +592,7 @@ class MainActivity : Activity() {
                 onDelete = { sName -> confirmRemoveGameData(sName) },
                 onViewSaves = { sName -> viewSaves(sName) },
                 onChangeEngine = { sName -> showEnginePicker(sName) },
+                onPerGameSettings = { sName -> showPerGameSettings(sName) },
                 onBack = { dismissOverlay() },
             ),
         )
@@ -615,6 +617,7 @@ class MainActivity : Activity() {
                             onDelete = { sName -> confirmRemoveGameData(sName) },
                             onViewSaves = { sName -> viewSaves(sName) },
                             onChangeEngine = { sName -> showEnginePicker(sName) },
+                            onPerGameSettings = { sName -> showPerGameSettings(sName) },
                             onBack = { dismissOverlay() },
                         ),
                     )
@@ -631,6 +634,24 @@ class MainActivity : Activity() {
                 onSettingsChanged = { newSettings ->
                     settings = newSettings
                     settingsStore.save(newSettings)
+                },
+                onBack = { dismissOverlay() },
+            ),
+        )
+    }
+
+    private fun showPerGameSettings(storageName: String) {
+        manageFilesVisible = false
+        val game = games.find { it.storageName == storageName } ?: return
+        val configService = com.runestone.app.data.GameConfigService(this, workspaceManager)
+        val config = configService.loadPerGame(storageName)
+        
+        showOverlay(
+            PerGameSettingsScreen(this).create(
+                gameTitle = game.displayName,
+                config = config,
+                onConfigChanged = { newConfig ->
+                    configService.savePerGame(storageName, newConfig)
                 },
                 onBack = { dismissOverlay() },
             ),
