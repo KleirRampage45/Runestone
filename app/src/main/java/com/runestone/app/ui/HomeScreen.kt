@@ -834,8 +834,38 @@ class HomeScreen(private val context: Context) {
                 cornerRadius = dp(14).toFloat()
                 setStroke(dp(1), Color.argb(50, 100, 90, 80))
             }
+            clipToOutline = true
         }
         cardWrapper.addView(cardFrame)
+
+        // Cover art image (loaded asynchronously if URL available)
+        val coverImage = ImageView(context).apply {
+            layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            visibility = View.GONE
+        }
+        cardFrame.addView(coverImage)
+
+        // Load cover art in background thread
+        if (!game.coverUrl.isNullOrBlank()) {
+            Thread {
+                try {
+                    val bitmap = android.graphics.BitmapFactory.decodeStream(
+                        java.net.URL(game.coverUrl).openStream()
+                    )
+                    if (bitmap != null) {
+                        coverImage.post {
+                            coverImage.setImageBitmap(bitmap)
+                            coverImage.visibility = View.VISIBLE
+                            coverImage.alpha = 0f
+                            coverImage.animate().alpha(1f).setDuration(300).start()
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Cover load failed, keep engine-colored background
+                }
+            }.start()
+        }
 
         // Engraved engine label (inside cardFrame, gets blurred)
         cardFrame.addView(TextView(context).apply {
