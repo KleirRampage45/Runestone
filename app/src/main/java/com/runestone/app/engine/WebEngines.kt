@@ -9,7 +9,9 @@
 package com.runestone.app.engine
 
 import android.content.Context
+import android.content.Intent
 import android.util.Log
+import com.runestone.app.engine.onscripter.OnscripterActivity
 import java.io.File
 
 // ── HTML5 Game Engine ────────────────────────────────────────────
@@ -131,8 +133,18 @@ class NScripterEngine : GameEngine {
     }
 
     override fun launch(context: Context, gameFolder: File, config: GameConfig) {
-        Log.i(TAG, "ONScripter unavailable: ${gameFolder.name}")
-        UnavailableEngine.show(context, "ONScripter")
+        Log.i(TAG, "Launching ONScripter: ${gameFolder.name}")
+        try {
+            val intent = Intent(context, OnscripterActivity::class.java).apply {
+                putExtra("game_path", gameFolder.absolutePath)
+                putExtra("save_path", File(gameFolder, "saves").absolutePath)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to launch OnscripterActivity", e)
+            UnavailableEngine.show(context, "ONScripter")
+        }
     }
 }
 

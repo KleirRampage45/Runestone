@@ -52,7 +52,8 @@ kotlin {
 }
 
 dependencies {
-    implementation("com.intuit.sdp:sdp-android:1.1.0")
+    implementation("androidx.annotation:annotation:1.9.1")
     implementation("androidx.recyclerview:recyclerview:1.4.0")
     implementation("androidx.palette:palette:1.0.0")
+    implementation("com.intuit.sdp:sdp-android:1.1.0")
 }

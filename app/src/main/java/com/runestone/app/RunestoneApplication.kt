@@ -31,7 +31,7 @@ class RunestoneApplication : Application() {
         Log.i(TAG, "Runestone starting up...")
         
         // Initialize all built-in engine plugins
-        EngineRegistry.initDefaults()
+        EngineRegistry.initDefaults(this)
         
         val engineCount = EngineRegistry.all().size
         Log.i(TAG, "Initialized $engineCount engine plugins")

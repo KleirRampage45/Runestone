@@ -10,6 +10,7 @@
 
 package com.runestone.app.engine
 
+import android.content.Context
 import android.util.Log
 import java.io.File
 
@@ -80,7 +81,7 @@ object EngineRegistry {
     }
 
     /** Initialize all built-in engines. Call once from Application.onCreate(). */
-    fun initDefaults() {
+    fun initDefaults(context: Context) {
         // Native engines (bundled — GPL/MIT)
         register(MkxpZEngine())       // XP/VX/VX Ace — mkxp-z GPLv2+
         register(EasyRpgEngine())     // 2000/2003 — EasyRPG GPLv3
@@ -99,12 +100,28 @@ object EngineRegistry {
         // Flash engine (bundled — Ruffle MIT)
         register(RuffleEngine())      // Flash/SWF
 
-        // Native libraries bundled, Android activity wrappers not yet integrated
-        register(RenpyEngine())       // Ren'Py MIT
-        register(GodotEngine())       // Godot MIT
+        // Native libraries bundled, wrappers implemented
+        register(NScripterEngine())   // NScripter / ONScripter GPLv2+ — WORKING
 
-        // Wrapper not yet integrated
-        register(NScripterEngine())   // NScripter / ONScripter GPLv2+
+        // Coming soon (no activity wrapper yet)
+        register(RenpyEngine())       // Ren'Py MIT
+
+        // Optional engines (disabled by default, enable in Settings > Addons)
+        if (isOptionalEnabled(context, "godot")) register(GodotEngine())   // Godot MIT
         register(ElectronEngine())    // Electron (desktop only)
+    }
+
+    /** Check if an optional engine is enabled in settings */
+    fun isOptionalEnabled(context: Context, engineId: String): Boolean {
+        val prefs = context.getSharedPreferences("runestone-optional-engines", Context.MODE_PRIVATE)
+        return prefs.getBoolean(engineId, false)
+    }
+
+    /** Enable or disable an optional engine */
+    fun setOptionalEnabled(context: Context, engineId: String, enabled: Boolean) {
+        val prefs = context.getSharedPreferences("runestone-optional-engines", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean(engineId, enabled).apply()
+        val action = if (enabled) "enabled" else "disabled"
+        Log.i(TAG, "Optional engine $engineId $action — restart app to apply")
     }
 }

@@ -34,6 +34,14 @@
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
 
+        <!-- ONScripter (NScripter) — GPLv2+, bundled native -->
+        <activity
+            android:name="com.runestone.app.engine.onscripter.OnscripterActivity"
+            android:screenOrientation="sensor"
+            android:exported="false"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
