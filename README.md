@@ -1,210 +1,139 @@
 # Runestone
 
-**Multi-engine RPG Maker game launcher for Android — ALL engines bundled natively.**
+**Multi-engine RPG Maker & visual novel game launcher for Android.**
 
-Import, organize, and play RPG Maker and other games on your Android device with **zero external downloads needed**.
-
----
-
-## 🎮 Supported Engines
-
-### RPG Maker Series
-- **XP / VX / VX Ace** — via `libmkxp-z.so` (native arm64-v8a runtime)
-- **MV / MZ** — via Android WebView (Chromium-based, no extra runtime needed)
-- **EasyRPG** — via `libeasyrpg_android.so` (GPLv3 licensed fork)
-
-### Visual Novels & Other
-- **Ren'Py** — via `librenpython.so` (Python runtime for Ren'Py games)
-- **Godot** — via `libgodot_android.so` (Godot 4.6.3, MIT licensed)
-- **ONScripter** — via `libonscripter.so` (ONS format support)
-- **Ruffle** — via embedded Flash runtime (for old Flash games)
+Import, organize, and play games from **16 different engines** on your Android device.
+**82MB APK** with all core runtimes bundled natively — no downloads needed.
 
 ---
 
-## 📦 All Engines Bundled — Zero Downloads Needed
+## Supported Engines (11 working, 2 detect-ready, 2 legacy)
 
-Unlike JoiPlay or other launchers, **Runestone bundles ALL required runtimes natively**.
+| Engine | Status | Runtime | How |
+|--------|--------|---------|-----|
+| RPG Maker XP | ✅ WORKING | mkxp-z native | Bundled .so |
+| RPG Maker VX | ✅ WORKING | mkxp-z native | Bundled .so |
+| RPG Maker VX Ace | ✅ WORKING | mkxp-z native | Bundled .so |
+| RPG Maker 2000 | ✅ WORKING | EasyRPG native | Bundled .so, full JNI |
+| RPG Maker 2003 | ✅ WORKING | EasyRPG native | Bundled .so, full JNI |
+| RPG Maker MV | ✅ WORKING | WebView | System Chromium |
+| RPG Maker MZ | ✅ WORKING | WebView | System Chromium |
+| TyranoBuilder | ✅ WORKING | WebView | System Chromium |
+| Construct 2/3 | ✅ WORKING | WebView | System Chromium |
+| HTML5 Games | ✅ WORKING | WebView | System Chromium |
+| Twine | ✅ WORKING | WebView | System Chromium |
+| VN Maker | ✅ WORKING | WebView | System Chromium |
+| **NScripter / ONScripter** | ✅ **WORKING** | libonscripter.so | **New!** Bundled .so |
+| Flash (Ruffle) | ✅ WORKING | Ruffle.js CDN | WebView + CDN |
+| **Ren'Py** | ⚠️ Wrapper pending | librenpython.so (55MB) | Detection + saves work |
+| **Godot** | 🔧 Optional addon | libgodot_android.so (142MB) | Enable in Settings > Addons |
 
-### APK Size
-- **~223 MB** — Complete with all bundled engines
-- **~5 MB** — Without any bundled engines (WebView-only mode)
-
-### Bundled Runtime Libraries (arm64-v8a)
-| Library | Size | Engine | License |
-|---------|------|--------|---------|
-| `libgodot_android.so` | 142 MB | Godot 4.6.3 | MIT |
-| `librenpython.so` | 55 MB | Ren'Py 8.3.4 | MIT |
-| `libeasyrpg_android.so` | 15 MB | EasyRPG Player 0.8.1 | GPLv3 |
-| `libmkxp-z.so` | 13 MB | RPG Maker XP/VX/VX Ace | GPLv2+ |
-| `libruby.so` | 12 MB | Ruby 3.x (for mkxp-z) | GPLv2+ |
-| `libonscripter.so` | 2.3 MB | ONScripter | GPLv2+ |
-| `libSDL2.so` | 592 KB | SDL 1.2 (ONScripter) | zlib |
-| `libSDL2_image.so` | 7 MB | SDL2_image | zlib |
-| `libSDL2_ttf.so` | 883 KB | SDL2_ttf | zlib |
-| `libSDL2_sound.so` | 903 KB | SDL2_sound | zlib |
-| `libopenal.so` | 1 MB | OpenAL audio | LGPL |
-| `libc++_shared.so` | 1 MB | C++ STL | Apache 2.0 |
-| `libgamebrowser.so` | 76 KB | In-game browser | MIT |
-| `libc++_shared_godot.so` | (bundled with Godot) | Godot runtime | MIT |
-
----
-
-## 🚀 Features
-
-- ✅ **Zero external downloads** — All engines bundled, no runtime downloads needed
-- ✅ **Android SAF import** — Import games from any file manager
-- ✅ **Per-game settings** — Configurable launch options, controls, and more
-- ✅ **Workspace isolation** — Separate saves and data per game
-- ✅ **Virtual gamepad** — Touch-based D-pad and action buttons
-- ✅ **Touch overlay** — Landscape mode with edge controls
-- ✅ **Glassmorphism UI** — Modern, clean interface with animations
-- ✅ **Search, filter, sort** — Find games quickly
-- ✅ **Adaptive icon** — Auto-generates launcher icon
+### Legacy (detect only — no open-source runtime)
+- RPG Maker 95 (1997) / Dante 98 (1992)
+- Electron apps (too heavy for mobile)
 
 ---
 
-## 🏗️ Architecture
+## Quick Start
 
-```
-Runestone Launcher
-├── EngineDetector       → Detects RPG Maker engine from game files
-├── mkxp-z (native)      → XP / VX / VX Ace runtime (ARM64 .so)
-├── EasyRPG (native)     → EasyRPG Player runtime (ARM64 .so)
-├── WebView (system)     → MV / MZ runtime (Chromium via Android WebView)
-├── Ren'Py (native)      → Ren'Py Python runtime (ARM64 .so)
-├── Godot (native)       → Godot 4.6.3 runtime (ARM64 .so)
-├── ONScripter (native)  → ONScripter runtime (ARM64 .so)
-├── Ruffle (native)      → Flash runtime (ARM64 .so)
-├── SAF Importer         → Import games from any file manager
-├── Workspace Manager    → Isolated storage per game
-└── UI                   → Home, Settings, Import, Game Activity screens
-```
-
----
-
-## 📋 Goals
-
-- ✅ Lightweight APK (~5 MB without engines, ~223 MB complete)
-- ✅ No external dependencies — all runtimes embedded or using system APIs
-- ✅ Import games via Android SAF (Storage Access Framework)
-- ✅ Per-game settings, workspace isolation, save management
-- ✅ Virtual gamepad and touch overlay
-- ✅ Clean, modern UI with glassmorphism
-- ✅ Search, filter, and sort games
-- ✅ Adaptive launcher icon
-
----
-
-## 📄 License
-
-GNU General Public License v2 or later — see LICENSE.
-
-This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-
-### Third-Party Components
-
-| Component | License | Description |
-|-----------|---------|-------------|
-| mkxp-z | GPLv2+ | RGSS runtime for XP/VX/VX Ace games |
-| EasyRPG Player | GPLv3 | RPG Maker MV/MZ interpreter |
-| Ren'Py | MIT | Python-based visual novel engine runtime |
-| Godot | MIT | Godot 4.6.3 Android runtime |
-| Ruffle | MIT | Flash Player emulator |
-| ONScripter | GPLv2+ | ONS format visual novel engine |
-| Android WebView | Apache 2.0 / BSD | System component for MV/MZ HTML5 rendering |
-| Ruby | GPLv2+ | Ruby 3.x runtime for mkxp-z |
-| SDL | zlib | Simple DirectMedia Layer |
-| OpenAL | LGPL | Audio library |
-
-See THIRD_PARTY.md for details.
-
----
-
-## 📱 Installation
-
-### From GitHub
-1. Clone the repository
-2. Build the debug APK:
-   ```bash
-   ./gradlew clean :app:assembleDebug
-   ```
-3. Install on device:
-   ```bash
-   adb install app/build/outputs/apk/debug/app-debug.apk
-   ```
-
-### Requirements
-- Android 5.0+ (API 21+)
-- arm64-v8a architecture
-- 1 GB+ RAM recommended
-
----
-
-## 🎮 Usage
-
-1. Launch Runestone
-2. Tap **Import** and select your game folder
-3. Configure settings per game (controls, launch options, etc.)
-4. Tap **Play** to launch
-
-### Tips
-- Use **Settings** to configure global preferences
-- Use **Search** to find games quickly
-- Use **Workspace** to manage saves and data
-- Landscape mode shows virtual D-pad on the left
-
----
-
-## 🔄 Development
-
-### Building
 ```bash
-# Clone with submodules
 git clone --recursive https://github.com/KleirRampage45/Runestone.git
 cd Runestone
+./gradlew clean :app:assembleDebug
+adb install app/build/outputs/apk/debug/app-debug.apk
+```
 
-# Build debug APK
+**Requirements:** Android 8.0+ (API 26), arm64-v8a, 2GB+ RAM recommended.
+
+---
+
+## APK Size Breakdown
+
+| Component | Size | Notes |
+|-----------|------|-------|
+| librenpython.so | 55 MB | Ren'Py Python runtime (kept for future wrapper) |
+| libmkxp-z.so + libruby.so | ~25 MB | RGSS interpreter for XP/VX/VX Ace |
+| libeasyrpg_android.so | ~15 MB | RM2000/2003 runtime |
+| libonscripter.so + libsdl.so | ~3 MB | ONScripter native ✅ WORKING |
+| SDL2 libraries (5 libs) | ~7 MB | SDL2_image, ttf, sound, openal, c++_shared |
+| Java/Kotlin code | ~5 MB | App code, JNI bridges, UI |
+| Resources + assets | ~3 MB | Icons, fonts, HTML templates |
+| **Total** | **~82 MB** | |
+| Godot (optional) | +142 MB | In optional-libs/godot/, enable via Addons |
+
+---
+
+## Features
+
+- **11 working engines** — All major RPG Maker versions + VNs + HTML5 + Flash
+- **Zero downloads** — 82MB APK has everything you need
+- **SAF import** — Import games from any file manager or cloud storage
+- **Virtual gamepad** — D-pad + A/B/X/Y + L1/R1 shoulder buttons + SELECT/START/SETTINGS
+- **3 layout modes** — Portrait Console, Landscape (overlay), Gamepad (no overlay)
+- **3D carousel UI** — Glassmorphism card carousel with bloom, grain, DOF effects
+- **Game store** — Download games from built-in catalogue (12 free games, more to come)
+- **Search, filter, sort** — By engine, name, date, recently played
+- **Per-game settings** — Individual input/video/audio/cheat/font config per game
+- **Save protection** — Auto-backup saves before reimport, auto-restore
+- **RESUME/STOP** — Pause games and resume later without losing progress
+- **Open source** — GPLv2+, fork it, contribute, audit it, trust it
+
+---
+
+## Architecture
+
+```
+Runestone (82MB APK)
+├── Engine Plugin System (GameEngine interface)
+│   ├── MkxpZEngine       — RGSS1/2/3 via libmkxp-z.so
+│   ├── EasyRpgEngine     — RM2000/2003 via libeasyrpg_android.so
+│   ├── OnscripterEngine  — NScripter via libonscripter.so
+│   ├── WebViewEngine     — MV/MZ/Tyrano/Construct/HTML/Twine/VN Maker/Ruffle
+│   └── Ren'Py/Godot      — Coming soon (wrapper or optional)
+├── Game Store
+│   └── Static JSON catalogue + Pixeldrain/Mediafire(RIP)/Rootz downloads
+├── Import Pipeline
+│   └── SAF → workspace isolation → engine detection → settings
+├── Native Runtimes (jniLibs/arm64-v8a/)
+│   └── 12 .so files, all bundled
+└── UI (Kotlin, programmatic, glassmorphism)
+    └── Home (carousel/grid/list/tiles) + Settings + Game Activity + Controls
+```
+
+---
+
+## Development
+
+```bash
+# Build
 ./gradlew clean :app:assembleDebug
 
-# Build release APK (requires signing)
-./gradlew clean :app:assembleRelease
+# Install via ADB
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+
+# Optional: enable Godot addon
+cp optional-libs/godot/libgodot_android.so app/src/main/jniLibs/arm64-v8a/
+cp optional-libs/godot/libc++_shared_godot.so app/src/main/jniLibs/arm64-v8a/
 ```
 
-### Testing
-```bash
-# Install on device
-adb install app/build/outputs/apk/debug/app-debug.apk
+---
 
-# Run tests
-./gradlew test
-```
+## License
 
-### Contributing
-See CONTRIBUTING.md for guidelines.
+GNU General Public License v2 or later. See LICENSE.
+
+Runestone bundles several third-party components — see THIRD_PARTY.md for full attribution.
+
+- mkxp-z (GPLv2+) — RGSS runtime
+- EasyRPG Player (GPLv3) — RM2000/2003 runtime
+- Ren'Py (MIT) — Python-based VN engine
+- ONScripter (GPLv2+) — NScripter runtime
+- Ruffle (MIT) — Flash emulator
+- Ruby (GPLv2+) — Ruby interpreter
+- SDL2 (zlib) — Graphics/audio/input
+- OpenAL (LGPL) — Audio library
+- Godot (MIT) — Optional addon
 
 ---
 
-## 📚 References
-
-- [Grimmobile](https://github.com/KleirRampage45/blacksouls-android) — Original Black Souls launcher architecture
-- [mkxp-z](https://github.com/RetroArch/mkxp-z) — RPG Maker XP/VX/VX Ace core
-- [EasyRPG Player](https://github.com/EasyRPG/EasyRPG) — RPG Maker MV/MZ interpreter
-- [Ren'Py](https://www.renpy.org/) — Visual novel engine
-- [Godot Engine](https://godotengine.org/) — Open source game engine
-- [Ruffle](https://ruffle.rs/) — Flash Player emulator
-
----
-
-## 🐛 Issues & Support
-
-Found a bug or have a feature request? Open an issue on GitHub.
-
----
-
-## 📜 License
-
-GNU General Public License v2 or later.
-
-See LICENSE for details.
+*82MB. Open source. No cloud. No bullshit.*

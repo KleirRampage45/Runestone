@@ -1,8 +1,8 @@
 # Runestone — Design Document
 
-**Version:** 1.0  
-**Last Updated:** 2026-05-26  
-**Status:** Active Development
+**Version:** 1.1  
+**Last Updated:** 2026-06-01  
+**Status:** Active Development — v0.6.13, 82MB APK, 11 working engines
 
 ---
 
@@ -10,9 +10,10 @@
 
 Runestone is an open-source (GPLv2+) multi-engine RPG Maker and visual novel launcher for Android. It aims to be the definitive open-source alternative to JoiPlay, providing:
 
-- **Full engine coverage** for all major RPG Maker versions (2000/2003/XP/VX/VX Ace/MV/MZ)
-- **Visual novel support** (Ren'Py, TyranoBuilder)
-- **HTML5 game support** (Construct 2/3, generic HTML games)
+- **Full engine coverage** for all major RPG Maker versions (2000/2003/XP/VX/VX Ace/MV/MZ) — **11 working engines**
+- **Visual novel support** (Ren'Py wrapper pending, TyranoBuilder, NScripter/ONScripter ✅ WORKING)
+- **HTML5 game support** (Construct 2/3, generic HTML, Twine, VN Maker)
+- **Native ONScripter support** — NScripter visual novels via bunded libonscripter.so (NEW)
 - **Mod-friendly architecture** with AI companion integration
 - **Community-driven development** with transparent plugin system
 
@@ -33,7 +34,7 @@ Runestone is an open-source (GPLv2+) multi-engine RPG Maker and visual novel lau
 ```
 ┌─────────────────────────────────────────────────┐
 │                 Runestone App                    │
-│  (Kotlin + Jetpack Compose UI)                  │
+│  (Kotlin, programmatic UI, no XML)               │
 ├─────────────────────────────────────────────────┤
 │              Engine Plugin System                │
 ├──────────────┬──────────────┬──────────────────┤
@@ -41,10 +42,14 @@ Runestone is an open-source (GPLv2+) multi-engine RPG Maker and visual novel lau
 │  Engines     │  Engines     │  Engines         │
 ├──────────────┼──────────────┼──────────────────┤
 │ • MV (done)  │ • mkxp-z     │ • Ren'Py         │
-│ • MZ (done)  │   (XP/VX/    │ • TyranoBuilder  │
-│ • Construct  │    VX Ace)   │ • Flash (Ruffle) │
-│ • Tyrano     │ • EasyRPG    │                  │
-│              │   (2000/03)  │                  │
+│ • MZ (done)  │   (XP/VX/    │   (wrapper       │
+│ • Tyrano     │    VX Ace)   │    pending)      │
+│ • Construct  │ • EasyRPG    │ • Godot          │
+│ • HTML5      │   (2000/03)  │   (optional)     │
+│ • Twine      │ • ONScripter │                  │
+│ • VN Maker   │   (WORKING)  │                  │
+│              │ • Ruffle     │                  │
+│              │   (CDN)      │                  │
 └──────────────┴──────────────┴──────────────────┘
 ```
 

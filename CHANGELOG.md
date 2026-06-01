@@ -1,21 +1,50 @@
 # Runestone Changelog
 
-## v0.6.11 (2026-05-31)
+## v0.6.13 (2026-06-01) — feat/asuka-gap-closure
+### Added
+- **L1/R1 shoulder buttons** in TouchOverlayView — small pill buttons at top of control panel
+  - L1 maps to KEYCODE_BUTTON_L1, R1 maps to KEYCODE_BUTTON_R1
+  - JS dispatch: Q(81) for L1, W(87) for R1 (WebView MV/MZ games)
+  - Fixed position (not part of layout editor)
+- **ONScripter (NScripter) engine — WORKING**
+  - 5 Java JNI bridge files from onscripter-engine-android (ONScripterView, DemoGLSurfaceView, GLSurfaceView_SDL, Audio, NativeONSException)
+  - OnscripterActivity.kt — thin activity wrapper with font detection, save dir, HQ audio
+  - Registered in AndroidManifest, wired to NScripterEngine launch
+- **Per-game settings system** (merged from feature/phase1-pergame-config)
+  - PerGameConfig.kt: JSON-based layered config (game, input, video, audio, performance, cheats, fonts sections)
+  - GameConfigService.kt: Load/save/apply/merge per-game configs
+  - No extra dependencies — uses org.json
+- **Optional Addons system** — SharedPreferences-based engine toggles
+  - EngineRegistry.isOptionalEnabled()/setOptionalEnabled()
+  - Godot moved to optional (disabled by default, enable in Settings > Addons)
+- **Ren'Py deep research doc** at docs/renpy-how-it-works.md
+  - Full architecture breakdown of Android bootstrap
+  - 4 core challenges identified for generic launcher
+
+### Changed
+- **APK size: 225MB → 82MB** — removed Godot .so from default build
+  - libgodot_android.so (142MB) and libc++_shared_godot.so (1.4MB) moved to optional-libs/godot/
+  - Re-enable by copying back to jniLibs or via Addons download (future)
+- **Gap analysis fully rewritten** — RUNESTONE-vs-JOIPLAY-GAP-ANALYSIS.md now reflects v0.6.13 reality
+- **Documentation overhaul** — AGENTS.md expanded, README.md updated, DESIGN.md updated
+
 ### Fixed
-- Replaced the custom 3D carousel layout and snap implementation with a standard horizontal `LinearLayoutManager` and `PagerSnapHelper`.
-- Moved carousel 3D transforms into a scroll listener and lowered the cards to 59% of screen height.
-- Added tap-to-toggle PLAY and SETTINGS actions directly on carousel cards while keeping the detail panel metadata-only.
-- Settings layout and UI mode selectors now update their selected backgrounds immediately.
-- Standardized PLAY and SETTINGS action widths to 150dp across card views.
-- Reserved the full bottom dock clearance so scroll content and the resume bar stay visible above it.
-- Anchored carousel metadata above the bottom dock so engine and file-count text remain unobscured.
-- Passed the canonical EasyRPG command-line arguments when launching RPG Maker 2000/2003 games.
-- Replaced unavailable Godot, Ren'Py, and ONScripter wrapper launches with clear coming-soon dialogs instead of runtime crashes.
-- Fixed store installs so flat and single-root ZIP archives are normalized into complete `original/` workspaces.
-- Fixed download cleanup after URL-resolution failures and corrected resume accounting when a server ignores byte ranges.
-- Fixed paused store downloads so an immediate RESUME request waits for the previous worker to stop and then continues.
-- Added compatibility redirects for stale vgperson MediaFire URLs in the default catalogue.
-- Replaced hardcoded MediaFire URL redirects with generic legacy URL conversion, broader page parsing, and redirect fallback handling.
+- Build now correctly excludes optional .so files from APK packaging
+
+## v0.6.12 (2026-05-31)
+### Changed
+- Replaced custom 3D carousel layout with standard LinearLayoutManager + PagerSnapHelper
+- Carousel cards lowered to 59% screen height
+- PLAY/SETTINGS actions standardized to 150dp width
+- Carousel metadata anchored above bottom dock clearance
+
+### Fixed
+- Canonical EasyRPG command-line arguments for RM2000/2003 games
+- Unavailable Godot/Ren'Py/ONScripter wrappers show coming-soon dialogs instead of crashes
+- Store installs normalize flat/single-root ZIP archives into complete original/ workspaces
+- Download cleanup after URL-resolution failures
+- Paused store downloads resume correctly after worker stop
+- MediaFire legacy URL conversion + redirect fallback handling
 
 ## v0.6.7 (2026-05-28)
 ### Changed
