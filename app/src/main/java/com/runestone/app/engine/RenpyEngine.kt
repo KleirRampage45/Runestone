@@ -11,6 +11,7 @@
 package com.runestone.app.engine
 
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import java.io.File
 
@@ -84,8 +85,19 @@ class RenpyEngine : GameEngine {
     }
 
     override fun launch(context: Context, gameFolder: File, config: GameConfig) {
-        Log.i(TAG, "Ren'Py unavailable: ${gameFolder.name}")
-        UnavailableEngine.show(context, "Ren'Py")
+        Log.i(TAG, "Launching Ren'Py: ${gameFolder.name}")
+        try {
+            val intent = Intent(context, com.runestone.app.engine.renpy.RenpyActivity::class.java).apply {
+                putExtra("game_path", gameFolder.absolutePath)
+                putExtra("save_path", File(gameFolder, "saves").absolutePath)
+                putExtra("engine_version", "8.3.4")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to launch RenpyActivity", e)
+            UnavailableEngine.show(context, "Ren'Py")
+        }
     }
 
     override fun getSaves(gameFolder: File): List<SaveFile> {

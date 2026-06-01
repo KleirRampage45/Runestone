@@ -42,6 +42,14 @@
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
 
+        <!-- Ren'Py — MIT, bundled native librenpython.so (55MB) -->
+        <activity
+            android:name="com.runestone.app.engine.renpy.RenpyActivity"
+            android:screenOrientation="sensor"
+            android:exported="false"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
