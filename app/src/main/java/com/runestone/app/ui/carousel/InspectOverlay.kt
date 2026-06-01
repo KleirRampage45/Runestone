@@ -110,6 +110,8 @@ class InspectOverlay(
         ) {
             onPlay(game.storageName)
             dismiss()
+        }.apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
 
         btnRow.addView(spacer(context, 0, dp(12)))
@@ -122,6 +124,8 @@ class InspectOverlay(
         ) {
             onSettings(game.storageName)
             dismiss()
+        }.apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
 
         panel.addView(btnRow)

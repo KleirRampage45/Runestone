@@ -563,7 +563,10 @@ class MainActivity : Activity() {
                     getSharedPreferences("runestone", MODE_PRIVATE).edit()
                         .putString("kill_game", storageName).apply()
                     refreshGames()
-                    showHome()
+                    // Small delay to let game activity finish before showing home
+                    rootContainer.postDelayed({
+                        showHome()
+                    }, 100)
                 }
             }} else null,
         )

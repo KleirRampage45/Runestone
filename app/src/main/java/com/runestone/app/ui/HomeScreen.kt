@@ -465,6 +465,15 @@ class HomeScreen(private val context: Context) {
             }
             false
         }
+        // Ensure animation stops when view is detached
+        gearIcon.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {}
+            override fun onViewDetachedFromWindow(v: View) {
+                gearRotator.cancel()
+                gearIcon.animate().cancel()
+                gearIcon.rotation = 0f
+            }
+        })
         bar.addView(dockItem(gearIcon) {
             selectDockItem(it)
             onSettings()
@@ -1092,7 +1101,8 @@ class HomeScreen(private val context: Context) {
         val cardWidth = dp(260)
         val cardHeight = dp(360)
         val cardTopPadding = ((screenHeight * 0.42f).toInt() - cardHeight / 2).coerceAtLeast(0)
-        val carouselHeight = (cardTopPadding + cardHeight + dp(4)).coerceAtMost(screenHeight)
+        // Add extra height to accommodate scaled cards (1.15x scale)
+        val carouselHeight = (cardTopPadding + (cardHeight * 1.2f).toInt() + dp(20)).coerceAtMost(screenHeight)
         val horizontalPadding = ((screenWidth - cardWidth) / 2).coerceAtLeast(0)
         val layoutManager = LinearLayoutManager(context, RecyclerView.HORIZONTAL, false)
         val scrollEffects = Carousel3DScrollEffects(context)

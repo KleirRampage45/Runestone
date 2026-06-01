@@ -44,12 +44,18 @@ class Carousel3DScrollEffects(
     }
 
     fun applyTransforms(recyclerView: RecyclerView) {
+        // Only apply transforms after RecyclerView is properly laid out
+        if (recyclerView.width == 0 || recyclerView.height == 0) return
+        
         val containerCenter = recyclerView.width / 2f
         var closestPosition = RecyclerView.NO_POSITION
         var closestDistance = Float.MAX_VALUE
 
         for (index in 0 until recyclerView.childCount) {
             val child = recyclerView.getChildAt(index)
+            // Skip children that aren't properly laid out yet
+            if (child.width == 0 || child.height == 0) continue
+            
             val childCenter = (child.left + child.right) / 2f
             val distance = abs(childCenter - containerCenter)
             if (distance < closestDistance) {
@@ -61,12 +67,12 @@ class Carousel3DScrollEffects(
             val absPosition = abs(position)
             val transformProgress = (absPosition / 2f).coerceIn(0f, 1f)
 
-            child.scaleX = lerp(1.25f, 0.55f, transformProgress)
+            child.scaleX = lerp(1.15f, 0.65f, transformProgress)
             child.scaleY = child.scaleX
-            child.rotationY = sign(position) * lerp(0f, 55f, transformProgress)
-            child.alpha = lerp(1f, 0.35f, transformProgress)
-            child.translationY = lerp(-dp(28).toFloat(), dp(18).toFloat(), absPosition.coerceIn(0f, 1f))
-            child.elevation = lerp(dp(36).toFloat(), dp(2).toFloat(), transformProgress)
+            child.rotationY = sign(position) * lerp(0f, 35f, transformProgress)
+            child.alpha = lerp(1f, 0.45f, transformProgress)
+            child.translationY = lerp(-dp(20).toFloat(), dp(12).toFloat(), absPosition.coerceIn(0f, 1f))
+            child.elevation = lerp(dp(32).toFloat(), dp(4).toFloat(), transformProgress)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val blurRadius = when {
