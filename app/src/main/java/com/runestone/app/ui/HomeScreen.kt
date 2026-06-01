@@ -5,6 +5,7 @@
 
 package com.runestone.app.ui
 
+import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Color
@@ -20,6 +21,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.OvershootInterpolator
+import android.view.animation.LinearInterpolator
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -31,7 +33,7 @@ import com.runestone.app.R
 import com.runestone.app.data.EngineType
 import com.runestone.app.data.UIMode
 import com.runestone.app.ui.carousel.AmbientGlowView
-import com.runestone.app.ui.carousel.Carousel3DLayoutManager
+import com.runestone.app.ui.carousel.Carousel3DScrollEffects
 import com.runestone.app.ui.carousel.DetailPanel
 import com.runestone.app.ui.carousel.GameCarouselAdapter
 import com.runestone.app.ui.carousel.InspectOverlay
@@ -43,6 +45,8 @@ import com.runestone.app.ui.carousel.BloomOverlay
 import com.runestone.app.ui.carousel.GameColorExtractor
 import com.runestone.app.ui.carousel.ItemTouchHelperCallback
 import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.PagerSnapHelper
 import androidx.recyclerview.widget.RecyclerView
 
 data class GameCardInfo(
@@ -96,10 +100,11 @@ class HomeScreen(private val context: Context) {
         val root = FrameLayout(context).apply {
             setBackgroundColor(Color.rgb(3, 3, 4))
         }
+        val bottomClearance = dp(76)
 
         val scroll = ScrollView(context).apply {
             isFillViewport = true; overScrollMode = ScrollView.OVER_SCROLL_NEVER
-            setPadding(0, 0, 0, dp(56))
+            setPadding(0, 0, 0, bottomClearance)
         }
         root.addView(scroll, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -296,16 +301,10 @@ class HomeScreen(private val context: Context) {
 
             root.addView(barRow, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, WRAP, Gravity.BOTTOM).apply {
-                setMargins(dp(10), 0, dp(10), dp(56))
+                setMargins(dp(10), 0, dp(10), dp(8))
             })
         }
 
-        // Dock bar
-        val dock = makeDockBar(onAddGame, onBrowse ?: {}, onManageAll, onSettings)
-        root.addView(dock, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(44), Gravity.BOTTOM).apply {
-            setMargins(dp(10), 0, dp(10), dp(8))
-        })
         return root
     }
 
@@ -313,53 +312,99 @@ class HomeScreen(private val context: Context) {
     //  Dock
     // ============================================================
 
-    private fun makeDockBar(onAdd: () -> Unit, onBrowse: () -> Unit, onManage: () -> Unit, onSettings: () -> Unit): LinearLayout {
+    fun createDockBar(onHome: () -> Unit, onAdd: () -> Unit, onBrowse: () -> Unit, onManage: () -> Unit, onSettings: () -> Unit): LinearLayout {
+        var selectedItem: FrameLayout? = null
         val bar = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
             background = GradientDrawable().apply {
-                setColor(Color.argb(140, 12, 11, 16))
+                setColor(Color.argb(90, 22, 21, 28))
                 cornerRadius = dp(24).toFloat()
-                setStroke(dp(1), Color.argb(30, 160, 140, 110))
+                setStroke(dp(1), Color.argb(60, 200, 190, 170))
             }
-            setPadding(dp(4), dp(4), dp(4), dp(4))
+            setPadding(dp(6), dp(6), dp(6), dp(6))
+            clipChildren = false
+            clipToPadding = false
         }
+        fun selectDockItem(item: FrameLayout) {
+            selectedItem?.apply {
+                isSelected = false
+                background = null
+            }
+            item.isSelected = true
+            item.background = glassBg(dp(14), alpha = 70, accent = true)
+            selectedItem = item
+        }
+
+        // HOME icon
+        val homeIcon = ImageView(context).apply {
+            setImageResource(R.drawable.ic_home)
+        }
+        bar.addView(dockItem(homeIcon) {
+            selectDockItem(it)
+            onHome()
+        })
 
         // + ADD icon
         val addIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_add)
-            makeLiquid(this)
         }
-        bar.addView(dockItem(addIcon) { onAdd() })
-        bar.addView(dockSep())
+        bar.addView(dockItem(addIcon) {
+            selectDockItem(it)
+            onAdd()
+        })
 
         // STORE icon
         val storeIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_store)
-            makeLiquid(this)
         }
-        bar.addView(dockItem(storeIcon) { onBrowse() })
-        bar.addView(dockSep())
+        bar.addView(dockItem(storeIcon) {
+            selectDockItem(it)
+            onBrowse()
+        })
 
         // FILES folder icon
         val folderIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_folder)
-            makeLiquid(this)
         }
-        bar.addView(dockItem(folderIcon) { onManage() })
-        bar.addView(dockSep())
+        bar.addView(dockItem(folderIcon) {
+            selectDockItem(it)
+            onManage()
+        })
 
         // SET gear icon
         val gearIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_gear)
-            makeLiquid(this)
         }
-        bar.addView(dockItem(gearIcon) { spinAnim(it); onSettings() })
+        val gearRotator = ObjectAnimator.ofFloat(gearIcon, View.ROTATION, 0f, 360f).apply {
+            duration = 800
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = LinearInterpolator()
+        }
+        gearIcon.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> gearRotator.start()
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    gearRotator.cancel()
+                    gearIcon.animate().cancel()
+                    gearIcon.animate()
+                        .rotation(0f)
+                        .setDuration(250)
+                        .setInterpolator(OvershootInterpolator(1.6f))
+                        .start()
+                }
+            }
+            false
+        }
+        bar.addView(dockItem(gearIcon) {
+            selectDockItem(it)
+            onSettings()
+        })
         return bar
     }
 
-    private fun dockItem(icon: View, onClick: (View) -> Unit): FrameLayout = FrameLayout(context).apply {
+    private fun dockItem(icon: View, onClick: (FrameLayout) -> Unit): FrameLayout = FrameLayout(context).apply {
         layoutParams = LinearLayout.LayoutParams(0, MATCH, 1f)
-        addView(icon, FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER))
+        addView(icon, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
         setOnClickListener { onClick(this) }
         makeLiquid(this)
     }
@@ -747,7 +792,7 @@ class HomeScreen(private val context: Context) {
 
         // PLAY — fixed symmetric width (only for non-paused games; paused games use the bottom bar)
         if (!game.isPaused) {
-            val btnW = dp(120)
+            val btnW = dp(150)
             val playBtn = TextView(context).apply {
                 text = "PLAY"; setTextColor(Color.rgb(220, 200, 160)); textSize = 16f
                 typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
@@ -760,16 +805,16 @@ class HomeScreen(private val context: Context) {
             actionPanel.addView(spacer(dp(14)))
         }
 
-        // OPTIONS — same width
+        // SETTINGS — same width
         val optsBtn = TextView(context).apply {
-            text = "OPTIONS"; setTextColor(Color.rgb(200, 180, 150)); textSize = 16f
+            text = "SETTINGS"; setTextColor(Color.rgb(200, 180, 150)); textSize = 16f
             typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setPadding(dp(12), dp(8), dp(12), dp(8))
             background = glassBg(dp(6), alpha = 80)
             setOnClickListener { onManage(game.storageName) }
             makeLiquid(this)
         }
-        actionPanel.addView(optsBtn, LinearLayout.LayoutParams(dp(120), WRAP))
+        actionPanel.addView(optsBtn, LinearLayout.LayoutParams(dp(150), WRAP))
 
         // Tap wrapper → toggle overlay + blur (single-selection)
         cardWrapper.setOnClickListener {
@@ -859,19 +904,24 @@ class HomeScreen(private val context: Context) {
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     v.animate().cancel()
-                    v.scaleX = 1.08f
-                    v.scaleY = 1.08f
+                    v.scaleX = 1.35f
+                    v.scaleY = 1.35f
+                    v.elevation = dp(12).toFloat()
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val cx = v.width / 2f
                     val cy = v.height / 2f
-                    val dx = (event.x - cx) * 0.06f
-                    val dy = (event.y - cy) * 0.06f
+                    val dx = (event.x - cx) * 0.25f
+                    val dy = (event.y - cy) * 0.25f
                     v.translationX = dx
                     v.translationY = dy
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     v.animate().cancel()
+                    ObjectAnimator.ofFloat(v, "elevation", 0f).apply {
+                        duration = 250
+                        interpolator = OvershootInterpolator(1.6f)
+                    }.start()
                     v.animate()
                         .scaleX(1f).scaleY(1f)
                         .translationX(0f).translationY(0f)
@@ -880,6 +930,7 @@ class HomeScreen(private val context: Context) {
                         .withEndAction {
                             v.scaleX = 1f; v.scaleY = 1f
                             v.translationX = 0f; v.translationY = 0f
+                            v.elevation = 0f
                         }
                         .start()
                 }
@@ -936,28 +987,51 @@ class HomeScreen(private val context: Context) {
         val colorExtractor = GameColorExtractor(context)
 
         // Carousel
-        val carouselHeight = (context.resources.displayMetrics.heightPixels * 0.55f).toInt()
-        val layoutManager = Carousel3DLayoutManager(context)
+        val screenWidth = context.resources.displayMetrics.widthPixels
+        val screenHeight = context.resources.displayMetrics.heightPixels
+        val cardWidth = dp(260)
+        val cardHeight = dp(360)
+        val cardTopPadding = ((screenHeight * 0.42f).toInt() - cardHeight / 2).coerceAtLeast(0)
+        val carouselHeight = (cardTopPadding + cardHeight + dp(4)).coerceAtMost(screenHeight)
+        val horizontalPadding = ((screenWidth - cardWidth) / 2).coerceAtLeast(0)
+        val layoutManager = LinearLayoutManager(context, RecyclerView.HORIZONTAL, false)
+        val scrollEffects = Carousel3DScrollEffects(context)
         val pageIndicator = PageIndicator(context, games.size, 0)
+        fun createCarouselAdapter(carouselGames: List<GameCardInfo>) = GameCarouselAdapter(
+            games = carouselGames,
+            onPlay = { game -> onPlay(game.storageName) },
+            onSettings = { game -> onManage?.invoke(game.storageName) },
+            onCardLongPressed = { game ->
+                val overlay = InspectOverlay(
+                    context = context,
+                    game = game,
+                    onPlay = { name -> onPlay(name) },
+                    onSettings = { name -> onManage?.invoke(name) },
+                    onDismiss = { /* nothing */ },
+                )
+                container.addView(overlay)
+            },
+        )
         val recyclerView = RecyclerView(context).apply {
             this.layoutManager = layoutManager
-            adapter = GameCarouselAdapter(
-                games = games,
-                onCardClicked = { game -> onPlay(game.storageName) },
-                onCardLongPressed = { game ->
-                    val overlay = InspectOverlay(
-                        context = context,
-                        game = game,
-                        onPlay = { name -> onPlay(name) },
-                        onSettings = { name -> onManage?.invoke(name) },
-                        onDismiss = { /* nothing */ },
-                    )
-                    container.addView(overlay)
-                },
-            )
+            adapter = createCarouselAdapter(games)
             overScrollMode = RecyclerView.OVER_SCROLL_NEVER
             clipToPadding = false
             isNestedScrollingEnabled = false
+            setPadding(horizontalPadding, cardTopPadding, horizontalPadding, 0)
+            addOnScrollListener(scrollEffects)
+            setOnTouchListener { _, event ->
+                if (event.action == android.view.MotionEvent.ACTION_DOWN &&
+                    findChildViewUnder(event.x, event.y) == null
+                ) {
+                    (adapter as? GameCarouselAdapter)?.clearSelection()
+                }
+                false
+            }
+        }
+        PagerSnapHelper().attachToRecyclerView(recyclerView)
+        container.setOnClickListener {
+            (recyclerView.adapter as? GameCarouselAdapter)?.clearSelection()
         }
         // Snap to nearest card on fling/release
         container.addView(recyclerView, FrameLayout.LayoutParams(
@@ -972,21 +1046,8 @@ class HomeScreen(private val context: Context) {
             val fromGame = gameOrder.removeAt(from)
             gameOrder.add(to, fromGame)
             val reordered = games.sortedBy { gameOrder.indexOf(it.storageName) }
-            recyclerView.adapter = GameCarouselAdapter(
-                games = reordered,
-                onCardClicked = { game -> onPlay(game.storageName) },
-                onCardLongPressed = { game ->
-                    val overlay = InspectOverlay(
-                        context = context,
-                        game = game,
-                        onPlay = { name -> onPlay(name) },
-                        onSettings = { name -> onManage?.invoke(name) },
-                        onDismiss = { },
-                    )
-                    container.addView(overlay)
-                },
-            )
-            recyclerView.layoutManager = layoutManager
+            recyclerView.adapter = createCarouselAdapter(reordered)
+            recyclerView.post { scrollEffects.applyTransforms(recyclerView) }
         })
         touchHelper.attachToRecyclerView(recyclerView)
 
@@ -997,14 +1058,11 @@ class HomeScreen(private val context: Context) {
             Gravity.CENTER_HORIZONTAL or Gravity.TOP,
         ).also { it.topMargin = carouselHeight + dp(4) })
 
-        // Detail panel at bottom
-        val detailPanel = DetailPanel(context).apply {
-            setOnPlayListener { gameName -> onPlay(gameName) }
-            setOnSettingsListener { gameName -> onManage?.invoke(gameName) }
-        }
+        // Keep carousel metadata above the overlaid dock on every screen size.
+        val detailPanel = DetailPanel(context)
         container.addView(detailPanel, FrameLayout.LayoutParams(
             MATCH, WRAP, Gravity.BOTTOM,
-        ).apply { bottomMargin = dp(60) })
+        ).apply { bottomMargin = dp(58) + dp(8) + dp(10) })
 
         // Vignette overlay (cinematic corners)
         container.addView(VignetteOverlay(context), FrameLayout.LayoutParams(MATCH, MATCH))
@@ -1021,10 +1079,11 @@ class HomeScreen(private val context: Context) {
         dofController.attach()
 
         // Wire focus listener — updates detail panel + glow + page indicator
-        layoutManager.focusListener = object : Carousel3DLayoutManager.FocusListener {
+        scrollEffects.focusListener = object : Carousel3DScrollEffects.FocusListener {
             override fun onFocusChanged(adapterPosition: Int) {
-                if (adapterPosition in games.indices) {
-                    val game = games[adapterPosition]
+                val game = (recyclerView.adapter as? GameCarouselAdapter)?.getGame(adapterPosition)
+                if (game != null) {
+                    (recyclerView.adapter as? GameCarouselAdapter)?.setFocusedPosition(adapterPosition)
                     detailPanel.bind(game)
                     colorExtractor.getColor(game.displayName, game.coverUrl, game.engineType) { color ->
                         glowView.transitionToColor(color)
@@ -1036,11 +1095,13 @@ class HomeScreen(private val context: Context) {
         }
 
         // Initialize with first game
+        (recyclerView.adapter as? GameCarouselAdapter)?.setFocusedPosition(0)
         detailPanel.bind(games[0])
         colorExtractor.getColor(games[0].displayName, games[0].coverUrl, games[0].engineType) { color ->
             glowView.transitionToColor(color)
             bloomOverlay.setAccentColor(color)
         }
+        recyclerView.post { scrollEffects.applyTransforms(recyclerView) }
 
         return container
     }

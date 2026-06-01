@@ -1,5 +1,22 @@
 # Runestone Changelog
 
+## v0.6.11 (2026-05-31)
+### Fixed
+- Replaced the custom 3D carousel layout and snap implementation with a standard horizontal `LinearLayoutManager` and `PagerSnapHelper`.
+- Moved carousel 3D transforms into a scroll listener and lowered the cards to 59% of screen height.
+- Added tap-to-toggle PLAY and SETTINGS actions directly on carousel cards while keeping the detail panel metadata-only.
+- Settings layout and UI mode selectors now update their selected backgrounds immediately.
+- Standardized PLAY and SETTINGS action widths to 150dp across card views.
+- Reserved the full bottom dock clearance so scroll content and the resume bar stay visible above it.
+- Anchored carousel metadata above the bottom dock so engine and file-count text remain unobscured.
+- Passed the canonical EasyRPG command-line arguments when launching RPG Maker 2000/2003 games.
+- Replaced unavailable Godot, Ren'Py, and ONScripter wrapper launches with clear coming-soon dialogs instead of runtime crashes.
+- Fixed store installs so flat and single-root ZIP archives are normalized into complete `original/` workspaces.
+- Fixed download cleanup after URL-resolution failures and corrected resume accounting when a server ignores byte ranges.
+- Fixed paused store downloads so an immediate RESUME request waits for the previous worker to stop and then continues.
+- Added compatibility redirects for stale vgperson MediaFire URLs in the default catalogue.
+- Replaced hardcoded MediaFire URL redirects with generic legacy URL conversion, broader page parsing, and redirect fallback handling.
+
 ## v0.6.7 (2026-05-28)
 ### Changed
 - **Filter/Sort menu** — complete redesign as a glassmorphism overlay with:

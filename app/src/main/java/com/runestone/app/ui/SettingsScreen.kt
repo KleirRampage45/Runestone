@@ -204,18 +204,29 @@ class SettingsScreen(private val context: Context) {
             addView(View(context), LinearLayout.LayoutParams(dp(80), 1))
         }
 
-    private fun layoutSelector(selected: LayoutMode, onSelect: (LayoutMode) -> Unit): LinearLayout =
-        LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(
-                twoColumn(
-                    layoutCard(LayoutMode.PORTRAIT_CONSOLE, selected, "Portrait Console", "Game above, controls below", onSelect),
-                    layoutCard(LayoutMode.LANDSCAPE, selected, "Landscape", "Game fills wide screen", onSelect),
-                ),
-            )
-            addView(spacer(10))
-            addView(layoutCard(LayoutMode.GAMEPAD, selected, "Gamepad", "Fullscreen, use controller", onSelect))
+    private fun layoutSelector(selected: LayoutMode, onSelect: (LayoutMode) -> Unit): LinearLayout {
+        lateinit var cards: List<Pair<LayoutMode, LinearLayout>>
+        val select: (LayoutMode) -> Unit = { mode ->
+            onSelect(mode)
+            cards.forEach { (cardMode, card) ->
+                card.background = selectorCardBackground(cardMode == mode)
+            }
         }
+        val portrait = layoutCard(LayoutMode.PORTRAIT_CONSOLE, selected, "Portrait Console", "Game above, controls below", select)
+        val landscape = layoutCard(LayoutMode.LANDSCAPE, selected, "Landscape", "Game fills wide screen", select)
+        val gamepad = layoutCard(LayoutMode.GAMEPAD, selected, "Gamepad", "Fullscreen, use controller", select)
+        cards = listOf(
+            LayoutMode.PORTRAIT_CONSOLE to portrait,
+            LayoutMode.LANDSCAPE to landscape,
+            LayoutMode.GAMEPAD to gamepad,
+        )
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(twoColumn(portrait, landscape))
+            addView(spacer(10))
+            addView(gamepad)
+        }
+    }
 
     private fun layoutCard(
         mode: LayoutMode,
@@ -229,11 +240,7 @@ class SettingsScreen(private val context: Context) {
                 animTap(this)
                 onSelect(mode)
             }
-            background = panelBackground(
-                if (selected == mode) Color.argb(200, 33, 28, 27) else Color.argb(190, 12, 11, 16),
-                stroke = if (selected == mode) ACCENT else Color.argb(60, 207, 174, 126),
-                corner = 16,
-            )
+            background = selectorCardBackground(selected == mode)
             makeLiquid(this)
             addView(LayoutPreviewView(context, mode), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(122)))
             addView(
@@ -257,23 +264,31 @@ class SettingsScreen(private val context: Context) {
             )
         }
 
-    private fun uiModeSelector(selected: UIMode, onSelect: (UIMode) -> Unit): LinearLayout =
-        LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(
-                twoColumn(
-                    uiModeCard(UIMode.GRID, selected, onSelect),
-                    uiModeCard(UIMode.CAROUSEL_3D, selected, onSelect),
-                ),
-            )
-            addView(spacer(10))
-            addView(
-                twoColumn(
-                    uiModeCard(UIMode.LIST, selected, onSelect),
-                    uiModeCard(UIMode.TILES, selected, onSelect),
-                ),
-            )
+    private fun uiModeSelector(selected: UIMode, onSelect: (UIMode) -> Unit): LinearLayout {
+        lateinit var cards: List<Pair<UIMode, LinearLayout>>
+        val select: (UIMode) -> Unit = { mode ->
+            onSelect(mode)
+            cards.forEach { (cardMode, card) ->
+                card.background = selectorCardBackground(cardMode == mode)
+            }
         }
+        val grid = uiModeCard(UIMode.GRID, selected, select)
+        val carousel = uiModeCard(UIMode.CAROUSEL_3D, selected, select)
+        val list = uiModeCard(UIMode.LIST, selected, select)
+        val tiles = uiModeCard(UIMode.TILES, selected, select)
+        cards = listOf(
+            UIMode.GRID to grid,
+            UIMode.CAROUSEL_3D to carousel,
+            UIMode.LIST to list,
+            UIMode.TILES to tiles,
+        )
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(twoColumn(grid, carousel))
+            addView(spacer(10))
+            addView(twoColumn(list, tiles))
+        }
+    }
 
     private fun uiModeCard(
         mode: UIMode,
@@ -285,11 +300,7 @@ class SettingsScreen(private val context: Context) {
                 animTap(this)
                 onSelect(mode)
             }
-            background = panelBackground(
-                if (selected == mode) Color.argb(200, 33, 28, 27) else Color.argb(190, 12, 11, 16),
-                stroke = if (selected == mode) ACCENT else Color.argb(60, 207, 174, 126),
-                corner = 16,
-            )
+            background = selectorCardBackground(selected == mode)
             makeLiquid(this)
             addView(
                 TextView(context).apply {
@@ -311,6 +322,13 @@ class SettingsScreen(private val context: Context) {
                 },
             )
         }
+
+    private fun selectorCardBackground(selected: Boolean): GradientDrawable =
+        panelBackground(
+            if (selected) Color.argb(200, 33, 28, 27) else Color.argb(190, 12, 11, 16),
+            stroke = if (selected) ACCENT else Color.argb(60, 207, 174, 126),
+            corner = 16,
+        )
 
     private fun audioSelector(currentExt: String, onSelect: (String) -> Unit): LinearLayout =
         settingsPanel {

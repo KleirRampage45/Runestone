@@ -16,7 +16,6 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.runestone.app.ui.GameCardInfo
@@ -25,14 +24,12 @@ class DetailPanel(context: Context) : LinearLayout(context) {
 
     private val titleView: TextView
     private val engineBadge: TextView
-    private val playButton: TextView
-    private val settingsButton: TextView
-    private var currentGame: GameCardInfo? = null
+    private val fileCountView: TextView
 
     init {
         orientation = VERTICAL
         gravity = Gravity.CENTER_HORIZONTAL
-        setPadding(dp(20), dp(12), dp(20), dp(12))
+        setPadding(dp(20), dp(6), dp(20), dp(8))
 
         // Title
         titleView = TextView(context).apply {
@@ -45,12 +42,12 @@ class DetailPanel(context: Context) : LinearLayout(context) {
         addView(titleView)
 
         // Spacer
-        addView(spacer(dp(6)))
+        addView(spacer(4))
 
         // Engine badge
         engineBadge = TextView(context).apply {
             textSize = 11f
-            setTextColor(Color.rgb(207, 174, 126))
+            setTextColor(Color.rgb(238, 207, 158))
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             setPadding(dp(10), dp(4), dp(10), dp(4))
@@ -62,64 +59,26 @@ class DetailPanel(context: Context) : LinearLayout(context) {
         }
         addView(engineBadge)
 
-        // Spacer
-        addView(spacer(dp(14)))
-
-        // Action buttons row
-        val actionRow = LinearLayout(context).apply {
-            orientation = HORIZONTAL
+        fileCountView = TextView(context).apply {
+            textSize = 11f
+            setTextColor(Color.argb(160, 180, 160, 130))
             gravity = Gravity.CENTER
+            setPadding(0, dp(4), 0, 0)
         }
-
-        playButton = makeButton("▶ PLAY", Color.rgb(140, 220, 140), Color.argb(40, 80, 160, 80))
-        actionRow.addView(playButton)
-
-        actionRow.addView(spacer(dp(12), 0))
-
-        settingsButton = makeButton("⚙️ SETTINGS", Color.rgb(200, 180, 150), Color.argb(40, 160, 140, 100))
-        actionRow.addView(settingsButton)
-
-        addView(actionRow)
+        addView(fileCountView)
 
         visibility = GONE
     }
 
     fun bind(game: GameCardInfo) {
-        currentGame = game
         titleView.text = game.displayName
         engineBadge.text = game.engineType.label
+        fileCountView.text = "${game.fileCount} files"
         visibility = VISIBLE
     }
 
-    fun setOnPlayListener(callback: (String) -> Unit) {
-        playButton.setOnClickListener {
-            currentGame?.let { callback(it.storageName) }
-        }
-    }
-
-    fun setOnSettingsListener(callback: (String) -> Unit) {
-        settingsButton.setOnClickListener {
-            currentGame?.let { callback(it.storageName) }
-        }
-    }
-
-    private fun makeButton(label: String, textColor: Int, bgColor: Int): TextView =
-        TextView(context).apply {
-            text = label; setTextColor(textColor); textSize = 13f
-            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setPadding(dp(20), dp(10), dp(20), dp(10))
-            background = GradientDrawable().apply {
-                setColor(bgColor); cornerRadius = dp(10).toFloat()
-                setStroke(dp(1), Color.argb(50, 160, 140, 110))
-            }
-            layoutParams = LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-    private fun spacer(h: Int, w: Int = 0): View =
-        View(context).apply { layoutParams = LayoutParams(dp(w), dp(h)) }
+    private fun spacer(h: Int): View =
+        View(context).apply { layoutParams = LayoutParams(0, dp(h)) }
 
     private fun dp(value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()

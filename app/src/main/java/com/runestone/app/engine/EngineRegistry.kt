@@ -99,11 +99,11 @@ object EngineRegistry {
         // Flash engine (bundled — Ruffle MIT)
         register(RuffleEngine())      // Flash/SWF
 
-        // Bundlable engines (GPL/MIT — native runtime not yet built)
+        // Native libraries bundled, Android activity wrappers not yet integrated
         register(RenpyEngine())       // Ren'Py MIT
         register(GodotEngine())       // Godot MIT
 
-        // Download-only engines (runtime exists, needs separate APK)
+        // Wrapper not yet integrated
         register(NScripterEngine())   // NScripter / ONScripter GPLv2+
         register(ElectronEngine())    // Electron (desktop only)
     }

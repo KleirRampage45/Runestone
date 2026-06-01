@@ -103,8 +103,10 @@ class AvailableGamesScreen(private val context: Context) {
         } else if (games.isEmpty()) {
             content.addView(spacer(dp(36)))
             content.addView(TextView(context).apply {
-                text = "📦"
-                textSize = 48f; gravity = Gravity.CENTER
+                text = "EMPTY"
+                textSize = 18f; gravity = Gravity.CENTER
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(MUTED_DIM)
             })
             content.addView(spacer(dp(12)))
             content.addView(TextView(context).apply {

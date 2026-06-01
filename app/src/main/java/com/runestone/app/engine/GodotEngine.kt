@@ -4,14 +4,12 @@
  *
  * Godot Engine plugin — MIT licensed.
  * Detection: project.godot or .pck files.
- * Launch: bundled GodotActivity or download prompt.
+ * Launch: unavailable until the Android activity wrapper is integrated.
  */
 
 package com.runestone.app.engine
 
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.util.Log
 import java.io.File
 
@@ -24,7 +22,6 @@ class GodotEngine : GameEngine {
 
     companion object {
         private const val TAG = "GodotEngine"
-        const val GODOT_ACTIVITY = "org.godotengine.android.GodotActivity"
     }
 
     override fun canRun(gameFolder: File): Boolean {
@@ -47,13 +44,7 @@ class GodotEngine : GameEngine {
     }
 
     override fun launch(context: Context, gameFolder: File, config: GameConfig) {
-        Log.i(TAG, "Launching Godot (bundled): ${gameFolder.name}")
-        val intent = Intent().apply {
-            setClassName(context.packageName, GODOT_ACTIVITY)
-            putExtra("godot_arg", "-path")
-            putExtra("godot_arg_value", gameFolder.absolutePath)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        context.startActivity(intent)
+        Log.i(TAG, "Godot unavailable: ${gameFolder.name}")
+        UnavailableEngine.show(context, "Godot")
     }
 }

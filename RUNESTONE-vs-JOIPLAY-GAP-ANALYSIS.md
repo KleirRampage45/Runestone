@@ -1,7 +1,8 @@
 # Runestone vs JoiPlay — Comprehensive Gap Analysis
 
-> Generated: 2026-05-27
-> **Runestone v0.2.0** (current) vs **JoiPlay 1.21.000** (latest)
+> **Last Updated:** 2026-06-01
+> **Runestone v0.6.13** (`refactor/ui-complete`, branch `refactor/ui-complete`) vs **JoiPlay 1.21.000** (latest)
+> **Note:** This document supersedes the v0.2.0 snapshot. Massive work has been done since the original analysis.
 
 ---
 
@@ -9,13 +10,14 @@
 
 | Feature | Runestone | JoiPlay |
 |---------|-----------|---------|
-| **Version** | 0.2.0 (early alpha) | 1.21.000 (mature, 5+ years development) |
+| **Version** | 0.6.13 (rapid development, 43 commits) | 1.21.000 (mature, 5+ years development) |
 | **Platform** | Android only | Android only |
-| **License** | GPLv2+ | Proprietary (closed source) |
-| **First Release** | ~2026 | ~2019 |
+| **License** | GPLv2+ — fully open source | Proprietary (closed source) |
+| **First Release** | ~May 2026 | ~2019 |
 | **Community Size** | 1 developer | Large (Patreon, Discord, Reddit 15K+) |
-| **Plugin System** | Engine plugins (internal) | Plugin APKs (modular, installable) |
-| **Target Audience** | Undefined yet | Casual Android gamers playing PC fangames |
+| **Plugin System** | Engine plugins (internal, built-in) | Plugin APKs (modular, installable) |
+| **APK Size** | ~223 MB (15 native .so files bundled) | ~5 MB core + plugins downloaded separately |
+| **Target Audience** | Open-source gaming community | Casual Android gamers playing PC fangames |
 
 ---
 
@@ -23,501 +25,484 @@
 
 ### 2.1 Currently Supported by Both
 
-| Engine | Runestone | JoiPlay |
-|--------|-----------|---------|
-| **RPG Maker XP** | ✅ (via mkxp-z intent) | ✅ (RPG Maker Plugin) |
-| **RPG Maker VX** | ✅ (via mkxp-z intent) | ✅ (RPG Maker Plugin) |
-| **RPG Maker VX Ace** | ✅ (via mkxp-z intent) | ✅ (RPG Maker Plugin) |
-| **RPG Maker MV** | ✅ (WebView engine) | ✅ (RPG Maker Plugin) |
-| **RPG Maker MZ** | ✅ (WebView engine) | ✅ (RPG Maker Plugin) |
-| **Ren'Py** | 🔶 Stub (plugin required) | ✅ (Ren'Py Plugin) |
-| **TyranoBuilder** | ✅ (WebView engine) | ✅ (Built-in) |
-| **Construct 2/3** | ✅ (WebView engine) | ✅ (Built-in) |
+| Engine | Runestone | JoiPlay | Runestone Notes |
+|--------|-----------|---------|-----------------|
+| **RPG Maker XP** | ✅ Working (mkxp-z native) | ✅ (RPG Maker Plugin) | Bundled .so, direct activity launch |
+| **RPG Maker VX** | ✅ Working (mkxp-z native) | ✅ (RPG Maker Plugin) | Same mkxp-z runtime |
+| **RPG Maker VX Ace** | ✅ Working (mkxp-z native) | ✅ (RPG Maker Plugin) | Same mkxp-z runtime |
+| **RPG Maker 2000** | ✅ Working (EasyRPG native) | ✅ (RPG Maker Plugin) | Bundled .so, full JNI wrapper |
+| **RPG Maker 2003** | ✅ Working (EasyRPG native) | ✅ (RPG Maker Plugin) | Same EasyRPG runtime |
+| **RPG Maker MV** | ✅ Working (WebView engine) | ✅ (RPG Maker Plugin) | PIXI fixes, audio fallback |
+| **RPG Maker MZ** | ✅ Working (WebView engine) | ✅ (RPG Maker Plugin) | Same WebView engine |
+| **TyranoBuilder** | ✅ Working (WebView) | ✅ (Built-in) | Detection + WebView launch |
+| **Construct 2/3** | ✅ Working (WebView) | ✅ (Built-in) | c2runtime.js/c3runtime.js detection |
 
-### 2.2 Supported by JoiPlay ONLY (Runestone gaps)
+### 2.2 What Runestone Supports That the Gap Doc v0.2.0 Said Were Missing
 
-| Engine | JoiPlay Support | Runestone Priority |
-|--------|-----------------|-------------------|
-| **Godot 3.6** | ✅ (Godot Plugin, added Nov 2024) | ⚠️ Not planned |
-| **Godot 4.3** | ✅ (Godot Plugin, added Nov 2024) | ⚠️ Not planned |
-| **Flash / Ruffle** | ✅ (Ruffle Plugin) | ⚠️ Not planned |
-| **HTML games** | ✅ (Built-in + Crosswalk Plugin) | ⚠️ Not planned |
-| **NScripter** | ✅ (Built-in) | ⚠️ Not planned |
-| **Twine** | ✅ (Built-in) | ⚠️ Not planned |
-| **VN Maker** | ✅ (Built-in) | ⚠️ Not planned |
-| **Electron apps** | ✅ (Basic support, added Jun 2024) | ⚠️ Not planned |
+| Engine | Old Claim | Current Status |
+|--------|-----------|----------------|
+| **Ren'Py** | ❌ "Stub, crash toast" | ⚠️ **Detection working, .so bundled (55MB), saves work.** Launch shows "Coming Soon" dialog (needs Android activity wrapper) |
+| **Godot 3/4** | ❌ "Not planned" | ⚠️ **Detection working, .so bundled (142MB).** Same — needs activity wrapper |
+| **Flash / Ruffle** | ❌ "Not planned" | ✅ **Fully implemented** — generates HTML with ruffle.js CDN, launches in WebView |
+| **NScripter/ONScripter** | ❌ Not mentioned | ⚠️ **Detection working, libonscripter.so (2.3MB) + libsdl.so bundled.** Shows "Coming Soon" |
+| **Twine** | ❌ "Not planned" | ✅ **Full detection** (tw-storydata marker in HTML), WebView launch |
+| **VN Maker** | ❌ "Not planned" | ✅ **Full detection** (index.html + data/ + .json), WebView launch |
+| **HTML5 generic** | ❌ Not mentioned | ✅ Full detection + WebView launch |
+| **Electron** | ❌ Not mentioned | ⚠️ Detection works, shows "Not Supported on Android" dialog |
 
-### 2.3 What Runestone Supports That JoiPlay Doesn't
+### 2.3 Legacy Engines (Detect Only — No Open-Source Runtime Exists)
 
-| Engine | Why It Matters |
-|--------|----------------|
-| None unique | JoiPlay covers everything Runestone does and more |
+| Engine | Runestone | JoiPlay | Notes |
+|--------|-----------|---------|-------|
+| **RPG Maker 95** | 🔍 Detect only | Likely none | 1997 Japanese-only, no runtime |
+| **Dante 98** | 🔍 Detect only | Likely none | 1992 precursor, no runtime |
 
-**GAP: 8+ engine categories that JoiPlay supports but Runestone doesn't.**
+### 2.4 Summary
+
+| Category | The Gap Doc Said | Actual Count |
+|----------|-----------------|--------------|
+| Working engines | 7 (3 stubs) | **10 fully working** (mkxp-z, EasyRPG, MV, MZ, Tyrano, Construct, HTML, Twine, VN Maker, Ruffle) |
+| Detect-only with .so bundled | — | **4** (Ren'Py, Godot 3/4, ONScripter) |
+| Detect-only (info dialogs) | — | **3** (Electron, RM95, Dante98) |
+| Total engines recognized | 7 | **16** |
+| Working native runtimes | 0 (stub) | **2** (mkxp-z + EasyRPG, both with bundled .so) |
 
 ---
 
-## 3. Plugin Architecture — MAJOR GAP
+## 3. Plugin Architecture
 
-### 3.1 How JoiPlay Does Plugins
+### 3.1 Current Runestone Approach
+
+Runestone bundles **all engine runtimes directly in the APK** via `jniLibs/arm64-v8a/`. The 15 native .so files are:
+
+| Library | Size | Purpose |
+|---------|------|---------|
+| `libmkxp-z.so` | ~12 MB | RGSS interpreter (XP/VX/VX Ace) |
+| `libruby.so` | ~12 MB | Ruby interpreter for RGSS |
+| `libeasyrpg_android.so` | ~15 MB | RM2000/2003 runtime |
+| `libgodot_android.so` | **142 MB** | Godot Engine runtime |
+| `librenpython.so` | **55 MB** | Ren'Py Python runtime |
+| `libonscripter.so` | 2.3 MB | ONScripter runtime |
+| `libsdl.so` | bundled | SDL for ONScripter |
+| `libSDL2.so` | std | SDL2 core |
+| `libSDL2_image.so` | std | SDL2 image |
+| `libSDL2_ttf.so` | std | SDL2 fonts |
+| `libSDL2_sound.so` | std | SDL2 sound |
+| `libopenal.so` | std | OpenAL audio |
+| `libc++_shared.so` | std | C++ runtime |
+| `libc++_shared_godot.so` | std | Godot's C++ runtime |
+| `libgamebrowser.so` | bundled | EasyRPG game browser |
+
+**Benefits of bundling everything:**
+- Zero downloads, zero plugin hunting — install and play
+- Works offline
+- No compatibility issues between plugin versions
+
+**Downsides:**
+- 223 MB APK (bulky for users who only want one engine)
+- No third-party plugin system
+- Every new runtime compiles into the same APK
+- Can't add engines without app update
+
+### 3.2 JoiPlay's Approach
 
 JoiPlay uses a **modular APK plugin system** — each game runtime is a separate installable APK:
 
-| Plugin | What It Runs | Size |
-|--------|-------------|------|
-| **RPG Maker Plugin** | XP, VX, VX Ace, MV, MZ | ~15-20 MB |
-| **Ren'Py Plugin** (8.x + 7.x versions) | Ren'Py visual novels | ~30+ MB |
-| **Ruffle Plugin** | Flash/SWF games | ~10 MB |
-| **Godot Plugin** (3.6 + 4.3 versions) | Godot games | ~20+ MB |
-| **Crosswalk Plugin** | HTML5 games (legacy WebView) | ~20 MB |
+| Plugin | Size |
+|--------|------|
+| RPG Maker Plugin | ~15-20 MB |
+| Ren'Py Plugin (8.x + 7.x) | ~30+ MB |
+| Ruffle Plugin | ~10 MB |
+| Godot Plugin (3.6 + 4.3) | ~20+ MB |
+| Crosswalk Plugin | ~20 MB |
 
-**Key advantages of JoiPlay's approach:**
-- Users only install what they need
-- Each plugin updates independently
-- Third parties can author plugins (plugin template exists)
-- Core app stays small (~5 MB)
-- Plugin detection is automatic during game import
+**Benefits:** Small core app (5 MB), per-plugin updates, third-party authoring.
 
-### 3.2 How Runestone Does Engines
-
-Runestone has a **built-in GameEngine interface** with engines registered in `EngineRegistry.initDefaults()`:
-
-```kotlin
-EngineRegistry.register(MkxpZEngine())    // XP/VX/VX Ace
-EngineRegistry.register(EasyRpgEngine())   // 2000/2003 (STUB)
-EngineRegistry.register(WebViewMzEngine()) // MZ
-EngineRegistry.register(WebViewMvEngine()) // MV
-EngineRegistry.register(TyranoEngine())   // TyranoBuilder
-EngineRegistry.register(ConstructEngine()) // Construct 2/3
-EngineRegistry.register(RenpyEngine())    // Ren'Py (STUB)
-```
-
-**Problems with this approach:**
-- All engines bundled in the same APK (bloat)
-- No dynamic loading — native .so libraries must be compiled into the APK at build time
-- EasyRPG and Ren'Py are **stubs** that crash with "coming soon" toasts
-- No native builds for mkxp-z are actually included (build is commented out in build.gradle.kts)
-- No way for third parties to add engines
-- WebView engines all use system WebView (limited, can break on some devices)
-
-**GAP: Runestone needs a proper plugin APK architecture with runtime discovery.**
+**This gap remains:** Runestone has no plugin APK architecture. Everything is monolithic.
 
 ---
 
-## 4. Input System — SIGNIFICANT GAP
+## 4. Input System
 
-### 4.1 JoiPlay Input Features
+### 4.1 Feature Comparison
 
 | Feature | JoiPlay | Runestone |
 |---------|---------|-----------|
 | **Virtual D-Pad** | ✅ Customizable | ✅ Built-in |
-| **Action buttons (A/B/X/Y)** | ✅ All 4 + customizable | ✅ (X/Y optional) |
-| **Select/Start/Menu** | ✅ All 3 | ✅ All 3 |
-| **Button size adjustment** | ✅ Per-game | ✅ Global slider |
+| **Action buttons (A/B)** | ✅ All 4 + customizable | ✅ A/B with optional X/Y |
+| **Select/Start/Menu** | ✅ All 3 | ✅ All 3 (Settings button too) |
+| **Button size adjustment** | ✅ Per-game | ✅ Global slider only |
 | **Button opacity** | ✅ Adjustable | ✅ Adjustable |
-| **Layout editing (drag to reposition)** | ✅ Drag & drop controls anywhere | ❌ **NOT IMPLEMENTED** (code has editing stubs) |
-| **Per-game layout save** | ✅ Saves per-game button positions | ❌ Only global settings |
-| **Multi-touch (hold 2 buttons at once)** | ✅ Full multi-touch | ✅ Basic |
-| **Physical controller mapping** | ✅ Built-in "Controller Mapping" button | ❌ **NOT IMPLEMENTED** |
-| **Keyboard mapping** | ✅ Custom keymapping via file | ❌ Only software keyboard toggle |
-| **Hide virtual gamepad** | ✅ Toggle | ❌ Can't hide |
+| **Layout editing (drag to reposition)** | ✅ Drag & drop anywhere | ❌ Not implemented |
+| **Per-game layout save** | ✅ Saves per-game positions | ❌ Global settings only |
+| **Multi-touch** | ✅ Full | ✅ Basic |
+| **Physical controller mapping** | ✅ Built-in UI | ❌ Not implemented |
+| **Keyboard mapping** | ✅ Custom keymapping file | ✅ Software keyboard toggle |
+| **Hide virtual gamepad** | ✅ Toggle | ✅ Gamepad mode hides it |
 | **Button preset system** | ✅ Layout presets | ❌ Not implemented |
-| **Pinch-to-resize controls** | ✅ Appears to support | ❌ Not implemented |
-| **L1/R1 shoulder buttons** | ✅ Remappable | ❌ **NOT IMPLEMENTED** |
+| **Pinch-to-resize controls** | ✅ | ❌ Not implemented |
+| **L1/R1 shoulder buttons** | ✅ | ❌ Not implemented |
 | **Turbo / auto-fire** | ✅ | ❌ Not implemented |
 
-### 4.2 Runestone Input Implementation Status
+### 4.2 Runestone Input — Current State
 
-```
-TouchOverlayView.kt — 732 lines
-  ✅ D-Pad (4 directions + dead zone center)
-  ✅ A/B + optional X/Y buttons
-  ✅ Select/Start/Settings bar
-  ✅ Multi-touch tracking
-  ✅ Haptic feedback (intensity adjustable)
-  ✅ Visual pressed states
-  ❌ Layout editing — code exists but no save mechanism
-  ❌ No controller mapping
-  ❌ No per-game input config
-  ❌ No L1/R1 buttons
-```
+`TouchOverlayView.kt` supports:
+- ✅ D-Pad (4 directions + dead zone center)
+- ✅ A/B + optional X/Y buttons
+- ✅ Select/Start/Settings bar
+- ✅ Multi-touch tracking
+- ✅ Haptic feedback (intensity adjustable)
+- ✅ Visual pressed states
+- ✅ Opacity + scale global controls
+- ✅ Gamepad mode (no overlay)
+- ❌ No layout editing/drag repositioning
+- ❌ No controller mapping
+- ❌ No per-game input config
+- ❌ No L1/R1 buttons
 
-**GAP: Runestone's input system is functional but lacks JoiPlay's per-game customization, physical controller support, and layout editing.**
+**Gap:** Input is functional but lacks per-game customization, physical controller support, and layout editing.
 
 ---
 
-## 5. Settings & Configuration — SIGNIFICANT GAP
+## 5. Settings & Configuration
 
-### 5.1 JoiPlay Settings
+### 5.1 Runestone Current Settings
 
-JoiPlay settings are **per-game** and contain many more options:
+**Global settings** (RunnerSettings):
+- `layoutMode`: PORTRAIT_CONSOLE | LANDSCAPE | GAMEPAD
+- `touchOpacity`: Float (0.72)
+- `touchScale`: Float (1.0)
+- `hapticsEnabled`: Boolean
+- `hapticIntensity`: Float (0.55)
+- `showExtraButtons`: Boolean (X/Y)
+- `forceAudioExt`: String (.ogg)
 
-#### JoiPlay RPG Maker Plugin Settings
+**Per-game settings:**
+- Engine override in Manage Files screen
+- Dedicated per-game settings screen exists (`feature/phase1-pergame-config` branch)
+
+### 5.2 Gaps vs JoiPlay
+
 | Setting | JoiPlay | Runestone |
 |---------|---------|-----------|
 | **Audio extension** (.ogg/.m4a) | ✅ | ✅ |
-| **Font size / scaling** | ✅ | ❌ (textScale field exists but unused) |
+| **Font size / scaling** | ✅ | ❌ Not implemented |
 | **Screen filter** | ✅ | ❌ Not implemented |
-| **Screen scaling mode** (integer, smooth, fit) | ✅ Integer + smooth + stretch | ❌ (fields exist but unused) |
+| **Screen scaling mode** | ✅ Integer + smooth + stretch | ❌ Not implemented |
 | **Force audio to .ogg** | ✅ | ✅ |
-| **Optimize Maps** (rebuilds tilemaps) | ✅ Critical feature | ❌ **NOT IMPLEMENTED** |
-| **Force Miniz** (for XP/VX/VX Ace) | ✅ | ❌ Not implemented |
+| **Optimize Maps** | ✅ Critical feature | ❌ NOT IMPLEMENTED |
+| **Force Miniz** (XP/VX/VX Ace) | ✅ | ❌ Not implemented |
 | **Video/Skip video** | ✅ | ❌ Not implemented |
 | **Text speed** | ✅ | ❌ Not implemented |
 | **Battle effects** | ✅ | ❌ Not implemented |
-| **Cheat menu injection** | ✅ Built-in | ❌ **NOT IMPLEMENTED** |
+| **Cheat menu injection** | ✅ Built-in | ❌ NOT IMPLEMENTED |
 | **Debug console** | ✅ | ❌ Not implemented |
 | **FPS counter** | ✅ (WebView only) | ✅ (WebView only, on by default) |
-
-#### JoiPlay General Settings
-| Setting | JoiPlay | Runestone |
-|---------|---------|-----------|
 | **Theme/color scheme** | ✅ Multiple themes | ❌ Fixed dark theme only |
-| **Wallpaper** | ✅ Custom wallpaper support | ❌ Not implemented |
-| **Icon packs** | ✅ | ❌ Not implemented |
 | **Language selection** | ✅ | ❌ Fixed English |
-| **Developer mode** | ✅ | ❌ Not implemented |
 
-### 5.2 Runestone Settings (current state)
-
-```
-RunnerSettings.kt:
-- layoutMode: PORTRAIT_CONSOLE | LANDSCAPE | GAMEPAD
-- touchOpacity: Float (0.72)
-- touchScale: Float (1.0)
-- hapticsEnabled: Boolean
-- hapticIntensity: Float (0.55)
-- showExtraButtons: Boolean (X/Y)
-- integerScaling: Boolean ❌ UNUSED
-- smoothScaling: Boolean ❌ UNUSED
-- textScale: Float ❌ UNUSED
-- forceAudioExt: String (".ogg")
-```
-
-**GAP: Runestone has 7 actual settings + 3 unused fields vs. JoiPlay's 20+ per-game and global settings.**
+**Gap:** Runestone has ~7 active settings vs JoiPlay's 20+. Per-game settings branch exists but isn't merged.
 
 ---
 
-## 6. Layout Modes — MODERATE GAP
+## 6. In-Game Experience
 
-### 6.1 Comparison
-
-| Layout Mode | Runestone | JoiPlay |
-|-------------|-----------|---------|
-| **Portrait (game above, controls below)** | ✅ Portrait Console | ✅ Standard layout |
-| **Landscape (game fullscreen, overlay controls)** | ✅ Landscape | ✅ |
-| **Gamepad mode (hide controls)** | ✅ Gamepad (just game) | ✅ (Hide Virtual Gamepad) |
-| **Custom layouts (per-game)** | ❌ Not implemented | ✅ Drag & drop repositioning |
-| **Layout preview in settings** | ✅ 3 card previews | ✅ Visual previews |
-
-**GAP: Runestone has the 3 basic modes but no per-game layout customization.**
-
----
-
-## 7. Save File Management — MODERATE GAP
-
-### 7.1 Comparison
+### 6.1 During Gameplay
 
 | Feature | JoiPlay | Runestone |
 |---------|---------|-----------|
-| **Cross-platform save import** | ✅ Drag & drop PC saves | ❌ Not implemented |
-| **Save file backup** | ✅ Manual save backup | ✅ Automatic during reimport |
-| **Save file browsing UI** | ✅ In-app save browser | ✅ Dialog listing |
-| **Cloud saves** | ❌ Not built-in | ❌ Not built-in |
-| **Export saves** | ✅ Share/export individual saves | ❌ Not implemented |
-| **Import saves from ZIP** | ✅ | ❌ Not implemented |
-
-### 7.2 Runestone Save System
-
-```
-SaveManager.kt — 108 lines
-  ✅ syncFromActive() — backs up saves before reimport
-  ✅ restoreToActive() — restores saves after reimport
-  ✅ listSaves() — shows saves + live saves in game dir
-  ✅ Remove game data with keepSaves option
-  ❌ No manual save import/export UI
-  ❌ No PC save file compatibility
-```
-
-**GAP: Runestone's save system is functional for backup but lacks user-facing save management features.**
-
----
-
-## 8. Game Import & Library — MODERATE GAP
-
-### 8.1 Comparison
-
-| Feature | JoiPlay | Runestone |
-|---------|---------|-----------|
-| **SAF folder import** | ✅ (folder picker) | ✅ (folder picker) |
-| **Open .exe directly** | ✅ Can open Game.exe | ❌ Must select folder |
-| **RTP download prompt** | ✅ Prompts for missing RTP | ❌ Not implemented |
-| **Game icon detection** | ✅ Auto-detect from exe | ❌ Shows engine color |
-| **Game title parsing** | ✅ From Game.ini/exe | ✅ From Game.ini (mkxp-z) |
-| **Search/filter library** | ✅ Search bar | ❌ Not implemented |
-| **Game categories/collections** | ✅ | ❌ Not implemented |
-| **Recent games** | ✅ | ❌ Not implemented |
-| **Per-game settings** | ✅ Override settings per game | ❌ Global settings only |
-| **Game info/summary** | ✅ File count, engine, version | ✅ File count, engine |
-| **Delete game** | ✅ | ✅ (with save keep option) |
-| **Engine override** | ✅ Manual engine selection | ✅ Per-game engine picker |
-| **Map optimize on import** | ✅ | ❌ Not implemented |
-
-**GAP: Runestone's library is functional but lacks per-game settings, search, RTP handling, and polish.**
-
----
-
-## 9. Game Settings (In-Game Overlay) — MAJOR GAP
-
-### 9.1 During Gameplay
-
-JoiPlay has a powerful **in-game settings overlay** accessible during gameplay:
-
-| Feature | JoiPlay | Runestone |
-|---------|---------|-----------|
-| **In-game settings panel** | ✅ Slide-out overlay | ❌ Toast message only |
-| **Speed-up / fast-forward** | ✅ Adjustable (2x, 3x, etc.) | ❌ **NOT IMPLEMENTED** |
-| **Toggle cheats** | ✅ Built-in cheat menu | ❌ **NOT IMPLEMENTED** |
+| **In-game settings overlay** | ✅ Slide-out panel | ⚠️ Toast message only |
+| **Speed-up / fast-forward** | ✅ Adjustable (2x, 3x, etc.) | ❌ NOT IMPLEMENTED |
+| **Toggle cheats** | ✅ Built-in cheat menu | ❌ NOT IMPLEMENTED |
 | **Save/Load state** | ✅ Quick save/load | ❌ Not implemented |
 | **Take screenshot** | ✅ | ❌ Not implemented |
 | **Reset game** | ✅ | ❌ Not implemented |
 | **Change settings mid-game** | ✅ Opacity, layout, controls | ❌ Must restart |
-| **Exit to library** | ✅ Always available | ✅ Via back button |
+| **Exit to library** | ✅ Always available | ✅ HOME button + RESUME later |
+| **Keyboard toggle** | ✅ | ✅ KBD button |
+| **STOP game** | ✅ | ✅ With confirmation dialog |
+| **Pause/resume** | ✅ | ✅ Paused game state preserved |
 
-**GAP: Runestone's in-game experience is bare — no speed-up, no cheats, no quick save.**
-
----
-
-## 10. Native Runtime Integration — CRITICAL GAP
-
-### 10.1 JoiPlay's Native Approach
-
-JoiPlay's RPG Maker Plugin is a **mature mkxp-z fork** with:
-- Custom RGSS interpreter with Android-specific optimizations
-- Win32API stubs for RPG Maker system calls
-- Font rendering with fallback system
-- Ruby 3.1.3 support
-- Custom key mapping built into the interpreter
-- Optimized tile rendering
-- RGSS archive extraction support
-- 70% compatibility rate for XP/VX/VX Ace games
-
-### 10.2 Runestone's Native Approach
-
-Runestone's mkxp-z integration is **stub-level**:
-
-```
-GameActivity.kt:
-  launchRgssGame() -> starts com.hatkid.mkxpz.MainActivity via intent
-  
-build.gradle.kts:
-  // Native build is optional - enable after running setup-native-build.sh
-  // externalNativeBuild {
-  //     ndkBuild {
-  //         path = file("../native/mkxp-z-android/app/jni/Android.mk")
-  //     }
-  // }
-```
-
-The native mkxp-z build is **not currently compiled** into the APK. RGSS games would fail to launch if the submodule's APK isn't installed separately.
-
-**GAP: Runestone has no working native runtime for RGSS (XP/VX/VX Ace) games.**
+**Gap:** Runestone's in-game experience is basic — HOME, KBD, and a toast for settings but no speed-up, no cheats, no quick save/load.
 
 ---
 
-## 11. Cheat System — MAJOR GAP
-
-### 11.1 JoiPlay Cheat Features
-
-- **Built-in cheat menu** for RPG Maker MV/MZ
-- Can enable/disable mid-game
-- Common cheats: gold, HP, items, level, stats
-- Third-party cheat plugin support
-- Speed-up/turbo mode (critical for Pokémon fangames)
-
-### 11.2 Runestone Cheat Features
-
-**None implemented.**
-
-**GAP: Complete absence of cheat functionality.**
-
----
-
-## 12. UI/UX Design — SUBSTANTIVE GAP
-
-### 12.1 Comparison
-
-| UI Feature | JoiPlay | Runestone |
-|------------|---------|-----------|
-| **Hero cards for games** | ✅ Grid/list view | ✅ Large hero cards |
-| **Game art/banner** | ✅ Auto-detect Game.exe icon | ❌ Engine color only |
-| **Search bar** | ✅ | ❌ Not implemented |
-| **Sort options** | ✅ Name, recent, size | ❌ Alphabetical only |
-| **Dark theme** | ✅ | ✅ (only option) |
-| **Theme customization** | ✅ Color/wallpaper options | ❌ Fixed dark theme |
-| **Material Design** | ✅ Modern UI | ✅ Custom dark gothic style |
-| **Animation/transitions** | ✅ Smooth | ✅ Basic |
-| **Settings organization** | ✅ Categorized sections | ✅ Categorized sections |
-| **Onboarding/welcome** | ✅ First-time setup guide | ❌ Blank state (just says "No games imported yet") |
-| **Context menus** | ✅ Long-press options | ❌ Tap + overlay needed |
-| **Gamepad config UI** | ✅ Dedicated mapping screen | ❌ Not implemented |
-
-**GAP: Runestone's UI is stylish but missing search, sorting, themes, and onboarding.**
-
----
-
-## 13. Map Optimization — CRITICAL MISSING FEATURE
-
-### 13.1 What It Is
-
-"Optimize Map" is a JoiPlay feature that **recreates maps and tilesets to reduce tileset height**. This is a workaround for tile rendering issues on Android devices. Many RPG Maker games (especially Pokémon Essentials games) have maps that don't render correctly without this.
-
-### 13.2 Why It Matters
-
-This is one of the most frequently recommended fixes in JoiPlay communities. Without it, many games have broken tile rendering (black tiles, missing sprites, etc.).
-
-**GAP: Runestone has no map optimization at all.**
-
----
-
-## 14. Font Handling — MODERATE GAP
-
-### 14.1 JoiPlay
-
-- Custom font files loaded from game directory
-- Font fallback system for missing characters
-- Auto-detect and use game's fonts
-- Text scaling option
-
-### 14.2 Runestone
-
-- WebView engines rely on system fonts
-- mkxp-z uses whatever fonts the binary supports
-- No font management at the launcher level
-- `textScale` field exists in `RunnerSettings` but is unused
-
-**GAP: Runestone has no font handling system.**
-
----
-
-## 15. Audio Handling — COMPARABLE
+## 7. Save File Management
 
 | Feature | JoiPlay | Runestone |
 |---------|---------|-----------|
-| **Force audio extension (.ogg/.m4a)** | ✅ | ✅ |
-| **Audio format conversion** | ✅ In-plugin | ❌ At WebView network level |
-| **Mute toggle** | ✅ | ❌ Not implemented |
-| **Volume control** | ✅ System volume | ✅ System volume |
+| **Cross-platform save import** | ✅ Drag & drop PC saves | ❌ Not implemented |
+| **Save file backup** | ✅ Manual backup | ✅ Auto-backup before reimport |
+| **Save file browsing UI** | ✅ In-app save browser | ✅ Dialog listing |
+| **Cloud saves** | ❌ Not built-in | ❌ Not built-in |
+| **Export saves** | ✅ Share/export | ❌ Not implemented |
+| **Import saves from ZIP** | ✅ | ❌ Not implemented |
 
-**GAP: Runestone's audio handling is basic but functional for WebView games.**
+`SaveManager.kt` handles backup/restore during reimport, `listSaves()` enumerates save files for mkxp-z (.rxdata, .rvdata, .rvdata2), EasyRPG (.lsd), and Ren'Py (.save, .rpy-save) engines.
+
+**Gap:** Functional for backup but lacks user-facing import/export features.
 
 ---
 
-## 16. Summary of Priority Gaps
+## 8. Game Library & Management
 
-### URGENT (needed for basic functionality)
+| Feature | JoiPlay | Runestone |
+|---------|---------|-----------|
+| **SAF folder import** | ✅ Folder picker | ✅ Folder picker |
+| **Store / game catalogue** | ❌ | ✅ **Store system** with download + extract + install pipeline |
+| **Game icon detection** | ✅ Auto-detect from exe | ❌ Engine color only |
+| **Game title parsing** | ✅ From Game.ini/exe | ✅ From Game.ini (mkxp-z) / System.json (MV/MZ) |
+| **Search/filter** | ✅ Search bar | ✅ Sort (A→Z, Z→A, recent, date) + glassmorphism filter overlay |
+| **Game categories/collections** | ✅ | ❌ Not implemented |
+| **Recent games** | ✅ | ❌ Not implemented |
+| **Per-game settings** | ✅ Override per game | ✅ Engine override exists, dedicated per-game config branch |
+| **Game info/summary** | ✅ File count, engine, version | ✅ File count, engine |
+| **Delete game** | ✅ | ✅ With save-keep option |
+| **Engine override** | ✅ Manual selection | ✅ Per-game engine picker |
+| **Map optimize on import** | ✅ | ❌ Not implemented |
+| **RTP download prompt** | ✅ | ❌ Not implemented |
+| **RESUME bar** | ❌ | ✅ Custom glassmorphism RESUME banner above dock |
 
-| # | Gap | Why |
-|---|-----|-----|
-| 1 | **Working mkxp-z native build** | RGSS games (XP/VX/VX Ace) are currently unplayable |
-| 2 | **Working EasyRPG runtime** | RM2000/2003 support is promised but non-functional |
-| 3 | **Working Ren'Py runtime** | Same — stub only |
+**Runestone has a unique feature JoiPlay lacks:** A **game store** with provider system (static JSON catalogue, download from Pixeldrain/Mediafire/etc., extract, and auto-detect engine).
+
+**Gap (still real):** No game art, no categories, no recent games, no RTP handling, no map optimization.
+
+---
+
+## 9. Native Runtime Integration
+
+### 9.1 mkxp-z (RPG Maker XP/VX/VX Ace) — ✅ Full Working
+
+- `libmkxp-z.so` (GPLv2+) bundled in APK
+- `EasyRpgPlayerActivity` extends `com.hatkid.mkxpz.MainActivity`
+- Launches via Intent with full settings passthrough (layout, opacity, haptics, audio)
+- Save detection: .rxdata (XP), .rvdata (VX), .rvdata2 (VX Ace)
+- Title detection from Game.ini
+
+### 9.2 EasyRPG (RPG Maker 2000/2003) — ✅ Full Working
+
+- `libeasyrpg_android.so` (GPLv3) extracted from v0.8.1 APK
+- Full JNI wrapper: `getAssetManager()`, `getArguments()`, `getRtpPath()`, keyboard replacement
+- Passes `--project-path`, `--config-path`, `--save-path`, `--log-file` CLI args
+- **5 iterations of crash fixes** (v0.6.2→v0.6.5): JNI methods, SDL2 ABI conflict, keyboard input, portrait mode
+- Save detection: Save01.lsd, Save02.lsd, etc.
+
+### 9.3 Ren'Py — ⚠️ .so Bundled, Wrapper Missing
+
+- `librenpython.so` (55MB, MIT) is **in the APK**
+- Detection fully implemented (renpy/ folder, .rpy files, VERSION.txt, config.name parsing)
+- `getSaves()` fully implemented (.save, .rpy-save files)
+- **Launch shows "Coming Soon" dialog** — needs Android activity class with SDL2 bridge
+
+### 9.4 Godot — ⚠️ .so Bundled, Wrapper Missing
+
+- `libgodot_android.so` (**142MB**, MIT) is **in the APK**
+- Detection implemented (project.godot, .pck files)
+- Title parsing from project.godot config entries
+- **Launch shows "Coming Soon" dialog**
+
+### 9.5 ONScripter — ⚠️ .so Bundled, Wrapper Missing
+
+- `libonscripter.so` (2.3MB) + `libsdl.so` bundled
+- Detection implemented (nscript.dat, .nsa, numbered .txt)
+- **Launch shows "Coming Soon" dialog**
+
+---
+
+## 10. Store / Catalogue System
+
+**This is a feature Runestone has that JoiPlay doesn't.**
+
+| Feature | Status |
+|---------|--------|
+| Static JSON catalogue | ✅ Works |
+| Pixeldrain downloads | ✅ Working |
+| Mediafire downloads | ⚠️ Only works on desktop UA (blocked on mobile) |
+| Rootz downloads | ✅ Working |
+| FuckingFast downloads | ✅ Working |
+| ZIP extraction with progress | ✅ Working |
+| Game detection after install | ✅ Auto-detect engine type |
+| Single-copy storage | ✅ Games served from original/, saves in saves/ |
+
+**Pitfall found:** Mediafire HTML-parsing fails on Android (mobile page lacks CDN links). All 12 games in the default catalogue use Mediafire — needs migration to Pixeldrain.
+
+---
+
+## 11. Map Optimization — CRITICAL GAP
+
+JoiPlay's "Optimize Map" recreates tilesets to reduce tileset height. Many Pokémon fangames have broken tile rendering without it.
+
+**Runestone does not implement this.** This is one of the most requested features in the JoiPlay community.
+
+---
+
+## 12. Font Handling
+
+| Feature | JoiPlay | Runestone |
+|---------|---------|-----------|
+| Custom font loading from game dir | ✅ | ❌ Not implemented |
+| Font fallback for missing chars | ✅ | ❌ (Relies on system fonts) |
+| Text scaling | ✅ | ❌ (textScale field exists but unused) |
+
+---
+
+## 13. Audio Handling
+
+| Feature | JoiPlay | Runestone |
+|---------|---------|-----------|
+| Force audio extension (.ogg/.m4a) | ✅ | ✅ |
+| Audio format conversion | ✅ In-plugin | ❌ WebView only |
+| Mute toggle | ✅ | ❌ Not implemented |
+| Volume control | ✅ System volume | ✅ System volume |
+
+---
+
+## 14. UI/UX
+
+| Feature | JoiPlay | Runestone |
+|---------|---------|-----------|
+| Hero cards | ✅ Grid/list | ✅ Large hero cards |
+| Game art/banner | ✅ Auto from exe | ❌ Engine color only |
+| Search bar | ✅ | ⚠️ Sort + filter search in glass overlay |
+| Sort options | ✅ | ✅ A→Z, Z→A, recent, date added |
+| Dark theme | ✅ | ✅ Glassmorphism (only option) |
+| Theme customization | ✅ Color/wallpaper | ❌ Fixed dark glass |
+| Material Design | ✅ Modern UI | ✅ Custom dark glass gothic |
+| Animation/transitions | ✅ Smooth | ✅ Tap bounce, slide, fade |
+| Settings organization | ✅ Categorized | ✅ Categorized |
+| Onboarding/welcome | ✅ Setup guide | ❌ Empty state "No games imported yet" |
+| Detail panel | ❌ | ✅ Game metadata, engine info, file count |
+| 3D carousel layout | ❌ | ✅ Scroll effects, bloom, grain, DOF |
+| RESUME bar | ❌ | ✅ Glass banner with RESUME + STOP |
+| Glassmorphism | ❌ | ✅ Full glass design system |
+| Dock bar (always visible) | ❌ | ✅ Glass dock with sort, filter, store, settings |
+
+**Runestone's UI is more advanced than JoiPlay's in some areas** (glassmorphism, 3D carousel effects, dock bar, store), but lacks the basics JoiPlay has (game art, themes, onboarding, search).
+
+---
+
+## 15. Summary of Remaining Gaps
+
+### URGENT (blocking basic functionality — these are .so-level gaps)
+
+| # | Gap | Status |
+|---|-----|--------|
+| 1 | **Ren'Py activity wrapper** | .so (55MB) bundled, detection works, saves work. Need an Android Activity that loads `librenpython.so` appropriately |
+| 2 | **Godot activity wrapper** | .so (142MB) bundled. Need same — activity wrapper to launch Godot games |
+| 3 | **ONScripter activity wrapper** | .so (2.3MB) bundled. Need jni bridge to libonscripter |
 
 ### HIGH PRIORITY (needed for competitive feature set)
 
 | # | Gap | Why |
 |---|-----|-----|
-| 4 | **Per-game settings** | Every game needs different input layouts |
-| 5 | **Physical controller mapping** | Handheld/gamepad users can't play otherwise |
-| 6 | **Map optimization** | Many games have broken tiles without it |
-| 7 | **Speed-up / fast-forward** | Critical for fangame replayability |
-| 8 | **Plugin APK architecture** | Core app is bloated; native engines can't be added dynamically |
-| 9 | **Game art detection** | Cards are empty colored panels — need real artwork |
-| 10 | **Search & sort library** | Essential for collections of 10+ games |
+| 4 | **Per-game settings** (merged, not branch) | Every game needs different input/settings |
+| 5 | **Physical controller mapping** | Bluetooth gamepad users can't play without it |
+| 6 | **Map optimization** | Many games have broken tiles without it — critical for Pokémon fangames |
+| 7 | **Speed-up / fast-forward** | Essential for fangame replayability |
+| 8 | **Mediafire → Pixeldrain migration** | Store is broken for all 12 default games on real devices |
+| 9 | **Game art detection** | Cards are empty colored panels |
+| 10 | **Search bar** (text search in library) | Sort + filter overlay exists but no standalone text search |
 
 ### MEDIUM PRIORITY
 
-| # | Gap |
-|---|-----|
-| 11 | Save file import/export (cross-platform from PC) |
-| 12 | In-game settings overlay (opacity, layout without restarting) |
-| 13 | Font handling system |
-| 14 | Enhanced settings (screen filter, integer scaling, text speed) |
-| 15 | Missing engine support: Godot, Flash, NScripter, Twine, VN Maker, Electron |
-| 16 | Layout editing (drag controls to reposition) |
-| 17 | Cheat menu injection |
-| 18 | Per-game button layouts saved to disk |
+| # | Gap | Notes |
+|---|-----|-------|
+| 11 | Plugin APK architecture | Currently 223MB monolithic APK |
+| 12 | Save file import/export (PC ↔ Android) | |
+| 13 | In-game settings overlay (opacity, layout without restart) | Currently just a Toast |
+| 14 | Font handling system | textScale exists but unused |
+| 15 | Enhanced settings (screen filter, integer scaling, text speed) | |
+| 16 | Layout editing (drag controls to reposition) | |
+| 17 | Cheat menu injection | |
+| 18 | Per-game button layout saved to disk | |
+| 19 | Map optimizer tool | |
 
 ### NICE TO HAVE
 
-| # | Gap |
-|---|-----|
-| 19 | Theme/wallpaper customization |
-| 20 | RTP download prompts |
-| 21 | First-time onboarding |
-| 22 | Language selection |
-| 23 | Context menus (long-press) |
-| 24 | Developer mode / debug console |
-| 25 | In-game screenshots |
-| 26 | Quick save/load states |
-| 27 | L1/R1 shoulder buttons in touch overlay |
+| # | Gap | Notes |
+|---|-----|-------|
+| 20 | Theme/wallpaper customization | |
+| 21 | RTP download prompts | |
+| 22 | First-time onboarding | |
+| 23 | Language selection | |
+| 24 | Context menus (long-press) | |
+| 25 | Developer mode / debug console | |
+| 26 | In-game screenshots | |
+| 27 | Quick save/load states | |
+| 28 | L1/R1 shoulder buttons in touch overlay | |
+| 29 | Turbo / auto-fire | |
 
 ---
 
-## 17. Architectural Comparison — What Runestone Does Right
-
-Despite the gaps, Runestone has **some architectural advantages**:
+## 16. Architectural Comparison — What Runestone Does Right
 
 | Aspect | Runestone | JoiPlay |
 |--------|-----------|---------|
-| **Open source** | ✅ GPLv2+ | ❌ Closed source |
-| **License** | ✅ GPLv2+ — anyone can fork/contribute | ❌ Proprietary |
-| **Modular engine design** | ✅ Clean `GameEngine` interface | ✅ Plugin APKs |
-| **Kotlin (modern Android)** | ✅ Kotlin, no XML layouts | ✅ Kotlin |
-| **Single-copy storage** | ✅ No file duplication | ❌ (Users report duplication issues) |
-| **Save protection** | ✅ Protected saves/ directory | ❌ (Saves live in game dir) |
-| **Code quality** | ✅ Well-structured, clean code | ❌ (Reportedly messy internals) |
+| **Open source** | ✅ GPLv2+ — anyone can fork/contribute | ❌ Closed source |
+| **Engine design** | ✅ Clean `GameEngine` interface, 16 engine types | ✅ Plugin APKs |
+| **Code quality** | ✅ Well-structured Kotlin, no XML layouts | ❌ (Reportedly messy internals) |
+| **Single-copy storage** | ✅ No file duplication (original/ + saves/) | ❌ (Users report duplication issues) |
+| **Save protection** | ✅ Protected saves/ directory, auto-backup/reimport | ❌ (Saves live in game dir) |
+| **Game store** | ✅ Static JSON catalogue + download pipeline | ❌ No built-in store |
+| **UI design** | ✅ Custom glassmorphism, 3D carousel effects | ✅ Material Design |
+| **All runtimes bundled** | ✅ 223MB, zero downloads, works offline | ⚠️ Must install plugins separately |
+| **RESUME bar** | ✅ Glass banner with RESUME/STOP | ❌ No pause state |
+| **Detail panel** | ✅ Per-game metadata panel | ❌ |
 
 ---
 
-## 18. Feature Count Summary
+## 17. Feature Count Summary (Updated)
 
-| Category | Runestone | JoiPlay | Gap |
-|----------|-----------|---------|-----|
-| Supported Engines | 7 (1 functional native) | 15+ | 8 engines |
-| Settings (global + per-game) | ~7 | ~25+ | 18+ |
-| Input Options | 10 | 20+ | 10+ |
-| UI Features | 6 | 14+ | 8+ |
-| Save Management | 4 | 7+ | 3+ |
-| Plugin Architecture | No | Yes (6 plugins) | Full gap |
-| In-Game Features | 1 | 6+ | 5+ |
-| Cheats | 0 | Yes | Full gap |
-| Map Optimization | 0 | Yes | Full gap |
+| Category | Runestone v0.2.0 (old doc) | Runestone v0.6.13 (current) | JoiPlay | Remaining Gap |
+|----------|---------------------------|----------------------------|---------|---------------|
+| Working Engines | 4 + 3 stubs | **10** working + 4 detect-ready | 15+ | 5 incomplete wrappers |
+| Settings | ~7 | ~7 (branch adds per-game) | ~25+ | 18+ |
+| Input Options | 10 | 10 (no new features) | 20+ | 10+ |
+| UI Features | 6 | **12+** (carousel, dock, store, detail panel, glass effects) | 14+ | 2 (art, search) |
+| Save Management | 4 | 4 (no change) | 7+ | 3+ |
+| Plugin Architecture | No | No | Yes | Full gap |
+| In-Game Features | 1 | **3** (HOME, KBD, STOP) | 6+ | 3+ (speed, cheat, overlay) |
+| Cheats | 0 | 0 | Yes | Full gap |
+| Map Optimization | 0 | 0 | Yes | Full gap |
+| Game Store | 0 | **Yes** (catalogue + download) | No | Runestone advantage |
+| Glassmorphism UI | 0 | **Yes** (design system) | No | Runestone advantage |
 
 ---
 
-## 19. Recommended Roadmap
+## 18. Recommended Roadmap
 
-### Phase A — Core Functionality (1-2 weeks)
-1. ✅ Build mkxp-z native .so into the APK (uncomment ndkBuild)
-2. Implement EasyRPG Player native build
-3. Create a minimal Ren'Py plugin system
+### Phase A — Finish Activity Wrappers (next priority)
 
-### Phase B — Feature Parity (2-4 weeks)
-4. Per-game settings storage (JSON per game)
-5. Physical controller mapping UI + detection
-6. Map optimization tool (inject simplified tilesets)
-7. Speed-up toggle (via JS injection for WebView, Ruby for mkxp-z)
+These are low-hanging fruit — the .so files are already bundled, just need Android Activity classes:
 
-### Phase C — Polish (4-8 weeks)
-8. Plugin APK architecture (separate installable runtime APKs)
-9. Game art extraction (from Game.exe or Game.ini metadata)
-10. Search bar + sort options
-11. Save file import/export
+1. **Ren'Py activity wrapper** — 55MB librenpython.so already waiting
+2. **Godot activity wrapper** — 142MB libgodot_android.so already waiting
+3. **ONScripter** — 2.3MB libonscripter.so already waiting
 
-### Phase D — Expansion (8+ weeks)
-12. In-game settings overlay
-13. Cheat menu injection
-14. Godot plugin
-15. Theme customization
-16. Cross-platform save compatibility
+### Phase B — Feature Parity (core gaps)
+
+4. **Merge per-game settings** branch into main
+5. **Physical controller mapping UI** (branch exists: `feature/phase7-controller-saves`)
+6. **Speed-up toggle** (JS injection for WebView, Ruby for mkxp-z)
+7. **Migrate default catalogue from Mediafire to Pixeldrain**
+
+### Phase C — Polish & Missing Features
+
+8. Game art extraction (from Game.exe icons or game folder thumbnails)
+9. Text search bar in library
+10. In-game settings overlay (change opacity/layout without restarting)
+11. Map optimization tool
+12. Font handling (custom font loading + fallback)
+
+### Phase D — Expansion
+
+13. Plugin APK architecture (modular runtimes)
+14. Cheat menu injection
+15. Theme/wallpaper customization
+16. Save file import/export (PC compatibility)
+17. L1/R1 shoulder buttons
+18. First-time onboarding flow
+
+---
+
+*Built with Kotlin. No XML. GPLv2+. Updated 2026-06-01 — branch `refactor/ui-complete`, v0.6.13.*

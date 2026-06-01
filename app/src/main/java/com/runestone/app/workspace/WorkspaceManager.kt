@@ -184,5 +184,6 @@ class WorkspaceManager(private val context: Context) {
             .replace(Regex("-+"), "-")
             .trim('-')
             .take(64)
+            .ifEmpty { "game" }
     }
 }

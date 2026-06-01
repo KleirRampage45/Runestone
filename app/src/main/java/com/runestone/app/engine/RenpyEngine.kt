@@ -22,7 +22,8 @@ import java.io.File
  *
  * Detection: renpy/ directory or .rpy files
  *
- * Status: Phase 2 — Stub implementation. Native integration is complex:
+ * Status: Phase 2 — native library bundled, Android wrapper not integrated.
+ * Native integration is complex:
  * - Ren'Py runtime is Python + SDL2 + Ren'Py libs (~100MB+)
  * - Options: separate APK plugin, dynamic download, or embedded
  * - Recommend separate APK to keep core app lightweight
@@ -42,10 +43,6 @@ class RenpyEngine : GameEngine {
 
     companion object {
         private const val TAG = "RenpyEngine"
-
-        // Plugin package name (future)
-        const val PLUGIN_PACKAGE = "com.runestone.plugin.renpy"
-        const val PLUGIN_ACTIVITY = "com.runestone.plugin.renpy.RenpyActivity"
     }
 
     override fun canRun(gameFolder: File): Boolean {
@@ -87,13 +84,8 @@ class RenpyEngine : GameEngine {
     }
 
     override fun launch(context: Context, gameFolder: File, config: GameConfig) {
-        Log.i(TAG, "Launching Ren'Py (bundled): ${gameFolder.name}")
-        val intent = android.content.Intent().apply {
-            setClassName(context.packageName, "com.runestone.plugin.renpy.RenpyActivity")
-            putExtra("game_path", gameFolder.absolutePath)
-            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        context.startActivity(intent)
+        Log.i(TAG, "Ren'Py unavailable: ${gameFolder.name}")
+        UnavailableEngine.show(context, "Ren'Py")
     }
 
     override fun getSaves(gameFolder: File): List<SaveFile> {
@@ -117,15 +109,6 @@ class RenpyEngine : GameEngine {
         }
 
         return saves
-    }
-
-    private fun isPluginInstalled(context: Context): Boolean {
-        return try {
-            context.packageManager.getPackageInfo(PLUGIN_PACKAGE, 0)
-            true
-        } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
-            false
-        }
     }
 
     private fun detectRenpyVersion(gameFolder: File): String {

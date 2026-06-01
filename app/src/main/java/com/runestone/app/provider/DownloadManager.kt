@@ -48,6 +48,7 @@ class DownloadManager(private val context: Context) {
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val activeDownloads = ConcurrentHashMap<String, Thread>()
     private val cancelFlags = ConcurrentHashMap<String, Boolean>()
+    private val pendingResumes = ConcurrentHashMap<String, Pair<String, String>>()
     private var callback: DownloadCallback? = null
 
     fun setCallback(cb: DownloadCallback) {
@@ -89,6 +90,11 @@ class DownloadManager(private val context: Context) {
                 Log.e(TAG, "Failed to resolve URL for $gameId: ${e.message}", e)
                 setState(gameId, DownloadState.FAILED)
                 callback?.onError(gameId, "URL resolution failed: ${e.message}")
+                activeDownloads.remove(gameId)
+                cancelFlags.remove(gameId)
+                pendingResumes.remove(gameId)?.let { (pendingUrl, pendingFileName) ->
+                    resumeDownload(gameId, pendingUrl, pendingFileName)
+                }
                 return@Thread
             }
             download(gameId, resolvedUrl, fileName)
@@ -103,7 +109,11 @@ class DownloadManager(private val context: Context) {
     }
 
     fun resumeDownload(gameId: String, url: String, fileName: String) {
-        if (activeDownloads.containsKey(gameId)) return
+        if (activeDownloads.containsKey(gameId)) {
+            pendingResumes[gameId] = Pair(url, fileName)
+            setState(gameId, DownloadState.DOWNLOADING)
+            return
+        }
         cancelFlags[gameId] = false
         setState(gameId, DownloadState.DOWNLOADING)
 
@@ -114,6 +124,11 @@ class DownloadManager(private val context: Context) {
                 Log.e(TAG, "Failed to resolve URL for $gameId: ${e.message}", e)
                 setState(gameId, DownloadState.FAILED)
                 callback?.onError(gameId, "URL resolution failed: ${e.message}")
+                activeDownloads.remove(gameId)
+                cancelFlags.remove(gameId)
+                pendingResumes.remove(gameId)?.let { (pendingUrl, pendingFileName) ->
+                    resumeDownload(gameId, pendingUrl, pendingFileName)
+                }
                 return@Thread
             }
             download(gameId, resolvedUrl, fileName)
@@ -124,6 +139,7 @@ class DownloadManager(private val context: Context) {
 
     fun cancelDownload(gameId: String) {
         cancelFlags[gameId] = true
+        pendingResumes.remove(gameId)
         activeDownloads.remove(gameId)?.interrupt()
         setState(gameId, DownloadState.IDLE)
         prefs.edit().remove("bytes_$gameId").remove("total_$gameId").apply()
@@ -163,7 +179,8 @@ class DownloadManager(private val context: Context) {
                 throw RuntimeException("HTTP $responseCode")
             }
 
-            val totalBytes = if (responseCode == 206) {
+            val isResume = existingBytes > 0 && responseCode == 206
+            val totalBytes = if (isResume) {
                 val contentRange = conn.getHeaderField("Content-Range")
                 contentRange?.substringAfter("/")?.toLongOrNull()
                     ?: (existingBytes + conn.contentLength.toLong())
@@ -174,13 +191,13 @@ class DownloadManager(private val context: Context) {
             prefs.edit().putLong("total_$gameId", totalBytes).apply()
 
             input = conn.inputStream
-            output = FileOutputStream(outputFile, existingBytes > 0 && responseCode == 206)
+            output = FileOutputStream(outputFile, isResume)
 
             val buffer = ByteArray(BUFFER_SIZE)
-            var bytesDownloaded = existingBytes
+            var bytesDownloaded = if (isResume) existingBytes else 0L
             var bytesRead: Int
             var lastProgressTime = System.currentTimeMillis()
-            var lastProgressBytes = existingBytes
+            var lastProgressBytes = bytesDownloaded
             var speed = 0f
 
             while (true) {
@@ -231,6 +248,9 @@ class DownloadManager(private val context: Context) {
             conn?.disconnect()
             activeDownloads.remove(gameId)
             cancelFlags.remove(gameId)
+            pendingResumes.remove(gameId)?.let { (url, fileName) ->
+                resumeDownload(gameId, url, fileName)
+            }
         }
     }
 

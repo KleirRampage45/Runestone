@@ -104,7 +104,7 @@ class InspectOverlay(
 
         btnRow.addView(makeActionBtn(
             ctx = context,
-            label = "▶ PLAY",
+            label = "PLAY",
             textColor = Color.rgb(140, 220, 140),
             bgColor = Color.argb(40, 80, 160, 80),
         ) {
@@ -116,7 +116,7 @@ class InspectOverlay(
 
         btnRow.addView(makeActionBtn(
             ctx = context,
-            label = "⚙ SETTINGS",
+            label = "SETTINGS",
             textColor = Color.rgb(200, 180, 150),
             bgColor = Color.argb(40, 160, 140, 100),
         ) {

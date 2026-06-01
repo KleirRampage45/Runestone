@@ -8,8 +8,8 @@ import android.widget.TextView
 
 class PageIndicator(context: Context, count: Int, initialPosition: Int = 0) : LinearLayout(context) {
     private val dots = mutableListOf<TextView>()
-    private val activeColor = Color.rgb(207, 174, 126)
-    private val inactiveColor = Color.argb(80, 200, 180, 150)
+    private val activeColor = Color.rgb(244, 213, 164)
+    private val inactiveColor = Color.argb(72, 200, 180, 150)
 
     init {
         orientation = HORIZONTAL
@@ -17,8 +17,8 @@ class PageIndicator(context: Context, count: Int, initialPosition: Int = 0) : Li
         for (i in 0 until count.coerceIn(1, 30)) {
             val dot = TextView(context).apply {
                 text = "\u25CF" // filled circle
-                textSize = 8f
                 gravity = Gravity.CENTER
+                setPadding(dp(2), 0, dp(2), 0)
             }
             dots.add(dot)
             addView(dot)
@@ -29,6 +29,10 @@ class PageIndicator(context: Context, count: Int, initialPosition: Int = 0) : Li
     fun setActive(position: Int) {
         dots.forEachIndexed { i, dot ->
             dot.setTextColor(if (i == position) activeColor else inactiveColor)
+            dot.textSize = if (i == position) 11f else 7f
         }
     }
+
+    private fun dp(value: Int): Int =
+        (value * context.resources.displayMetrics.density).toInt()
 }

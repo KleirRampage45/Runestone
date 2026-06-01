@@ -31,6 +31,7 @@ import android.os.Build
 import com.runestone.app.data.EngineType
 import com.runestone.app.data.RunnerSettings
 import com.runestone.app.data.UIMode
+import com.runestone.app.engine.EngineRegistry
 import com.runestone.app.ui.SortMode
 import com.runestone.app.importer.SafGameImporter
 import com.runestone.app.importer.SafImportResult
@@ -47,7 +48,6 @@ import com.runestone.app.ui.SourcesScreen
 import com.runestone.app.provider.AvailableGame
 import com.runestone.app.provider.DownloadManager
 import com.runestone.app.provider.ExtractionManager
-import com.runestone.app.provider.GameDetector
 import com.runestone.app.provider.SourcesManager
 import com.runestone.app.workspace.GameInstallState
 import com.runestone.app.workspace.InstallStateStore
@@ -55,6 +55,7 @@ import com.runestone.app.workspace.SaveManager
 import com.runestone.app.workspace.WorkspaceManager
 import com.runestone.app.workspace.WorkspaceStorage
 import com.runestone.app.workspace.WorkspaceStorageReporter
+import org.json.JSONObject
 import java.io.File
 
 class MainActivity : Activity() {
@@ -80,6 +81,7 @@ class MainActivity : Activity() {
     private lateinit var rootContainer: FrameLayout
     private var activeOverlay: View? = null
     private var homeContentView: View? = null
+    private lateinit var persistentDock: View
 
     companion object {
         private const val REQUEST_IMPORT_FOLDER = 9001
@@ -131,6 +133,17 @@ class MainActivity : Activity() {
         }
         setContentView(rootContainer)
         showSplash()
+        persistentDock = HomeScreen(this).createDockBar(
+            onHome = { dismissOverlay() },
+            onAdd = { startFolderImport() },
+            onBrowse = { showAvailableGames() },
+            onManage = { showManageFiles() },
+            onSettings = { showSettings() },
+        )
+        rootContainer.addView(persistentDock, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(58), Gravity.BOTTOM).apply {
+            setMargins(dp(10), 0, dp(10), dp(8))
+        })
     }
 
     private fun refreshGames() {
@@ -260,58 +273,93 @@ class MainActivity : Activity() {
 
             override fun onComplete(result: ExtractionManager.ExtractionResult) {
                 runOnUiThread {
-                    val detected = GameDetector.detect(result.gameRoot)
-                    Log.i(TAG, "Detected engine: ${detected.engineType} for ${detected.suggestedName}")
-
-                    val gameDir = workspaceManager.allocateGameDir(detected.suggestedName)
-                    if (gameDir != result.outputDir) {
-                        result.outputDir.renameTo(gameDir)
-                    }
-
-                    val originalDir = File(gameDir, "original")
-                    if (!originalDir.exists()) {
-                        val inner = gameDir.listFiles()?.firstOrNull { it.isDirectory }
-                        if (inner != null && inner.name != "original") {
-                            inner.renameTo(originalDir)
-                        } else {
-                            originalDir.mkdirs()
-                            gameDir.listFiles()?.forEach { f ->
-                                if (f.name != "original" && f.name != "saves" && f.name != "incoming") {
-                                    f.renameTo(File(originalDir, f.name))
-                                }
-                            }
-                        }
-                    }
-
-                    val zipFile = File(zipPath)
-                    if (zipFile.exists()) {
-                        zipFile.delete()
+                    try {
+                        val gameDir = finalizeDownloadedGame(result)
+                        File(zipPath).delete()
                         Log.i(TAG, "Deleted ZIP: $zipPath")
-                    }
 
-                    workspaceManager.ensureWorkspace(gameDir.name)
-                    downloadManager.cleanup(gameId)
-                    downloadProgressMap.remove(gameId)
-                    refreshGames()
-                    dismissOverlay()
-                    Toast.makeText(this@MainActivity, "${detected.suggestedName} installed!", Toast.LENGTH_SHORT).show()
+                        downloadManager.cleanup(gameId)
+                        downloadProgressMap.remove(gameId)
+                        refreshGames()
+                        dismissOverlay()
+                        Toast.makeText(this@MainActivity, "${gameDir.name} installed!", Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Installation failed", e)
+                        discardFailedInstall(gameId, zipPath, result.outputDir, e.message ?: "Installation failed")
+                    }
                 }
             }
 
             override fun onError(message: String) {
                 runOnUiThread {
                     Log.e(TAG, "Extraction failed: $message")
-                    Toast.makeText(this@MainActivity, "Extraction failed: $message", Toast.LENGTH_SHORT).show()
+                    discardFailedInstall(gameId, zipPath, outputDir, "Extraction failed: $message")
                 }
             }
         })
+    }
+
+    private fun finalizeDownloadedGame(result: ExtractionManager.ExtractionResult): File {
+        val engine = EngineRegistry.detect(result.gameRoot)
+        requireNotNull(engine) { "Could not detect a supported game engine" }
+        val engineType = EngineType.fromEngineId(engine.id)
+        require(engineType != EngineType.UNKNOWN) { "Could not detect a supported game engine" }
+        Log.i(TAG, "Detected engine: $engineType for ${result.gameRoot.name}")
+
+        val gameDir = result.outputDir
+        val originalDir = File(gameDir, "original")
+        require(!originalDir.exists()) { "Install workspace already contains original files" }
+
+        if (result.gameRoot.canonicalFile == gameDir.canonicalFile) {
+            val extractedFiles = gameDir.listFiles()?.toList().orEmpty()
+            originalDir.mkdirs()
+            extractedFiles.forEach { file ->
+                require(file.renameTo(File(originalDir, file.name))) {
+                    "Could not move ${file.name} into the installed game"
+                }
+            }
+        } else {
+            require(result.gameRoot.renameTo(originalDir)) {
+                "Could not move extracted game files into the install workspace"
+            }
+        }
+
+        workspaceManager.ensureWorkspace(gameDir.name)
+        workspaceManager.rebuildActiveWorkspace(gameDir.name)
+
+        val fileCount = originalDir.walkTopDown().count { it.isFile }
+        File(gameDir, "manifest.json").writeText(JSONObject().apply {
+            put("storageName", gameDir.name)
+            put("engineType", engineType.name)
+            put("engineLabel", engineType.label)
+            put("fileCount", fileCount)
+            put("importedAt", System.currentTimeMillis())
+        }.toString(2))
+
+        return gameDir
+    }
+
+    private fun discardFailedInstall(gameId: String, zipPath: String, outputDir: File, message: String) {
+        outputDir.deleteRecursively()
+        File(zipPath).delete()
+        downloadManager.cleanup(gameId)
+        downloadProgressMap[gameId] = DownloadManager.DownloadProgress(
+            bytesDownloaded = 0, totalBytes = 0, speed = 0f,
+            state = DownloadManager.DownloadState.FAILED, error = message,
+        )
+        if (activeOverlay != null) renderAvailableGamesScreen()
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     private fun handleDownload(game: AvailableGame) {
         val url = game.downloadUrl ?: return
         val fileName = "${game.id}.zip"
         downloadManager.setFileName(game.id, fileName)
-        downloadManager.startDownload(game.id, url, fileName)
+        if (downloadManager.getState(game.id) == DownloadManager.DownloadState.PAUSED) {
+            downloadManager.resumeDownload(game.id, url, fileName)
+        } else {
+            downloadManager.startDownload(game.id, url, fileName)
+        }
         downloadProgressMap[game.id] = DownloadManager.DownloadProgress(
             bytesDownloaded = 0, totalBytes = 0, speed = 0f,
             state = DownloadManager.DownloadState.DOWNLOADING
@@ -366,7 +414,7 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            lp.setMargins(dp(8), dp(20), dp(8), dp(8))
+            lp.setMargins(dp(8), dp(20), dp(8), dp(74))
             addView(panel, lp)
 
             // Prevent clicks on the panel from reaching the dim bg
@@ -380,6 +428,7 @@ class MainActivity : Activity() {
         rootContainer.addView(wrapper,
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT)
+        persistentDock.bringToFront()
         activeOverlay = wrapper
     }
 

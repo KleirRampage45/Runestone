@@ -18,6 +18,7 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
 
     private static final String TAG = "EasyRPGWrapper";
     private static final String EXTRA_PROJECT_PATH = "project_path";
+    private static final String EXTRA_COMMAND_LINE = "command_line";
 
     private String mProjectPath;
     private String mConfigPath;
@@ -58,6 +59,10 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
 
     @Override
     protected String[] getArguments() {
+        String[] commandLine = getIntent().getStringArrayExtra(EXTRA_COMMAND_LINE);
+        if (commandLine != null && commandLine.length > 0) {
+            return commandLine;
+        }
         if (mProjectPath != null) {
             return new String[] {
                 "--project-path", mProjectPath,
@@ -140,7 +145,7 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
             return;
         }
         try {
-            // Find the KBD/⌨ floating button and replace its behavior
+            // Find the KBD floating button and replace its behavior
             for (int i = 0; i < mLayout.getChildCount(); i++) {
                 View child = mLayout.getChildAt(i);
                 if (child instanceof android.widget.TextView) {

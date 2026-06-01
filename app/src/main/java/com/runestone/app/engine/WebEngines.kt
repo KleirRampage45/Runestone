@@ -112,8 +112,6 @@ class NScripterEngine : GameEngine {
 
     companion object {
         private const val TAG = "NScripterEngine"
-        // ONScripter-Android package
-        const val ONSCRIPTER_PACKAGE = "com.runestone.plugin.onscripter"
     }
 
     override fun canRun(gameFolder: File): Boolean {
@@ -133,30 +131,8 @@ class NScripterEngine : GameEngine {
     }
 
     override fun launch(context: Context, gameFolder: File, config: GameConfig) {
-        Log.i(TAG, "Launching NScripter: ${gameFolder.name}")
-        // Try bundled ONScripter first
-        try {
-            val intent = android.content.Intent().apply {
-                setClassName(context.packageName, "$ONSCRIPTER_PACKAGE.OnscripterActivity")
-                putExtra("game_path", gameFolder.absolutePath)
-                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(intent)
-            return
-        } catch (e: Exception) {
-            Log.w(TAG, "ONScripter not bundled", e)
-        }
-        // NScripter games are visual novels — ONScripter is GPLv2+ and can be bundled
-        // For now, show download prompt
-        android.app.AlertDialog.Builder(
-            context as? android.app.Activity ?: return
-        ).apply {
-            setTitle("ONScripter Required")
-            setMessage("NScripter visual novels need the ONScripter runtime.\n\n" +
-                "ONScripter is GPLv2+ — Runestone can bundle it natively.")
-            setPositiveButton("OK") { _, _ -> }
-            show()
-        }
+        Log.i(TAG, "ONScripter unavailable: ${gameFolder.name}")
+        UnavailableEngine.show(context, "ONScripter")
     }
 }
 

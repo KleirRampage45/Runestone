@@ -21,6 +21,7 @@ class TouchOverlayView(context: Context) : View(context) {
         DPAD_UP, DPAD_DOWN, DPAD_LEFT, DPAD_RIGHT,
         BTN_Y, BTN_X, BTN_B, BTN_A,
         SELECT, START, MENU, SETTINGS, HOME,
+        L1, R1,
     }
 
     var opacity: Float = 0.72f
@@ -63,6 +64,11 @@ class TouchOverlayView(context: Context) : View(context) {
     private val layout = mutableMapOf<Control, ControlPlacement>()
     private var defaultLayout = emptyMap<Control, ControlPlacement>()
     private var loadedLayout = false
+
+    // L1/R1 shoulder button positions (fixed, not part of layout editor)
+    private val l1Rect = RectF()
+    private val r1Rect = RectF()
+    private val shoulderRadius = 20f
 
     private val buttonBitmap: Bitmap? by lazy { bitmapOrNull(R.drawable.controller_button_circle) }
     private val buttonHighlightBitmap: Bitmap? by lazy { bitmapOrNull(R.drawable.controller_button_circle_highlight) }
@@ -157,6 +163,12 @@ class TouchOverlayView(context: Context) : View(context) {
             selectRect.set(pad, barY - barH / 2, pad + barW, barY + barH / 2)
             startRect.set(w * 0.5f - barW / 2, barY - barH / 2, w * 0.5f + barW / 2, barY + barH / 2)
             menuRect.set(w - pad - barW, barY - barH / 2, w - pad, barY + barH / 2)
+
+            // L1/R1 shoulder buttons — floating pill buttons above bar
+            val shoulderH = 26f * s
+            val shoulderW = 42f * s
+            l1Rect.set(pad, barY - barH / 2 - shoulderH - 6f * s, pad + shoulderW, barY - barH / 2 - 6f * s)
+            r1Rect.set(w - pad - shoulderW, barY - barH / 2 - shoulderH - 6f * s, w - pad, barY - barH / 2 - 6f * s)
         } else {
             // Portrait (or controlsOnly): standard bottom panel positioning
             val panelTop = if (controlsOnly) 0f else h * 0.55f
@@ -185,6 +197,13 @@ class TouchOverlayView(context: Context) : View(context) {
             selectRect.set(w * 0.20f - barW / 2, barY - barH / 2, w * 0.20f + barW / 2, barY + barH / 2)
             startRect.set(w * 0.50f - barW / 2, barY - barH / 2, w * 0.50f + barW / 2, barY + barH / 2)
             menuRect.set(w * 0.80f - barW / 2, barY - barH / 2, w * 0.80f + barW / 2, barY + barH / 2)
+
+            // L1/R1 shoulder buttons — small pills at top of control panel
+            val shoulderH = 26f * s
+            val shoulderW = 42f * s
+            val shoulderY = panelTop + 10f * s
+            l1Rect.set(10f, shoulderY, 10f + shoulderW, shoulderY + shoulderH)
+            r1Rect.set(w - 10f - shoulderW, shoulderY, w - 10f, shoulderY + shoulderH)
         }
 
         editButtonRect.set(w - 76f * s, h - 76f * s, w - 8f * s, h - 8f * s)
@@ -231,6 +250,10 @@ class TouchOverlayView(context: Context) : View(context) {
         drawBarButton(canvas, selectRect, "SELECT", a, Zone.SELECT)
         drawBarButton(canvas, startRect, "START", a, Zone.START)
         drawBarButton(canvas, menuRect, "SETTINGS", a, Zone.SETTINGS)
+
+        // ── L1/R1 Shoulder Buttons ──
+        drawShoulderButton(canvas, l1Rect, "L1", a, Zone.L1)
+        drawShoulderButton(canvas, r1Rect, "R1", a, Zone.R1)
 
         drawEditButton(canvas, a)
         if (editing) drawEditorChrome(canvas)
@@ -336,6 +359,20 @@ class TouchOverlayView(context: Context) : View(context) {
         drawSelection(canvas, controlForZone(zone))
     }
 
+    private fun drawShoulderButton(canvas: Canvas, rect: RectF, label: String, a: Float, zone: Zone) {
+        val pressed = zone in activeZones
+        val paint = if (pressed) btnPressedPaint else btnPaint
+        paint.alpha = (110 * a).toInt()
+        btnStroke.alpha = (100 * a).toInt()
+        val r = rect.height() * 0.5f
+        canvas.drawRoundRect(rect, r, r, paint)
+        canvas.drawRoundRect(rect, r, r, btnStroke)
+        labelPaint.alpha = (if (pressed) 255 else 200 * a).toInt()
+        labelPaint.color = if (pressed) Color.rgb(200, 170, 130) else Color.argb((200 * a).toInt(), 200, 170, 130)
+        labelPaint.textSize = 14f
+        canvas.drawText(label, rect.centerX(), rect.centerY() + 6f, labelPaint)
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (handleEditorTouch(event)) return true
         when (event.actionMasked) {
@@ -401,6 +438,10 @@ class TouchOverlayView(context: Context) : View(context) {
         val s = scale
         val panelTop = if (controlsOnly) 0f else height * 0.55f
         if (y < panelTop) return null // Above control panel
+
+        // L1/R1 shoulder buttons (check first — they're at the top)
+        if (l1Rect.contains(x, y)) return Zone.L1
+        if (r1Rect.contains(x, y)) return Zone.R1
 
         // Bottom bar buttons
         if (selectRect.contains(x, y)) return Zone.SELECT
@@ -469,6 +510,7 @@ class TouchOverlayView(context: Context) : View(context) {
         Zone.START -> Control.START
         Zone.MENU, Zone.SETTINGS -> Control.MENU
         Zone.HOME -> Control.MENU // Use MENU icon for HOME too
+        Zone.L1, Zone.R1 -> Control.DPAD // Not in editor, fallback
     }
 
     private fun handleEditorTouch(event: MotionEvent): Boolean {

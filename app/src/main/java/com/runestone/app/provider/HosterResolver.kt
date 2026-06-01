@@ -18,7 +18,11 @@ import java.util.regex.Pattern
 object HosterResolver {
 
     private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0"
+    private const val MOBILE_USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/144.0 Mobile Safari/537.36"
     private const val TIMEOUT = 30_000
+    private val OLD_MEDIAFIRE_URL = Regex(
+        """(?i)^https?://(?:www\.)?mediafire\.com/download/([^/?#]+)/([^/?#]+)(?:[?#].*)?$"""
+    )
 
     fun resolve(url: String): String {
         return when {
@@ -31,35 +35,96 @@ object HosterResolver {
     }
 
     private fun resolveMediafire(url: String): String {
+        val convertedUrl = convertOldMediafireUrl(url)
+        val urlsToTry = listOf(url, convertedUrl).distinct()
+        for (candidateUrl in urlsToTry) {
+            for (userAgent in listOf(USER_AGENT, MOBILE_USER_AGENT)) {
+                extractMediafireDownloadUrl(candidateUrl, userAgent)?.let { return it }
+            }
+        }
+
+        for (candidateUrl in urlsToTry) {
+            resolveRedirect(candidateUrl)?.let { redirectedUrl ->
+                if (redirectedUrl != candidateUrl) return redirectedUrl
+            }
+        }
+
+        // DownloadManager follows redirects too. Returning the modern page URL
+        // gives it one last chance when Mediafire serves HTML without a CDN link.
+        return convertedUrl
+    }
+
+    private fun extractMediafireDownloadUrl(url: String, userAgent: String): String? {
         var conn: HttpURLConnection? = null
         try {
             conn = URL(url).openConnection() as HttpURLConnection
-            conn.setRequestProperty("User-Agent", USER_AGENT)
+            conn.setRequestProperty("User-Agent", userAgent)
             conn.connectTimeout = TIMEOUT
             conn.readTimeout = TIMEOUT
             val html = conn.inputStream.bufferedReader().readText()
 
             // Pattern 1: mediafire.com/file/{id}?...&dkey=...
-            val p1 = Pattern.compile("""["'](https?:)?(//)?(www\.)?mediafire\.com/(file|view|download)/[^"']+\?dkey=[^"']+["']""")
+            val p1 = Pattern.compile("""["']((?:https?:)?//(?:www\.)?mediafire\.com/(?:file|view|download)/[^"'/?]+\?dkey=[^"']+)["']""")
             val m1 = p1.matcher(html)
             if (m1.find()) {
-                var match = m1.group().trim('"', '\'')
-                if (match.startsWith("//")) match = "https:$match"
-                return match
+                return normalizeMediafireUrl(m1.group(1) ?: return null)
             }
 
             // Pattern 2: download{N}.mediafire.com/{path}
-            val p2 = Pattern.compile("""["']https?://download\d+\.mediafire\.com/[^"']+["']""")
+            val p2 = Pattern.compile("""["']((?:https?:)?//download\d+\.mediafire\.com/[^"']+)["']""")
             val m2 = p2.matcher(html)
             if (m2.find()) {
-                return m2.group().trim('"', '\'')
+                return normalizeMediafireUrl(m2.group(1) ?: return null)
             }
 
-            throw RuntimeException("Could not extract Mediafire download URL")
-        } catch (e: RuntimeException) {
-            throw e
-        } catch (e: Exception) {
-            throw RuntimeException("Failed to resolve Mediafire URL: ${e.message}", e)
+            // Pattern 3: download button href on desktop and mobile pages.
+            val p3 = Pattern.compile("""(?is)<[^>]*\bid=["']downloadButton["'][^>]*>""")
+            val m3 = p3.matcher(html)
+            if (m3.find()) {
+                val href = Pattern.compile("""(?is)\bhref=["']([^"']+)["']""").matcher(m3.group())
+                if (href.find()) return normalizeMediafireUrl(href.group(1) ?: return null)
+            }
+
+            // Pattern 4: JavaScript download URL variables used by some page variants.
+            val p4 = Pattern.compile("""(?i)\b(?:var|let|const)?\s*(?:downloadUrl|download_url|downloadLink|download_link)\s*=\s*["']([^"']+)["']""")
+            val m4 = p4.matcher(html)
+            if (m4.find()) {
+                return normalizeMediafireUrl(m4.group(1) ?: return null)
+            }
+
+            return null
+        } catch (_: Exception) {
+            return null
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    private fun convertOldMediafireUrl(url: String): String {
+        val match = OLD_MEDIAFIRE_URL.matchEntire(url) ?: return url
+        val (id, fileName) = match.destructured
+        return "https://www.mediafire.com/file/$id/$fileName/file"
+    }
+
+    private fun normalizeMediafireUrl(url: String): String {
+        val decodedUrl = url.replace("&amp;", "&")
+        return if (decodedUrl.startsWith("//")) "https:$decodedUrl" else decodedUrl
+    }
+
+    private fun resolveRedirect(url: String): String? {
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = URL(url).openConnection() as HttpURLConnection
+            conn.requestMethod = "HEAD"
+            conn.instanceFollowRedirects = true
+            conn.setRequestProperty("User-Agent", USER_AGENT)
+            conn.connectTimeout = TIMEOUT
+            conn.readTimeout = TIMEOUT
+            conn.connect()
+            conn.responseCode
+            conn.url.toString()
+        } catch (_: Exception) {
+            null
         } finally {
             conn?.disconnect()
         }

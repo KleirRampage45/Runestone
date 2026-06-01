@@ -32,6 +32,7 @@ import com.runestone.app.data.EngineType
 import com.runestone.app.data.LayoutMode
 import com.runestone.app.data.RunnerSettings
 import com.runestone.app.engine.EngineDetector
+import com.runestone.app.engine.UnavailableEngine
 import com.runestone.app.engine.WebViewEngine
 import com.runestone.app.input.TouchOverlayView
 import java.io.File
@@ -311,6 +312,8 @@ class GameActivity : Activity() {
                     pressed && zone == TouchOverlayView.Zone.BTN_Y -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:34});"
                     pressed && zone == TouchOverlayView.Zone.SELECT -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:27});"
                     pressed && zone == TouchOverlayView.Zone.START -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:13});"
+                    pressed && zone == TouchOverlayView.Zone.L1 -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:81});"
+                    pressed && zone == TouchOverlayView.Zone.R1 -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:87});"
                     else -> ""
                 }
                 if (js.isNotEmpty()) {
@@ -330,7 +333,7 @@ class GameActivity : Activity() {
         if (overlay != null) {
             Toast.makeText(this,
                 "Layout: ${settings.layoutMode.displayName} | Vib: ${if (overlay.hapticsEnabled) "ON" else "OFF"}" +
-                " | KB btn: ⌨ top-right",
+                " | KB btn: KBD top-right",
                 Toast.LENGTH_LONG).show()
         } else {
             Toast.makeText(this, "Gamepad mode — no touch controls", Toast.LENGTH_SHORT).show()
@@ -366,6 +369,8 @@ class GameActivity : Activity() {
         TouchOverlayView.Zone.START -> KeyEvent.KEYCODE_ENTER
         TouchOverlayView.Zone.MENU, TouchOverlayView.Zone.SETTINGS -> KeyEvent.KEYCODE_M
         TouchOverlayView.Zone.HOME -> KeyEvent.KEYCODE_HOME
+        TouchOverlayView.Zone.L1 -> KeyEvent.KEYCODE_BUTTON_L1
+        TouchOverlayView.Zone.R1 -> KeyEvent.KEYCODE_BUTTON_R1
     }
 
     private fun launchRgssGame(gameDir: File) {
@@ -386,9 +391,21 @@ class GameActivity : Activity() {
 
     private fun launchEasyRpgGame(gameDir: File) {
         Log.i(TAG, "EasyRPG bundled: launching ${gameDir.name}")
+        val configDir = File(filesDir, "easyrpg").apply { mkdirs() }
+        val saveDir = File(configDir, "saves").apply { mkdirs() }
+        val logFile = File(configDir, "easyrpg-player.log")
+        val commandLine = arrayOf(
+            "--project-path", gameDir.absolutePath,
+            "--config-path", configDir.absolutePath,
+            "--save-path", saveDir.absolutePath,
+            "--log-file", logFile.absolutePath,
+        )
         val intent = Intent().apply {
             setClassName(packageName, "org.easyrpg.player.player.EasyRpgPlayerActivity")
             putExtra("project_path", gameDir.absolutePath)
+            putExtra("command_line", commandLine)
+            putExtra("save_path", saveDir.absolutePath)
+            putExtra("log_file", logFile.absolutePath)
             putExtra("com.grimmobile.runner.extra.GAME_PATH", gameDir.absolutePath)
             putExtra("com.grimmobile.runner.extra.LAYOUT_MODE", settings.layoutMode.name)
             putExtra("com.grimmobile.runner.extra.TOUCH_OPACITY", settings.touchOpacity)
@@ -400,41 +417,25 @@ class GameActivity : Activity() {
         startActivity(intent)
     }
 
-    // ── Godot (MIT — bundled native) ─────────────────────────────
+    // ── Godot (MIT — native wrapper not integrated) ──────────────
 
     private fun launchGodotGame(gameDir: File) {
-        Log.i(TAG, "Godot bundled: launching ${gameDir.name}")
-        val intent = Intent().apply {
-            setClassName(packageName, "org.godotengine.android.GodotActivity")
-            putExtra("godot_arg", "-path")
-            putExtra("godot_arg_value", gameDir.absolutePath)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        startActivity(intent)
+        Log.i(TAG, "Godot unavailable: ${gameDir.name}")
+        UnavailableEngine.show(this, "Godot")
     }
 
-    // ── NScripter / ONScripter (GPLv2+ — bundled native) ─────────
+    // ── NScripter / ONScripter (GPLv2+ — wrapper not integrated) ─
 
     private fun launchNScripterGame(gameDir: File) {
-        Log.i(TAG, "ONScripter bundled: launching ${gameDir.name}")
-        val intent = Intent().apply {
-            setClassName(packageName, "com.runestone.plugin.onscripter.OnscripterActivity")
-            putExtra("game_path", gameDir.absolutePath)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        startActivity(intent)
+        Log.i(TAG, "ONScripter unavailable: ${gameDir.name}")
+        UnavailableEngine.show(this, "ONScripter")
     }
 
-    // ── Ren'Py (MIT — bundled native) ────────────────────────────
+    // ── Ren'Py (MIT — native wrapper not integrated) ─────────────
 
     private fun launchRenpyGame(gameDir: File) {
-        Log.i(TAG, "Ren'Py bundled: launching ${gameDir.name}")
-        val intent = Intent().apply {
-            setClassName(packageName, "com.runestone.plugin.renpy.RenpyActivity")
-            putExtra("game_path", gameDir.absolutePath)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        startActivity(intent)
+        Log.i(TAG, "Ren'Py unavailable: ${gameDir.name}")
+        UnavailableEngine.show(this, "Ren'Py")
     }
 
     private fun showLegacyDialog(type: EngineType) {

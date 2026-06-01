@@ -16,25 +16,28 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.recyclerview.widget.RecyclerView
 import com.runestone.app.ui.GameCardInfo
 import java.net.URL
 
 class CarouselGameCard(context: Context) : FrameLayout(context) {
 
     private val coverImage: ImageView
-    private val titleView: TextView
     private val engineBadge: TextView
+    private val actionOverlay: FrameLayout
+    private val playButton: TextView
+    private val settingsButton: TextView
 
     init {
-        layoutParams = ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-        )
+        layoutParams = RecyclerView.LayoutParams(dp(260), dp(360)).apply {
+            setMargins(dp(4), 0, dp(4), 0)
+        }
 
         // Card background — glass style
         background = GradientDrawable().apply {
@@ -53,13 +56,13 @@ class CarouselGameCard(context: Context) : FrameLayout(context) {
         }
         addView(coverImage)
 
-        // Bottom overlay for title + badge
+        // Bottom overlay for engine badge. Keep it translucent so cover art remains visible.
         val bottomOverlay = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(16), dp(12), dp(16), dp(12))
+            setPadding(dp(16), dp(10), dp(16), dp(10))
             background = GradientDrawable().apply {
-                setColor(Color.argb(200, 3, 3, 4))
+                setColor(Color.argb(112, 3, 3, 4))
                 cornerRadii = floatArrayOf(
                     0f, 0f, 0f, 0f,
                     dp(22).toFloat(), dp(22).toFloat(),
@@ -68,18 +71,9 @@ class CarouselGameCard(context: Context) : FrameLayout(context) {
             }
         }
 
-        titleView = TextView(context).apply {
-            textSize = 14f
-            setTextColor(Color.rgb(232, 229, 220))
-            typeface = Typeface.create("serif", Typeface.BOLD)
-            gravity = Gravity.CENTER
-            maxLines = 2
-        }
-        bottomOverlay.addView(titleView)
-
         engineBadge = TextView(context).apply {
             textSize = 10f
-            setTextColor(Color.rgb(207, 174, 126))
+            setTextColor(Color.rgb(238, 207, 158))
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             setPadding(dp(8), dp(3), dp(8), dp(3))
@@ -96,11 +90,40 @@ class CarouselGameCard(context: Context) : FrameLayout(context) {
             ViewGroup.LayoutParams.WRAP_CONTENT,
             Gravity.BOTTOM,
         ))
+
+        actionOverlay = FrameLayout(context).apply {
+            setBackgroundColor(Color.argb(150, 0, 0, 0))
+            visibility = View.GONE
+        }
+        val actionPanel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+        }
+        playButton = makeButton("PLAY", Color.rgb(220, 240, 210), Color.argb(100, 80, 160, 80))
+        settingsButton = makeButton("SETTINGS", Color.rgb(238, 218, 184), Color.argb(90, 160, 140, 100))
+        actionPanel.addView(playButton)
+        actionPanel.addView(View(context), LinearLayout.LayoutParams(0, dp(14)))
+        actionPanel.addView(settingsButton)
+        actionOverlay.addView(actionPanel, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+        addView(actionOverlay, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
     }
 
-    fun bind(game: GameCardInfo) {
-        titleView.text = game.displayName
+    fun bind(
+        game: GameCardInfo,
+        showActions: Boolean,
+        onPlay: (GameCardInfo) -> Unit,
+        onSettings: (GameCardInfo) -> Unit,
+    ) {
         engineBadge.text = game.engineType.label
+        actionOverlay.visibility = if (showActions) View.VISIBLE else View.GONE
+        playButton.setOnClickListener { onPlay(game) }
+        settingsButton.setOnClickListener { onSettings(game) }
 
         // Always set engine-themed gradient first as base
         setEngineGradient(game.engineType.label)
@@ -124,6 +147,22 @@ class CarouselGameCard(context: Context) : FrameLayout(context) {
             }.start()
         }
     }
+
+    private fun makeButton(label: String, textColor: Int, bgColor: Int): TextView =
+        TextView(context).apply {
+            text = label
+            setTextColor(textColor)
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setPadding(dp(16), dp(9), dp(16), dp(9))
+            background = GradientDrawable().apply {
+                setColor(bgColor)
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), Color.argb(70, 200, 180, 140))
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(150), ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
 
     private fun setEngineGradient(engine: String) {
         val colors = when {
