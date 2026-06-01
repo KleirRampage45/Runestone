@@ -127,9 +127,12 @@ class SettingsScreen(private val context: Context) {
             if (checked) {
                 hapticIntensityPanel.visibility = View.VISIBLE
                 hapticIntensityPanel.alpha = 0f
-                hapticIntensityPanel.translationY = -hapticIntensityPanel.height.toFloat()
-                hapticIntensityPanel.animate().alpha(1f).translationY(0f).setDuration(250)
-                    .setInterpolator(OvershootInterpolator(1.1f)).start()
+                // Post animation to run after layout so height is available
+                hapticIntensityPanel.post {
+                    hapticIntensityPanel.translationY = -hapticIntensityPanel.height.toFloat()
+                    hapticIntensityPanel.animate().alpha(1f).translationY(0f).setDuration(250)
+                        .setInterpolator(OvershootInterpolator(1.1f)).start()
+                }
             } else {
                 hapticIntensityPanel.animate().alpha(0f).setDuration(180)
                     .withEndAction { hapticIntensityPanel.visibility = View.GONE }.start()

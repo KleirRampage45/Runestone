@@ -518,7 +518,8 @@ class MainActivity : Activity() {
         filtered = when (currentSort) {
             SortMode.NAME_ASC -> filtered.sortedBy { it.displayName.lowercase() }
             SortMode.NAME_DESC -> filtered.sortedByDescending { it.displayName.lowercase() }
-            else -> filtered
+            SortMode.RECENT -> filtered // TODO: Track play history for sorting
+            SortMode.DATE_ADDED -> filtered.sortedByDescending { java.io.File(it.originalPath).parentFile?.lastModified() ?: 0L }
         }
         val cards = filtered.map { toCardInfo(it) }.map { card ->
             // Try to find matching cover from available games by title

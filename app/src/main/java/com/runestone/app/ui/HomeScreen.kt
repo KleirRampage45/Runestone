@@ -484,7 +484,7 @@ class HomeScreen(private val context: Context) {
                 }.start()
         }
         fun dismissOverlay(v: FrameLayout, root: ViewGroup?) {
-            v.animate().alpha(0f).translationY(60f).setDuration(200).withEndAction {
+            v.animate().alpha(0f).translationY(120f).setDuration(200).withEndAction {
                 root?.removeView(v)
             }.start()
         }
