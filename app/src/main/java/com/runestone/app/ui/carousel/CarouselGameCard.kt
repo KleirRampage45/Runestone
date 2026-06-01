@@ -98,11 +98,12 @@ class CarouselGameCard(context: Context) : FrameLayout(context) {
         val actionPanel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
+            setPadding(dp(16), dp(16), dp(16), dp(60)) // Extra bottom padding to avoid badge overlap
         }
         playButton = makeButton("PLAY", Color.rgb(220, 240, 210), Color.argb(100, 80, 160, 80))
         settingsButton = makeButton("SETTINGS", Color.rgb(238, 218, 184), Color.argb(90, 160, 140, 100))
         actionPanel.addView(playButton)
-        actionPanel.addView(View(context), LinearLayout.LayoutParams(0, dp(14)))
+        actionPanel.addView(View(context), LinearLayout.LayoutParams(0, dp(12)))
         actionPanel.addView(settingsButton)
         actionOverlay.addView(actionPanel, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,

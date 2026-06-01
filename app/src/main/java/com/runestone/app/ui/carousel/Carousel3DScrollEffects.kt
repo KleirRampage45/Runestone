@@ -70,8 +70,8 @@ class Carousel3DScrollEffects(
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val blurRadius = when {
-                    absPosition < 0.5f -> 0f
-                    absPosition < 1.5f -> 2f
+                    absPosition < 0.4f -> 0f
+                    absPosition < 1.2f -> 2f
                     else -> 4f
                 }
                 child.setRenderEffect(
