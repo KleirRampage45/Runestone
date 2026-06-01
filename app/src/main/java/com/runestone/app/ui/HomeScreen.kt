@@ -120,6 +120,76 @@ class HomeScreen(private val context: Context) {
         content.addView(makeHeaderRow(activeFilter, activeSearch, currentSort, onApplyFilters))
         content.addView(spacer(dp(8)))
 
+        // Standalone search bar
+        if (onApplyFilters != null && games.isNotEmpty()) {
+            val searchBar = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                background = glassBg(dp(14))
+            }
+
+            val searchIcon = TextView(context).apply {
+                text = "\u26B2" // magnifying glass
+                setTextColor(MUTED)
+                textSize = 16f
+                setPadding(0, 0, dp(8), 0)
+            }
+            searchBar.addView(searchIcon)
+
+            val searchInput = EditText(context).apply {
+                hint = "Search games..."
+                setHintTextColor(MUTED_DIM)
+                setTextColor(TEXT)
+                textSize = 14f
+                inputType = InputType.TYPE_CLASS_TEXT
+                imeOptions = EditorInfo.IME_ACTION_SEARCH
+                background = null
+                setPadding(0, dp(4), 0, dp(4))
+                if (activeSearch.isNotEmpty()) {
+                    setText(activeSearch)
+                    setSelection(activeSearch.length)
+                }
+            }
+            searchBar.addView(searchInput, LinearLayout.LayoutParams(0, WRAP, 1f))
+
+            val clearBtn = TextView(context).apply {
+                text = "\u2715" // X
+                setTextColor(MUTED)
+                textSize = 14f
+                typeface = Typeface.DEFAULT_BOLD
+                setPadding(dp(8), dp(4), dp(8), dp(4))
+                visibility = if (activeSearch.isNotEmpty()) View.VISIBLE else View.GONE
+                setOnClickListener {
+                    searchInput.setText("")
+                    visibility = View.GONE
+                    onApplyFilters(activeFilter, "", currentSort)
+                    makeLiquid(this)
+                }
+            }
+            searchBar.addView(clearBtn)
+
+            searchInput.addTextChangedListener(object : TextWatcher {
+                override fun afterTextChanged(s: Editable?) {
+                    val query = s?.toString()?.trim() ?: ""
+                    clearBtn.visibility = if (query.isNotEmpty()) View.VISIBLE else View.GONE
+                    onApplyFilters(activeFilter, query, currentSort)
+                }
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            })
+
+            searchInput.setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                    searchInput.clearFocus()
+                    true
+                } else false
+            }
+
+            content.addView(searchBar)
+            content.addView(spacer(dp(8)))
+        }
+
         if (games.isEmpty()) {
             content.addView(spacer(dp(48)))
             content.addView(TextView(context).apply {
