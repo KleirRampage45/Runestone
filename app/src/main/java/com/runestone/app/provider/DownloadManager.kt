@@ -86,6 +86,16 @@ class DownloadManager(private val context: Context) {
         val thread = Thread {
             val resolvedUrl = try {
                 HosterResolver.resolve(url)
+            } catch (e: MediafireResolutionException) {
+                Log.e(TAG, "Mediafire resolution failed for $gameId: ${e.message}", e)
+                setState(gameId, DownloadState.FAILED)
+                callback?.onError(gameId, "Mediafire links are unreliable on Android. Please use a Pixeldrain mirror if available.")
+                activeDownloads.remove(gameId)
+                cancelFlags.remove(gameId)
+                pendingResumes.remove(gameId)?.let { (pendingUrl, pendingFileName) ->
+                    resumeDownload(gameId, pendingUrl, pendingFileName)
+                }
+                return@Thread
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to resolve URL for $gameId: ${e.message}", e)
                 setState(gameId, DownloadState.FAILED)
@@ -120,15 +130,21 @@ class DownloadManager(private val context: Context) {
         val thread = Thread {
             val resolvedUrl = try {
                 HosterResolver.resolve(url)
+            } catch (e: MediafireResolutionException) {
+                Log.e(TAG, "Mediafire resolution failed for $gameId: ${e.message}", e)
+                setState(gameId, DownloadState.FAILED)
+                callback?.onError(gameId, "Mediafire links are unreliable on Android. Please use a Pixeldrain mirror if available.")
+                activeDownloads.remove(gameId)
+                cancelFlags.remove(gameId)
+                pendingResumes.remove(gameId)
+                return@Thread
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to resolve URL for $gameId: ${e.message}", e)
                 setState(gameId, DownloadState.FAILED)
                 callback?.onError(gameId, "URL resolution failed: ${e.message}")
                 activeDownloads.remove(gameId)
                 cancelFlags.remove(gameId)
-                pendingResumes.remove(gameId)?.let { (pendingUrl, pendingFileName) ->
-                    resumeDownload(gameId, pendingUrl, pendingFileName)
-                }
+                pendingResumes.remove(gameId)
                 return@Thread
             }
             download(gameId, resolvedUrl, fileName)

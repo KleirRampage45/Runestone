@@ -10,12 +10,15 @@
 
 package com.runestone.app.provider
 
+import android.util.Log
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.regex.Pattern
 
 object HosterResolver {
+
+    private const val TAG = "HosterResolver"
 
     private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0"
     private const val MOBILE_USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/144.0 Mobile Safari/537.36"
@@ -37,21 +40,34 @@ object HosterResolver {
     private fun resolveMediafire(url: String): String {
         val convertedUrl = convertOldMediafireUrl(url)
         val urlsToTry = listOf(url, convertedUrl).distinct()
+        
+        // Try multiple strategies to extract download URL
         for (candidateUrl in urlsToTry) {
             for (userAgent in listOf(USER_AGENT, MOBILE_USER_AGENT)) {
-                extractMediafireDownloadUrl(candidateUrl, userAgent)?.let { return it }
+                extractMediafireDownloadUrl(candidateUrl, userAgent)?.let { 
+                    Log.d(TAG, "Mediafire resolved via HTML extraction: $it")
+                    return it 
+                }
             }
         }
 
+        // Fallback: try redirect following
         for (candidateUrl in urlsToTry) {
             resolveRedirect(candidateUrl)?.let { redirectedUrl ->
-                if (redirectedUrl != candidateUrl) return redirectedUrl
+                if (redirectedUrl != candidateUrl) {
+                    Log.d(TAG, "Mediafire resolved via redirect: $redirectedUrl")
+                    return redirectedUrl
+                }
             }
         }
 
-        // DownloadManager follows redirects too. Returning the modern page URL
-        // gives it one last chance when Mediafire serves HTML without a CDN link.
-        return convertedUrl
+        // All strategies failed - throw specific exception
+        Log.w(TAG, "Mediafire resolution failed for: $url")
+        throw MediafireResolutionException(
+            "Mediafire download links are unreliable on Android. " +
+            "If a Pixeldrain mirror is available, please use that instead. " +
+            "Original URL: $url"
+        )
     }
 
     private fun extractMediafireDownloadUrl(url: String, userAgent: String): String? {
@@ -185,3 +201,9 @@ object HosterResolver {
         }
     }
 }
+
+/**
+ * Specific exception for Mediafire resolution failures.
+ * Allows DownloadManager to show user-friendly error messages.
+ */
+class MediafireResolutionException(message: String) : RuntimeException(message)
