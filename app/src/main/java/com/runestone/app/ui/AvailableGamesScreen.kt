@@ -24,6 +24,7 @@ import android.view.ViewGroup
 import android.view.animation.OvershootInterpolator
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -125,18 +126,31 @@ class AvailableGamesScreen(private val context: Context) {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_HORIZONTAL
             }
-
-            val searchRow = makeSearchBar { query ->
-                val filtered = if (query.isBlank()) games
-                else games.filter { it.title.contains(query, ignoreCase = true) }
+            var searchQuery = ""
+            var engineFilter: String? = null
+            val renderFilteredGames = {
+                val filtered = games.filter { game ->
+                    (searchQuery.isBlank() || game.title.contains(searchQuery, ignoreCase = true)) &&
+                        (engineFilter == null || game.engine.equals(engineFilter, ignoreCase = true))
+                }
                 renderGameList(gamesContainer, filtered, downloadStates, onDownload, onPauseDownload, installedGameTitles)
             }
+
+            val searchRow = makeSearchBar { query ->
+                searchQuery = query
+                renderFilteredGames()
+            }
             content.addView(searchRow)
+            content.addView(spacer(dp(10)))
+            content.addView(makeEngineFilters(games) { engine ->
+                engineFilter = engine
+                renderFilteredGames()
+            })
             content.addView(spacer(dp(10)))
 
             content.addView(gamesContainer, ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            renderGameList(gamesContainer, games, downloadStates, onDownload, onPauseDownload, installedGameTitles)
+            renderFilteredGames()
         }
 
         return root
@@ -238,6 +252,57 @@ class AvailableGamesScreen(private val context: Context) {
         })
 
         return searchRow
+    }
+
+    private fun makeEngineFilters(
+        games: List<AvailableGame>,
+        onFilterChanged: (String?) -> Unit,
+    ): HorizontalScrollView {
+        val engines = games.mapNotNull { it.engine?.trim()?.ifEmpty { null } }
+            .distinctBy { it.lowercase() }
+            .sortedBy { engineLabel(it) }
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val buttons = mutableListOf<Pair<String?, TextView>>()
+
+        fun updateSelection(selected: String?) {
+            buttons.forEach { (engine, button) ->
+                val isSelected = engine == selected
+                button.setTextColor(if (isSelected) Color.rgb(238, 207, 158) else MUTED)
+                button.background = glassBg(dp(8), alpha = if (isSelected) 120 else 60, accent = isSelected)
+            }
+            onFilterChanged(selected)
+        }
+
+        listOf<String?>(null).plus(engines).forEach { engine ->
+            val button = TextView(context).apply {
+                text = engine?.let(::engineLabel) ?: "ALL"
+                textSize = 11f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setPadding(dp(12), dp(7), dp(12), dp(7))
+                setOnClickListener {
+                    animTap(this)
+                    updateSelection(engine)
+                }
+                makeLiquid(this)
+            }
+            buttons.add(engine to button)
+            row.addView(button, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                marginEnd = dp(6)
+            })
+        }
+
+        updateSelection(null)
+        return HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = HorizontalScrollView.OVER_SCROLL_NEVER
+            addView(row)
+        }
     }
 
     private fun makeActionButton(label: String, accent: Boolean, onClick: () -> Unit): TextView =
