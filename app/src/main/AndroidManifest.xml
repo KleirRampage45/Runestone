@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
@@ -42,9 +43,9 @@
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
 
-        <!-- Ren'Py — MIT, bundled native librenpython.so (55MB) -->
+        <!-- Ren'Py - MIT, bundled native librenpython.so -->
         <activity
-            android:name="com.runestone.app.engine.renpy.RenpyActivity"
+            android:name="org.renpy.android.PythonSDLActivity"
             android:screenOrientation="sensor"
             android:exported="false"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"

@@ -23,17 +23,8 @@ import java.io.File
  *
  * Detection: renpy/ directory or .rpy files
  *
- * Status: Phase 2 — native library bundled, Android wrapper not integrated.
- * Native integration is complex:
- * - Ren'Py runtime is Python + SDL2 + Ren'Py libs (~100MB+)
- * - Options: separate APK plugin, dynamic download, or embedded
- * - Recommend separate APK to keep core app lightweight
- *
- * Integration approach (future):
- * 1. Create separate "Runestone Ren'Py Plugin" APK
- * 2. Core app checks if plugin is installed via PackageManager
- * 3. If installed, launch plugin's activity with game path
- * 4. If not installed, prompt user to download from GitHub/F-Droid
+ * The Android wrapper loads the bundled Python 3.9 runtime and starts the
+ * imported game's game/ directory through librenpython.so.
  */
 class RenpyEngine : GameEngine {
 
@@ -87,7 +78,7 @@ class RenpyEngine : GameEngine {
     override fun launch(context: Context, gameFolder: File, config: GameConfig) {
         Log.i(TAG, "Launching Ren'Py: ${gameFolder.name}")
         try {
-            val intent = Intent(context, com.runestone.app.engine.renpy.RenpyActivity::class.java).apply {
+            val intent = Intent(context, org.renpy.android.PythonSDLActivity::class.java).apply {
                 putExtra("game_path", gameFolder.absolutePath)
                 putExtra("save_path", File(gameFolder, "saves").absolutePath)
                 putExtra("engine_version", "8.3.4")
@@ -101,8 +92,8 @@ class RenpyEngine : GameEngine {
     }
 
     override fun getSaves(gameFolder: File): List<SaveFile> {
-        // Ren'Py saves are in game/saves/ as pickle files
-        val saveDir = File(gameFolder, "game/saves")
+        // The Android wrapper configures Ren'Py to write imported-game saves here.
+        val saveDir = File(gameFolder, "saves")
         if (!saveDir.exists() || !saveDir.isDirectory) return emptyList()
 
         val saves = mutableListOf<SaveFile>()

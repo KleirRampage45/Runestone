@@ -56,3 +56,9 @@ Without these files, Ren'Py games will fail to start with errors like:
 - No save/load functionality
 
 These files are required for Ren'Py to function and are not part of librenpython.so.
+Runestone's active Ren'Py runtime is packaged as assets/renpy-runtime.zip by
+scripts/package-renpy-runtime.sh from the official Ren'Py 8.3.4 SDK.
+
+This directory is retained as the unpacked engine source used by the previous
+prototype. It can be removed after the packaged runtime has been validated
+against the supported game set.
