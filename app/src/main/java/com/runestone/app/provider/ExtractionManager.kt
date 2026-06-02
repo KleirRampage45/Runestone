@@ -22,6 +22,9 @@ class ExtractionManager(private val context: Context) {
     companion object {
         private const val TAG = "EXTRACT"
         private const val BUFFER_SIZE = 8192
+        private const val MAX_FILES = 50_000
+        private const val MAX_EXTRACTED_BYTES = 16L * 1024 * 1024 * 1024
+        private const val MAX_ENTRY_BYTES = 4L * 1024 * 1024 * 1024
         private val SKIP_PREFIXES = listOf("__MACOSX", ".DS_Store", "Thumbs.db", ".git")
     }
 
@@ -65,6 +68,7 @@ class ExtractionManager(private val context: Context) {
     private fun doExtract(zipFile: File, outputDir: File, callback: ExtractionCallback) {
         val entries = countEntries(zipFile)
         var extracted = 0
+        var extractedBytes = 0L
 
         ZipInputStream(zipFile.inputStream().buffered()).use { zis ->
             var entry: ZipEntry? = zis.nextEntry
@@ -92,7 +96,12 @@ class ExtractionManager(private val context: Context) {
                     FileOutputStream(outFile).use { fos ->
                         val buffer = ByteArray(BUFFER_SIZE)
                         var len: Int
+                        var entryBytes = 0L
                         while (zis.read(buffer).also { len = it } > 0) {
+                            entryBytes += len
+                            extractedBytes += len
+                            require(entryBytes <= MAX_ENTRY_BYTES) { "Archive entry is too large: $name" }
+                            require(extractedBytes <= MAX_EXTRACTED_BYTES) { "Archive expands beyond the allowed size" }
                             fos.write(buffer, 0, len)
                         }
                     }
@@ -125,6 +134,7 @@ class ExtractionManager(private val context: Context) {
         ZipInputStream(zipFile.inputStream().buffered()).use { zis ->
             while (zis.nextEntry != null) {
                 count++
+                require(count <= MAX_FILES) { "Archive contains more than $MAX_FILES entries" }
                 zis.closeEntry()
             }
         }
@@ -138,7 +148,11 @@ class ExtractionManager(private val context: Context) {
 
     private fun sanitizePath(outputDir: File, entryName: String): File? {
         val normalized = entryName.replace("\\", "/")
-        val parts = normalized.split("/").filter { it.isNotEmpty() && it != "." && it != ".." }
+        if (normalized.startsWith("/") || normalized.split("/").any { it == ".." }) {
+            Log.w(TAG, "Path traversal detected: $entryName")
+            return null
+        }
+        val parts = normalized.split("/").filter { it.isNotEmpty() && it != "." }
         if (parts.isEmpty()) return null
 
         var current = outputDir
@@ -146,7 +160,7 @@ class ExtractionManager(private val context: Context) {
             current = File(current, part)
         }
 
-        if (!current.canonicalPath.startsWith(outputDir.canonicalPath)) {
+        if (!current.canonicalFile.toPath().startsWith(outputDir.canonicalFile.toPath())) {
             Log.w(TAG, "Path traversal detected: $entryName")
             return null
         }

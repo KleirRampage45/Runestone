@@ -14,23 +14,17 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.text.InputType
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.OvershootInterpolator
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import com.runestone.app.MainActivity
-import com.runestone.app.provider.SourcesManager
-
 class ProviderSettingsScreen(private val context: Context) {
 
     fun create(
-        sourcesManager: SourcesManager,
         onBack: () -> Unit,
         onClearAll: () -> Unit,
     ): LinearLayout {
@@ -62,13 +56,8 @@ class ProviderSettingsScreen(private val context: Context) {
         content.alpha = 0f
         content.animate().alpha(1f).setDuration(300).setInterpolator(OvershootInterpolator(1.1f)).start()
 
-        // Game Catalogue URL section
-        content.addView(sectionTitle("Game Catalogue", "Paste a raw JSON URL or use the public catalogue."))
-        content.addView(catalogueUrlPanel(sourcesManager))
-        content.addView(spacer(dp(16)))
-
         // How to get a catalogue
-        content.addView(sectionTitle("How to Get a Catalogue", ""))
+        content.addView(sectionTitle("Source Format", "Sources are added from the Game Sources screen."))
         content.addView(helpPanel())
         content.addView(spacer(dp(16)))
 
@@ -126,80 +115,6 @@ class ProviderSettingsScreen(private val context: Context) {
             }
         }
 
-    private fun catalogueUrlPanel(sourcesManager: SourcesManager): LinearLayout {
-        val panel = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(14), dp(14), dp(14))
-            background = glassBg(dp(14))
-        }
-
-        // USE PUBLIC CATALOGUE button
-        panel.addView(TextView(context).apply {
-            text = "USE PUBLIC CATALOGUE"
-            setTextColor(Color.rgb(220, 200, 160)); textSize = 13f
-            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setPadding(dp(16), dp(10), dp(16), dp(10))
-            background = glassBg(dp(10), alpha = 120, accent = true)
-            setOnClickListener {
-                animTap(this)
-                sourcesManager.setApiUrl(MainActivity.DEFAULT_CATALOGUE_URL)
-                urlInput.setText(MainActivity.DEFAULT_CATALOGUE_URL)
-            }
-            makeLiquid(this)
-        })
-        panel.addView(spacer(dp(12)))
-
-        // Divider
-        panel.addView(TextView(context).apply {
-            text = "or enter a custom URL"; setTextColor(MUTED_DIM); textSize = 11f
-            gravity = Gravity.CENTER; setPadding(0, dp(2), 0, dp(8))
-        })
-
-        // URL input
-        val currentUrl = sourcesManager.getApiUrl()
-        urlInput = EditText(context).apply {
-            hint = "https://raw.githubusercontent.com/.../games.json"
-            setHintTextColor(Color.argb(80, 200, 180, 130))
-            setTextColor(TEXT); textSize = 13f
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            maxLines = 1; background = null
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            setText(currentUrl)
-        }
-
-        val inputBg = GradientDrawable().apply {
-            setColor(Color.argb(30, 255, 255, 255)); cornerRadius = dp(8).toFloat()
-            setStroke(dp(1), Color.argb(30, 200, 180, 150))
-        }
-        val inputWrapper = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            background = inputBg
-            setPadding(dp(6), dp(2), dp(6), dp(2))
-            addView(urlInput, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        }
-        panel.addView(inputWrapper)
-        panel.addView(spacer(dp(10)))
-
-        // SAVE URL button
-        panel.addView(TextView(context).apply {
-            text = "SAVE URL"; setTextColor(Color.rgb(220, 200, 160)); textSize = 12f
-            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setPadding(dp(16), dp(8), dp(16), dp(8))
-            background = glassBg(dp(8), alpha = 120, accent = true)
-            setOnClickListener {
-                animTap(this)
-                sourcesManager.setApiUrl(urlInput.text.toString())
-            }
-            makeLiquid(this)
-        })
-
-        return panel
-    }
-
-    // Shared reference so the button can set text
-    private lateinit var urlInput: EditText
-
     private fun helpPanel(): LinearLayout {
         val panel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -209,17 +124,19 @@ class ProviderSettingsScreen(private val context: Context) {
 
         panel.addView(TextView(context).apply {
             text = """
-Runestone can load games from a static JSON catalogue or a REST API.
+Runestone loads games from user-added HTTPS JSON sources.
 
-\u2022 Static Catalogue — A raw JSON file with a "games" array
-\u2022 REST API — A backend server with /games?source= endpoints
+\u2022 The app does not include or recommend source URLs
+\u2022 Add sources from Available Games > Manage Sources
+\u2022 Each source is a JSON file with a "games" array
+\u2022 Use only files you are authorized to distribute or download
 
-To create your own catalogue:
-1. Fork the runestone-catalogue repo on GitHub
-2. Edit games.json with your game entries
-3. Paste the raw URL above
+Each game entry needs: id, title, engine, and either downloadUrl
+or downloadOptions. Download URLs must use HTTPS.
 
-Each game entry needs: id, title, engine, downloadUrl.
+Example:
+{"games":[{"id":"demo","title":"Demo","engine":"mv",
+"downloadUrl":"https://example.com/demo.zip"}]}
             """.trimIndent()
             setTextColor(MUTED); textSize = 11f
             setPadding(0, dp(2), 0, dp(2))
@@ -240,12 +157,12 @@ Each game entry needs: id, title, engine, downloadUrl.
         }
 
         panel.addView(TextView(context).apply {
-            text = "Clear Catalogue URL"
+            text = "Clear Sources"
             setTextColor(Color.rgb(200, 140, 140)); textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
         })
         panel.addView(TextView(context).apply {
-            text = "Remove the configured catalogue URL. This cannot be undone."
+            text = "Remove every user-added source URL. This cannot be undone."
             setTextColor(MUTED); textSize = 11f
             setPadding(0, dp(4), 0, dp(10))
         })

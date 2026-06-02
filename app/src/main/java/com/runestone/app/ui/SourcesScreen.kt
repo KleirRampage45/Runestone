@@ -75,7 +75,7 @@ class SourcesScreen(private val context: Context) {
             })
             content.addView(spacer(dp(6)))
             content.addView(TextView(context).apply {
-                text = "Sources are URLs that point to game catalogs.\nThe app will fetch available games from each source."
+                text = "Sources are HTTPS URLs that point to JSON game catalogs.\nOnly add repositories you trust and are authorized to use."
                 setTextColor(MUTED_DIM); textSize = 11f; gravity = Gravity.CENTER
                 setPadding(dp(16), dp(4), dp(16), 0)
                 setLineSpacing(2f, 1f)
@@ -204,7 +204,7 @@ class SourcesScreen(private val context: Context) {
         }
 
         val urlInput = EditText(context).apply {
-            hint = "Source URL (e.g. https://example.com/api)"
+            hint = "Source URL (e.g. https://example.com/games.json)"
             setHintTextColor(Color.argb(80, 200, 180, 130))
             setTextColor(TEXT); textSize = 13f
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI

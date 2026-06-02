@@ -26,14 +26,9 @@ class SourcesManager(private val context: Context) {
     companion object {
         private const val TAG = "SourcesManager"
         private const val KEY_SOURCES = "sources_json"
-        private const val KEY_API_URL = "api_url"
-        private const val DEFAULT_API_URL = ""
-    }
-
-    fun getApiUrl(): String = prefs.getString(KEY_API_URL, DEFAULT_API_URL) ?: DEFAULT_API_URL
-
-    fun setApiUrl(url: String) {
-        prefs.edit().putString(KEY_API_URL, url.trim()).apply()
+        private const val MAX_CATALOGUE_CHARS = 4 * 1024 * 1024
+        private const val MAX_GAMES_PER_SOURCE = 10_000
+        private const val MAX_DOWNLOAD_OPTIONS_PER_GAME = 20
     }
 
     fun getSources(): List<ProviderSource> {
@@ -54,7 +49,8 @@ class SourcesManager(private val context: Context) {
     }
 
     fun addSource(url: String): ProviderSource {
-        val trimmed = url.trim()
+        val trimmed = validateHttpsUrl(url)
+        getSources().firstOrNull { it.url == trimmed }?.let { return it }
         val name = extractNameFromUrl(trimmed)
         val source = ProviderSource(name = name, url = trimmed)
         val sources = getSources().toMutableList()
@@ -68,7 +64,7 @@ class SourcesManager(private val context: Context) {
     }
 
     fun clearSources() {
-        prefs.edit().remove(KEY_SOURCES).apply()
+        prefs.edit().remove(KEY_SOURCES).remove("api_url").apply()
     }
 
     fun updateSourceStatus(id: String, status: SourceStatus) {
@@ -80,24 +76,10 @@ class SourcesManager(private val context: Context) {
         }
     }
 
-    fun isStaticCatalogueUrl(url: String): Boolean =
-        url.endsWith(".json") || url.contains("raw.githubusercontent.com")
-
     fun fetchGamesFromSources(onResult: (List<AvailableGame>, String?) -> Unit) {
-        val apiUrl = getApiUrl()
-        if (apiUrl.isEmpty()) {
-            onResult(emptyList(), "Set up a game catalogue to browse games")
-            return
-        }
-
-        if (isStaticCatalogueUrl(apiUrl)) {
-            fetchGamesFromCatalogue(apiUrl, onResult)
-            return
-        }
-
         val sources = getSources()
         if (sources.isEmpty()) {
-            onResult(emptyList(), "No sources configured")
+            onResult(emptyList(), "Add a source URL to browse available games")
             return
         }
 
@@ -108,7 +90,7 @@ class SourcesManager(private val context: Context) {
 
                 for (source in sources) {
                     try {
-                        val games = fetchFromSource(apiUrl, source)
+                        val games = fetchGamesFromCatalogue(source)
                         allGames.addAll(games)
                         updateSourceStatus(source.id, SourceStatus.ACTIVE)
                     } catch (e: Exception) {
@@ -130,78 +112,94 @@ class SourcesManager(private val context: Context) {
         }.start()
     }
 
-    fun fetchGamesFromCatalogue(url: String, onResult: (List<AvailableGame>, String?) -> Unit) {
-        Thread {
-            try {
-                val conn = URL(url).openConnection() as HttpURLConnection
-                conn.connectTimeout = 10000
-                conn.readTimeout = 10000
-                conn.setRequestProperty("Accept", "application/json")
-
-                try {
-                    if (conn.responseCode != 200) {
-                        throw RuntimeException("HTTP ${conn.responseCode}")
-                    }
-
-                    val body = BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
-                    val json = JSONObject(body)
-                    val gamesArr = json.optJSONArray("games") ?: JSONArray()
-
-                    val games = (0 until gamesArr.length()).map { i ->
-                        AvailableGame.fromCatalogueJson(gamesArr.getJSONObject(i))
-                    }
-
-                    onResult(games, null)
-                } finally {
-                    conn.disconnect()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Catalogue fetch failed", e)
-                onResult(emptyList(), e.message ?: "Failed to load catalogue")
-            }
-        }.start()
-    }
-
-    private fun fetchFromSource(apiUrl: String, source: ProviderSource): List<AvailableGame> {
-        val url = URL("${apiUrl.trimEnd('/')}/games?source=${source.url}")
+    private fun fetchGamesFromCatalogue(source: ProviderSource): List<AvailableGame> {
+        val validatedUrl = validateHttpsUrl(source.url)
+        val url = URL(validatedUrl)
         val conn = url.openConnection() as HttpURLConnection
-        conn.connectTimeout = 10000
-        conn.readTimeout = 10000
+        conn.connectTimeout = 15000
+        conn.readTimeout = 15000
         conn.setRequestProperty("Accept", "application/json")
+        conn.setRequestProperty("User-Agent", "Runestone/1.0")
 
         try {
-            if (conn.responseCode != 200) {
-                throw RuntimeException("HTTP ${conn.responseCode}")
+            if (conn.responseCode != 200) throw RuntimeException("HTTP ${conn.responseCode}")
+
+            val contentType = conn.contentType ?: ""
+            if (contentType.contains("text/html", ignoreCase = true)) {
+                throw RuntimeException("Source returned HTML instead of JSON")
             }
 
-            val body = BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
-            val json = JSONObject(body)
-            val gamesArr = json.optJSONArray("games") ?: return emptyList()
-
-            return (0 until gamesArr.length()).map { i ->
-                val obj = gamesArr.getJSONObject(i)
-                val optsArr = obj.optJSONArray("downloadOptions")
-                val options = if (optsArr != null) {
-                    (0 until optsArr.length()).map { DownloadOption.fromJson(optsArr.getJSONObject(it)) }
-                } else {
-                    val legacyUrl = obj.optString("downloadUrl", "").ifEmpty { null }
-                    if (legacyUrl != null) {
-                        listOf(DownloadOption(name = "Download", host = "Direct", url = legacyUrl))
-                    } else emptyList()
-                }
-                AvailableGame(
-                    id = obj.optString("id", "$i"),
-                    title = obj.optString("title", "Unknown"),
-                    engine = obj.optString("engine", "").ifEmpty { null },
-                    fileSize = obj.optLong("fileSize", -1).let { if (it < 0) null else it },
-                    downloadOptions = options,
-                    sourceName = source.name,
-                    coverUrl = obj.optString("coverUrl", "").ifEmpty { null },
-                )
-            }
+            val body = readLimitedBody(conn)
+            return parseCatalogueFormat(source, JSONObject(body))
         } finally {
             conn.disconnect()
         }
+    }
+
+    private fun parseCatalogueFormat(source: ProviderSource, json: JSONObject): List<AvailableGame> {
+        val gamesArr = json.optJSONArray("games") ?: return emptyList()
+        require(gamesArr.length() <= MAX_GAMES_PER_SOURCE) {
+            "Catalogue exceeds $MAX_GAMES_PER_SOURCE games"
+        }
+        return (0 until gamesArr.length()).map { i ->
+            val obj = gamesArr.getJSONObject(i)
+            val optsArr = obj.optJSONArray("downloadOptions")
+            val options = if (optsArr != null) {
+                require(optsArr.length() <= MAX_DOWNLOAD_OPTIONS_PER_GAME) {
+                    "Game exceeds $MAX_DOWNLOAD_OPTIONS_PER_GAME download options"
+                }
+                (0 until optsArr.length()).map { optionIndex ->
+                    val optObj = optsArr.getJSONObject(optionIndex)
+                    DownloadOption(
+                        name = optObj.optString("name", "Download"),
+                        host = optObj.optString("host", source.name),
+                        url = validateHttpsUrl(optObj.optString("url", "")),
+                        fileSize = optObj.optLong("fileSize", -1).let { if (it < 0) null else it },
+                    )
+                }
+            } else {
+                val legacyUrl = obj.optString("downloadUrl", "").ifEmpty { null }
+                if (legacyUrl != null) {
+                    listOf(DownloadOption(name = "Download", host = "Direct", url = validateHttpsUrl(legacyUrl)))
+                } else emptyList()
+            }
+            val remoteId = obj.optString("id", "").ifBlank { i.toString() }
+            AvailableGame(
+                id = "${source.id}:$remoteId",
+                title = obj.optString("title", "Unknown"),
+                engine = obj.optString("engine", "").ifEmpty { null },
+                fileSize = obj.optLong("fileSize", -1).let { if (it < 0) null else it },
+                downloadOptions = options,
+                sourceName = source.name,
+                coverUrl = obj.optString("coverUrl", "").ifEmpty { null }?.let(::validateHttpsUrl),
+            )
+        }
+    }
+
+    private fun readLimitedBody(conn: HttpURLConnection): String {
+        val reader = BufferedReader(InputStreamReader(conn.inputStream))
+        return reader.use {
+            val body = StringBuilder()
+            val buffer = CharArray(8192)
+            while (true) {
+                val count = it.read(buffer)
+                if (count < 0) break
+                require(body.length + count <= MAX_CATALOGUE_CHARS) {
+                    "Catalogue exceeds ${MAX_CATALOGUE_CHARS / 1024 / 1024} MB"
+                }
+                body.append(buffer, 0, count)
+            }
+            body.toString()
+        }
+    }
+
+    private fun validateHttpsUrl(rawUrl: String): String {
+        val trimmed = rawUrl.trim()
+        val url = URL(trimmed)
+        require(url.protocol.equals("https", ignoreCase = true)) { "Only HTTPS URLs are supported" }
+        require(url.host.isNotBlank()) { "URL must include a host" }
+        require(url.userInfo == null) { "URLs with embedded credentials are not supported" }
+        return url.toString()
     }
 
     private fun extractNameFromUrl(url: String): String {

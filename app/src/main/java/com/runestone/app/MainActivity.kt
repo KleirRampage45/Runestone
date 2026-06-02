@@ -59,6 +59,7 @@ import com.runestone.app.workspace.WorkspaceStorage
 import com.runestone.app.workspace.WorkspaceStorageReporter
 import org.json.JSONObject
 import java.io.File
+import java.security.MessageDigest
 
 class MainActivity : Activity() {
 
@@ -92,7 +93,6 @@ class MainActivity : Activity() {
         private const val TAG = "Runestone"
         private const val NOTIFICATION_CHANNEL = "runestone_downloads"
         private const val NOTIFICATION_ID_DOWNLOAD = 2001
-        const val DEFAULT_CATALOGUE_URL = "https://raw.githubusercontent.com/KleirRampage45/runestone-catalogue/main/games.json"
     }
 
     private var pausedGamePath: String? = null
@@ -126,7 +126,6 @@ class MainActivity : Activity() {
         refreshGames()
         createNotificationChannel()
         setupDownloadCallbacks()
-        setupDefaultCatalogue()
 
         // Create permanent root frame - setContentView ONCE
         rootContainer = FrameLayout(this).apply {
@@ -167,12 +166,6 @@ class MainActivity : Activity() {
             }
             val notificationManager = getSystemService(NotificationManager::class.java)
             notificationManager.createNotificationChannel(channel)
-        }
-    }
-
-    private fun setupDefaultCatalogue() {
-        if (sourcesManager.getApiUrl().isEmpty()) {
-            sourcesManager.setApiUrl(DEFAULT_CATALOGUE_URL)
         }
     }
 
@@ -358,7 +351,7 @@ class MainActivity : Activity() {
 
     private fun handleDownload(game: AvailableGame) {
         val url = game.downloadUrl ?: return
-        val fileName = "${game.id}.zip"
+        val fileName = "${sha256(game.id).take(32)}.zip"
         downloadManager.setFileName(game.id, fileName)
         if (downloadManager.getState(game.id) == DownloadManager.DownloadState.PAUSED) {
             downloadManager.resumeDownload(game.id, url, fileName)
@@ -371,6 +364,11 @@ class MainActivity : Activity() {
         )
         renderAvailableGamesScreen()
     }
+
+    private fun sha256(value: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray())
+            .joinToString("") { "%02x".format(it) }
 
     private fun handlePauseDownload(gameId: String) {
         downloadManager.pauseDownload(gameId)
@@ -724,7 +722,8 @@ class MainActivity : Activity() {
             SourcesScreen(this).create(
                 sources = sourcesManager.getSources(),
                 onAddSource = { url ->
-                    sourcesManager.addSource(url)
+                    runCatching { sourcesManager.addSource(url) }
+                        .onFailure { Toast.makeText(this, it.message ?: "Invalid source URL", Toast.LENGTH_SHORT).show() }
                     showSources()
                 },
                 onRemoveSource = { id ->
@@ -740,7 +739,6 @@ class MainActivity : Activity() {
         manageFilesVisible = false
         showOverlay(
             ProviderSettingsScreen(this).create(
-                sourcesManager = sourcesManager,
                 onBack = { dismissOverlay() },
                 onClearAll = {
                     sourcesManager.clearSources()

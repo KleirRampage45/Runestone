@@ -85,21 +85,11 @@ class DownloadManager(private val context: Context) {
 
         val thread = Thread {
             val resolvedUrl = try {
-                HosterResolver.resolve(url)
-            } catch (e: MediafireResolutionException) {
-                Log.e(TAG, "Mediafire resolution failed for $gameId: ${e.message}", e)
-                setState(gameId, DownloadState.FAILED)
-                callback?.onError(gameId, "Mediafire links are unreliable on Android. Please use a Pixeldrain mirror if available.")
-                activeDownloads.remove(gameId)
-                cancelFlags.remove(gameId)
-                pendingResumes.remove(gameId)?.let { (pendingUrl, pendingFileName) ->
-                    resumeDownload(gameId, pendingUrl, pendingFileName)
-                }
-                return@Thread
+                validateDownloadUrl(url)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to resolve URL for $gameId: ${e.message}", e)
+                Log.e(TAG, "Invalid download URL for $gameId: ${e.message}", e)
                 setState(gameId, DownloadState.FAILED)
-                callback?.onError(gameId, "URL resolution failed: ${e.message}")
+                callback?.onError(gameId, e.message ?: "Invalid download URL")
                 activeDownloads.remove(gameId)
                 cancelFlags.remove(gameId)
                 pendingResumes.remove(gameId)?.let { (pendingUrl, pendingFileName) ->
@@ -129,19 +119,11 @@ class DownloadManager(private val context: Context) {
 
         val thread = Thread {
             val resolvedUrl = try {
-                HosterResolver.resolve(url)
-            } catch (e: MediafireResolutionException) {
-                Log.e(TAG, "Mediafire resolution failed for $gameId: ${e.message}", e)
-                setState(gameId, DownloadState.FAILED)
-                callback?.onError(gameId, "Mediafire links are unreliable on Android. Please use a Pixeldrain mirror if available.")
-                activeDownloads.remove(gameId)
-                cancelFlags.remove(gameId)
-                pendingResumes.remove(gameId)
-                return@Thread
+                validateDownloadUrl(url)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to resolve URL for $gameId: ${e.message}", e)
+                Log.e(TAG, "Invalid download URL for $gameId: ${e.message}", e)
                 setState(gameId, DownloadState.FAILED)
-                callback?.onError(gameId, "URL resolution failed: ${e.message}")
+                callback?.onError(gameId, e.message ?: "Invalid download URL")
                 activeDownloads.remove(gameId)
                 cancelFlags.remove(gameId)
                 pendingResumes.remove(gameId)
@@ -272,6 +254,14 @@ class DownloadManager(private val context: Context) {
 
     private fun setState(gameId: String, state: DownloadState) {
         prefs.edit().putString("state_$gameId", state.name).apply()
+    }
+
+    private fun validateDownloadUrl(rawUrl: String): String {
+        val url = URL(rawUrl.trim())
+        require(url.protocol.equals("https", ignoreCase = true)) { "Only direct HTTPS downloads are supported" }
+        require(url.host.isNotBlank()) { "Download URL must include a host" }
+        require(url.userInfo == null) { "Download URLs with embedded credentials are not supported" }
+        return url.toString()
     }
 
     private fun getFileName(gameId: String): String {

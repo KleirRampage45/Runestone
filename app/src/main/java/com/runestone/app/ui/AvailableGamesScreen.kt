@@ -114,7 +114,7 @@ class AvailableGamesScreen(private val context: Context) {
                 setTextColor(MUTED); textSize = 16f; gravity = Gravity.CENTER
             })
             content.addView(TextView(context).apply {
-                text = "Add sources or configure the API server"
+                text = "Add a trusted JSON source to browse games"
                 setTextColor(MUTED_DIM); textSize = 12f; gravity = Gravity.CENTER
                 setPadding(0, dp(6), 0, 0)
             })
