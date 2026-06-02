@@ -253,7 +253,10 @@ class GameActivity : Activity() {
                 // Save paused state and go home
                 getSharedPreferences("runestone", MODE_PRIVATE).edit()
                     .putString("paused_game", gamePath).apply()
-                startActivity(Intent(this@GameActivity, MainActivity::class.java))
+                val intent = Intent(this@GameActivity, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                }
+                startActivity(intent)
             }
             val ph = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             ph.gravity = Gravity.BOTTOM or Gravity.START

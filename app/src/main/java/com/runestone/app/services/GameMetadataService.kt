@@ -212,14 +212,14 @@ class GameMetadataService(private val context: Context) {
         try {
             val json = JSONObject().apply {
                 put("title", metadata.title)
-                put("description", metadata.description)
-                put("coverUrl", metadata.coverUrl)
+                metadata.description?.let { put("description", it) }
+                metadata.coverUrl?.let { put("coverUrl", it) }
                 put("screenshots", org.json.JSONArray(metadata.screenshots))
-                put("releaseDate", metadata.releaseDate)
-                put("developer", metadata.developer)
-                put("publisher", metadata.publisher)
+                metadata.releaseDate?.let { put("releaseDate", it) }
+                metadata.developer?.let { put("developer", it) }
+                metadata.publisher?.let { put("publisher", it) }
                 put("genres", org.json.JSONArray(metadata.genres))
-                put("rating", metadata.rating)
+                metadata.rating?.let { put("rating", it.toDouble()) }
                 put("source", metadata.source)
             }
             

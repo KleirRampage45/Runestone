@@ -174,11 +174,11 @@ class AvailableGamesScreen(private val context: Context) {
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
         addView(TextView(context).apply {
-            text = "CFG"
-            setTextColor(MUTED); textSize = 11f
+            text = "\u2699 OPTIONS"
+            setTextColor(TEXT); textSize = 13f
             typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-            background = glassBg(dp(8))
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            background = glassBg(dp(12), alpha = 120, accent = true)
             setOnClickListener { onProviderSettings() }
             makeLiquid(this)
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -263,48 +263,52 @@ class AvailableGamesScreen(private val context: Context) {
         installedGameTitles: Set<String> = emptySet(),
     ): LinearLayout {
         val screenW = context.resources.displayMetrics.widthPixels
-        val cardW = (screenW * 0.88f).toInt()
+        val cardW = (screenW * 0.92f).toInt()
 
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(cardW, ViewGroup.LayoutParams.WRAP_CONTENT)
-            background = glassBg(dp(14), alpha = 200)
+            background = GradientDrawable().apply {
+                setColor(Color.argb(220, 12, 11, 16))
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), Color.argb(60, 207, 174, 126))
+            }
             gravity = Gravity.CENTER_HORIZONTAL
         }
 
         // ── Top section: title + engine badge ──
         val topSection = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(10))
+            setPadding(dp(18), dp(16), dp(18), dp(12))
         }
 
         topSection.addView(TextView(context).apply {
-            text = game.title; setTextColor(TEXT); textSize = 18f
+            text = game.title; setTextColor(TEXT); textSize = 19f
             typeface = Typeface.create("serif", Typeface.BOLD); maxLines = 2
         })
 
         val metaRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(6), 0, 0)
+            setPadding(0, dp(8), 0, 0)
         }
         metaRow.addView(TextView(context).apply {
             text = engineLabel(game.engine)
-            setTextColor(ACCENT); textSize = 11f; typeface = Typeface.DEFAULT_BOLD
-            setPadding(dp(8), dp(3), dp(8), dp(3))
+            setTextColor(Color.rgb(238, 207, 158)); textSize = 10f; typeface = Typeface.DEFAULT_BOLD
+            setPadding(dp(10), dp(4), dp(10), dp(4))
             background = GradientDrawable().apply {
-                setColor(Color.argb(40, 200, 170, 130)); cornerRadius = dp(5).toFloat()
-                setStroke(dp(1), Color.argb(50, 200, 170, 130))
+                setColor(Color.argb(60, 200, 170, 130)); cornerRadius = dp(6).toFloat()
+                setStroke(dp(1), Color.argb(70, 200, 170, 130))
             }
         })
-        metaRow.addView(spacer(dp(8)))
+        metaRow.addView(spacer(dp(10)))
         metaRow.addView(TextView(context).apply {
-            text = game.sourceName; setTextColor(MUTED_DIM); textSize = 11f
+            text = game.sourceName; setTextColor(MUTED); textSize = 11f
         })
         if (game.fileSize != null) {
-            metaRow.addView(spacer(dp(8)))
+            metaRow.addView(spacer(dp(10)))
             metaRow.addView(TextView(context).apply {
                 text = formatBytes(game.fileSize)
-                setTextColor(MUTED_DIM); textSize = 11f
+                setTextColor(MUTED); textSize = 11f
             })
         }
         topSection.addView(metaRow)

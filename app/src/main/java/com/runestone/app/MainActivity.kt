@@ -46,6 +46,7 @@ import com.runestone.app.ui.ProviderSettingsScreen
 import com.runestone.app.ui.SettingsScreen
 import com.runestone.app.ui.SettingsStore
 import com.runestone.app.ui.SourcesScreen
+import com.runestone.app.services.GameMetadataService
 import com.runestone.app.provider.AvailableGame
 import com.runestone.app.provider.DownloadManager
 import com.runestone.app.provider.ExtractionManager
@@ -69,8 +70,10 @@ class MainActivity : Activity() {
     private lateinit var sourcesManager: SourcesManager
     private lateinit var downloadManager: DownloadManager
     private lateinit var extractionManager: ExtractionManager
+    private lateinit var metadataService: GameMetadataService
     private var settings = RunnerSettings()
     private var games: List<WorkspaceManager.GameInfo> = emptyList()
+    private var gameMetadataCache: MutableMap<String, GameMetadataService.GameMetadata> = mutableMapOf()
     private var importMessage: String? = null
     private var activeImportProgressView: ImportProgressView? = null
     private var manageFilesVisible = false
@@ -118,6 +121,7 @@ class MainActivity : Activity() {
         sourcesManager = SourcesManager(this)
         downloadManager = DownloadManager(this)
         extractionManager = ExtractionManager(this)
+        metadataService = GameMetadataService(this)
         settings = settingsStore.load()
         refreshGames()
         createNotificationChannel()
@@ -523,13 +527,30 @@ class MainActivity : Activity() {
             SortMode.DATE_ADDED -> filtered.sortedByDescending { java.io.File(it.originalPath).parentFile?.lastModified() ?: 0L }
         }
         val cards = filtered.map { toCardInfo(it) }.map { card ->
-            // Try to find matching cover from available games by title
-            val coverUrl = availableGames.firstOrNull {
+            // First try to find matching cover from available games by title
+            val availableCoverUrl = availableGames.firstOrNull {
                 it.title.equals(card.displayName, ignoreCase = true) ||
                 it.title.contains(card.displayName, ignoreCase = true) ||
                 card.displayName.contains(it.title, ignoreCase = true)
             }?.coverUrl
+            
+            // If not found in available games, check metadata cache
+            val coverUrl = availableCoverUrl ?: gameMetadataCache[card.displayName]?.coverUrl
+            
             card.copy(coverUrl = coverUrl)
+        }
+        
+        // Fetch metadata for games that don't have cover URLs yet
+        cards.filter { it.coverUrl == null }.forEach { card ->
+            if (!gameMetadataCache.containsKey(card.displayName)) {
+                metadataService.fetchMetadataAsync(card.displayName) { metadata ->
+                    metadata?.let {
+                        gameMetadataCache[card.displayName] = it
+                        // Refresh the home screen to show the new metadata
+                        runOnUiThread { showHome() }
+                    }
+                }
+            }
         }
         val pausedGame = cards.find { it.isPaused }
 
@@ -749,6 +770,7 @@ class MainActivity : Activity() {
             Log.i(TAG, "RESUME: $storageName")
             pausedGamePath = null
             getSharedPreferences("runestone", MODE_PRIVATE).edit().remove("paused_game").apply()
+            // Just finish this activity to bring GameActivity back to front
             finish()
             return
         }

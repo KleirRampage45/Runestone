@@ -169,11 +169,19 @@ class HomeScreen(private val context: Context) {
             }
             searchBar.addView(clearBtn)
 
+            val searchHandler = android.os.Handler(android.os.Looper.getMainLooper())
+            var searchRunnable: Runnable? = null
+            
             searchInput.addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) {
                     val query = s?.toString()?.trim() ?: ""
                     clearBtn.visibility = if (query.isNotEmpty()) View.VISIBLE else View.GONE
-                    onApplyFilters(activeFilter, query, currentSort)
+                    
+                    searchRunnable?.let { searchHandler.removeCallbacks(it) }
+                    searchRunnable = Runnable {
+                        onApplyFilters(activeFilter, query, currentSort)
+                    }
+                    searchHandler.postDelayed(searchRunnable!!, 300)
                 }
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -181,6 +189,9 @@ class HomeScreen(private val context: Context) {
 
             searchInput.setOnEditorActionListener { _, actionId, _ ->
                 if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                    searchRunnable?.let { searchHandler.removeCallbacks(it) }
+                    val query = searchInput.text.toString().trim()
+                    onApplyFilters(activeFilter, query, currentSort)
                     searchInput.clearFocus()
                     true
                 } else false
@@ -371,7 +382,7 @@ class HomeScreen(private val context: Context) {
 
             root.addView(barRow, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, WRAP, Gravity.BOTTOM).apply {
-                setMargins(dp(10), 0, dp(10), dp(8))
+                setMargins(dp(10), 0, dp(10), dp(72))
             })
         }
 
@@ -414,22 +425,22 @@ class HomeScreen(private val context: Context) {
             onHome()
         })
 
-        // + ADD icon
-        val addIcon = ImageView(context).apply {
-            setImageResource(R.drawable.ic_add)
-        }
-        bar.addView(dockItem(addIcon) {
-            selectDockItem(it)
-            onAdd()
-        })
-
-        // STORE icon
+        // STORE icon (moved left)
         val storeIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_store)
         }
         bar.addView(dockItem(storeIcon) {
             selectDockItem(it)
             onBrowse()
+        })
+
+        // + ADD icon (center position)
+        val addIcon = ImageView(context).apply {
+            setImageResource(R.drawable.ic_add)
+        }
+        bar.addView(dockItem(addIcon) {
+            selectDockItem(it)
+            onAdd()
         })
 
         // FILES folder icon
@@ -475,6 +486,9 @@ class HomeScreen(private val context: Context) {
             }
         })
         bar.addView(dockItem(gearIcon) {
+            gearRotator.cancel()
+            gearIcon.animate().cancel()
+            gearIcon.rotation = 0f
             selectDockItem(it)
             onSettings()
         })
@@ -930,7 +944,7 @@ class HomeScreen(private val context: Context) {
             if (dimOverlay.visibility == View.GONE) {
                 // Deselect previously selected card first
                 deselectAll()
-                // Select this card
+                // Select this card - just show blur and buttons, no animation
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                     cardFrame.setRenderEffect(
                         android.graphics.RenderEffect.createBlurEffect(32f, 32f,
@@ -938,9 +952,6 @@ class HomeScreen(private val context: Context) {
                 }
                 dimOverlay.visibility = View.VISIBLE
                 actionPanel.visibility = View.VISIBLE
-                actionPanel.scaleX = 0.9f; actionPanel.scaleY = 0.9f
-                actionPanel.animate().scaleX(1f).scaleY(1f).setDuration(200)
-                    .setInterpolator(OvershootInterpolator(1.2f)).start()
                 // Track this card as selected
                 selected.dimOverlay = dimOverlay
                 selected.actionPanel = actionPanel
@@ -1161,18 +1172,18 @@ class HomeScreen(private val context: Context) {
         })
         touchHelper.attachToRecyclerView(recyclerView)
 
-        // Page indicator — small dots below the carousel
-        container.addView(pageIndicator, FrameLayout.LayoutParams(
-            WRAP,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            Gravity.CENTER_HORIZONTAL or Gravity.TOP,
-        ).also { it.topMargin = carouselHeight + dp(4) })
-
         // Keep carousel metadata above the overlaid dock on every screen size.
         val detailPanel = DetailPanel(context)
         container.addView(detailPanel, FrameLayout.LayoutParams(
             MATCH, WRAP, Gravity.BOTTOM,
         ).apply { bottomMargin = dp(58) + dp(8) + dp(10) })
+        
+        // Page indicator — small dots just below the carousel cards
+        container.addView(pageIndicator, FrameLayout.LayoutParams(
+            WRAP,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.CENTER_HORIZONTAL or Gravity.TOP,
+        ).also { it.topMargin = carouselHeight + dp(8) })
 
         // Vignette overlay (cinematic corners)
         container.addView(VignetteOverlay(context), FrameLayout.LayoutParams(MATCH, MATCH))

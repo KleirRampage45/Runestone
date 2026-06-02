@@ -36,8 +36,10 @@ class CarouselGameCard(context: Context) : FrameLayout(context) {
 
     init {
         layoutParams = RecyclerView.LayoutParams(dp(260), dp(360)).apply {
-            setMargins(dp(4), 0, dp(4), 0)
+            setMargins(dp(16), 0, dp(16), 0)
         }
+        clipToOutline = true
+        outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
 
         // Card background — glass style
         background = GradientDrawable().apply {
