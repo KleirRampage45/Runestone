@@ -136,7 +136,11 @@ class CarouselGameCard(context: Context) : FrameLayout(context) {
         if (!url.isNullOrBlank()) {
             Thread {
                 try {
-                    val bitmap = BitmapFactory.decodeStream(URL(url).openStream())
+                    val bitmap = if (url.startsWith("local:")) {
+                        BitmapFactory.decodeFile(url.removePrefix("local:"))
+                    } else {
+                        BitmapFactory.decodeStream(URL(url).openStream())
+                    }
                     if (bitmap != null) {
                         post {
                             coverImage.setImageBitmap(bitmap)

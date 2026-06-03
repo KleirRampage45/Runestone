@@ -19,9 +19,12 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import com.runestone.app.ui.GameCardInfo
+import com.runestone.app.ui.Theme
 
 class InspectOverlay(
     context: Context,
@@ -54,7 +57,10 @@ class InspectOverlay(
             background = GradientDrawable().apply {
                 setColor(Color.argb(230, 12, 11, 16))
                 cornerRadius = dp(20).toFloat()
-                setStroke(dp(1), Color.rgb(207, 174, 126))
+                setStroke(dp(1), Color.argb(80,
+                    Color.red(Theme.active.accent),
+                    Color.green(Theme.active.accent),
+                    Color.blue(Theme.active.accent)))
             }
             translationY = 200f
             alpha = 0f
@@ -72,15 +78,18 @@ class InspectOverlay(
         // Engine badge
         val badge = TextView(context).apply {
             text = game.engineType.label
-            setTextColor(Color.rgb(207, 174, 126))
+            setTextColor(Theme.active.accent)
             textSize = 12f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             setPadding(dp(12), dp(4), dp(12), dp(4))
             background = GradientDrawable().apply {
-                setColor(Color.argb(40, 200, 170, 130))
+                setColor(Theme.active.accentBg)
                 cornerRadius = dp(6).toFloat()
-                setStroke(dp(1), Color.argb(50, 200, 170, 130))
+                setStroke(dp(1), Color.argb(50,
+                    Color.red(Theme.active.accent),
+                    Color.green(Theme.active.accent),
+                    Color.blue(Theme.active.accent)))
             }
         }
         panel.addView(badge.apply { setPadding(0, dp(10), 0, dp(4)) })

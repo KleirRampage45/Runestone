@@ -25,6 +25,7 @@ import android.view.animation.LinearInterpolator
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -54,10 +55,28 @@ data class GameCardInfo(
     val displayName: String,
     val engineType: EngineType,
     val fileCount: Int,
+    val fileSize: Long = 0L,
+    val totalPlayTime: Long = 0L,      // total seconds played
+    val lastPlayedTimestamp: Long = 0L, // epoch millis
     val isReady: Boolean,
     val isPaused: Boolean = false,
     val coverUrl: String? = null,
+    val metadataDeveloper: String = "",
+    val metadataGenres: String = "",
+    val metadataYear: String = "",
 )
+
+enum class HomeCardLayout(val label: String) {
+    GRID_2("2"),
+    GRID_3("3"),
+    WIDE("=");
+
+    fun next(): HomeCardLayout = when (this) {
+        GRID_2 -> GRID_3
+        GRID_3 -> WIDE
+        WIDE -> GRID_2
+    }
+}
 
 /** Tracks the currently selected card's views for single-selection UX */
 data class SelectedCardRef(
@@ -84,6 +103,10 @@ class HomeScreen(private val context: Context) {
         onResume: (() -> Unit)? = null,
         onStop: ((String) -> Unit)? = null,
         uiMode: UIMode = UIMode.GRID,
+        cardLayout: HomeCardLayout = HomeCardLayout.GRID_2,
+        onCardLayoutChanged: ((HomeCardLayout) -> Unit)? = null,
+        showGameName: Boolean = true,
+        onLongPress: ((GameCardInfo) -> Unit)? = null,
     ): FrameLayout {
         // ── Single-selection tracker ──
         val selectedCard = SelectedCardRef(null, null, null)
@@ -102,23 +125,39 @@ class HomeScreen(private val context: Context) {
         }
         val bottomClearance = dp(76)
 
+        val mainColumn = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        root.addView(mainColumn, FrameLayout.LayoutParams(MATCH, MATCH))
+
+        val stickyHeader = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(12), dp(10), dp(4))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(232, 3, 3, 4))
+                setStroke(dp(1), Color.argb(24, 207, 174, 126))
+            }
+        }
+        mainColumn.addView(stickyHeader, LinearLayout.LayoutParams(MATCH, WRAP))
+
         val scroll = ScrollView(context).apply {
             isFillViewport = true; overScrollMode = ScrollView.OVER_SCROLL_NEVER
             setPadding(0, 0, 0, bottomClearance)
         }
-        root.addView(scroll, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        mainColumn.addView(scroll, LinearLayout.LayoutParams(MATCH, 0, 1f))
 
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(10), dp(12), dp(10), dp(18))
+            setPadding(dp(10), dp(8), dp(10), dp(18))
         }
         scroll.addView(content, ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         // Header
-        content.addView(makeHeaderRow(activeFilter, activeSearch, currentSort, onApplyFilters))
-        content.addView(spacer(dp(8)))
+        stickyHeader.addView(makeHeaderRow(
+            activeFilter, activeSearch, currentSort, onApplyFilters, cardLayout, onCardLayoutChanged,
+        ))
+        stickyHeader.addView(spacer(dp(8)))
 
         // Standalone search bar
         if (onApplyFilters != null && games.isNotEmpty()) {
@@ -197,8 +236,8 @@ class HomeScreen(private val context: Context) {
                 } else false
             }
 
-            content.addView(searchBar)
-            content.addView(spacer(dp(8)))
+            stickyHeader.addView(searchBar)
+            stickyHeader.addView(spacer(dp(4)))
         }
 
         if (games.isEmpty()) {
@@ -230,10 +269,7 @@ class HomeScreen(private val context: Context) {
                     content.addView(renderTileLayout(games, onPlay, onManage))
                 }
                 else -> {
-                    games.forEach { game ->
-                        content.addView(createHeroCard(game, onPlay, onManage, ::deselectCurrent, selectedCard))
-                        content.addView(spacer(dp(10)))
-                    }
+                    content.addView(renderHeroGrid(games, cardLayout, onPlay, onManage, ::deselectCurrent, selectedCard, showGameName, onLongPress))
                 }
             }
         }
@@ -398,7 +434,7 @@ class HomeScreen(private val context: Context) {
         val bar = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
             background = GradientDrawable().apply {
-                setColor(Color.argb(90, 22, 21, 28))
+                setColor(Color.argb(52, 22, 21, 28))
                 cornerRadius = dp(24).toFloat()
                 setStroke(dp(1), Color.argb(60, 200, 190, 170))
             }
@@ -514,6 +550,8 @@ class HomeScreen(private val context: Context) {
     private fun makeHeaderRow(
         activeFilter: EngineType?, activeSearch: String, currentSort: SortMode,
         onApplyFilters: ((EngineType?, String, SortMode) -> Unit)?,
+        cardLayout: HomeCardLayout,
+        onCardLayoutChanged: ((HomeCardLayout) -> Unit)?,
     ): LinearLayout {
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -550,7 +588,70 @@ class HomeScreen(private val context: Context) {
             }
             row.addView(filterBtn)
         }
+        if (onCardLayoutChanged != null) {
+            row.addView(View(context), LinearLayout.LayoutParams(dp(6), 1))
+            val gridIcon = createGridIcon(cardLayout).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(28), dp(28))
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+            }
+            val iconWrapper = FrameLayout(context).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+                background = glassBg(dp(12))
+                addView(gridIcon, FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER))
+                setOnClickListener {
+                    val next = cardLayout.next()
+                    onCardLayoutChanged(next)
+                    gridIcon.invalidate()
+                }
+                makeLiquid(this)
+            }
+            row.addView(iconWrapper)
+        }
         return row
+    }
+
+    // ============================================================
+    //  Grid Layout Icon - small custom view showing grid pattern
+    // ============================================================
+
+    private fun createGridIcon(layout: HomeCardLayout): View = object : View(context) {
+        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        private val strokePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            paint.color = ACCENT
+            paint.style = android.graphics.Paint.Style.FILL
+            strokePaint.color = Color.argb(100, 255, 255, 255)
+            strokePaint.style = android.graphics.Paint.Style.STROKE
+            strokePaint.strokeWidth = dp(1).toFloat()
+            val w = width.toFloat(); val h = height.toFloat()
+            val pad = dp(4).toFloat(); val gap = dp(2).toFloat()
+            when (layout) {
+                HomeCardLayout.WIDE -> {
+                    val cw = w - pad * 2; val ch = (h - pad * 2 - gap) / 2
+                    val r = dp(3).toFloat()
+                    canvas.drawRoundRect(pad, pad, pad + cw, pad + ch, r, r, paint)
+                    canvas.drawRoundRect(pad, pad + ch + gap, pad + cw, pad + ch * 2 + gap, r, r, paint)
+                }
+                HomeCardLayout.GRID_2 -> {
+                    val cw = (w - pad * 2 - gap) / 2; val ch = (h - pad * 2 - gap) / 2
+                    val r = dp(3).toFloat()
+                    // Top row
+                    canvas.drawRoundRect(pad, pad, pad + cw, pad + ch, r, r, paint)
+                    canvas.drawRoundRect(pad + cw + gap, pad, pad + cw * 2 + gap, pad + ch, r, r, paint)
+                    // Bottom row
+                    canvas.drawRoundRect(pad, pad + ch + gap, pad + cw, pad + ch * 2 + gap, r, r, paint)
+                    canvas.drawRoundRect(pad + cw + gap, pad + ch + gap, pad + cw * 2 + gap, pad + ch * 2 + gap, r, r, paint)
+                }
+                HomeCardLayout.GRID_3 -> {
+                    val cw = (w - pad * 2 - gap * 2) / 3
+                    val ch = h - pad * 2
+                    val r = dp(3).toFloat()
+                    for (i in 0..2) {
+                        canvas.drawRoundRect(pad + (cw + gap) * i, pad, pad + (cw + gap) * i + cw, pad + ch, r, r, paint)
+                    }
+                }
+            }
+        }
     }
 
     // ============================================================
@@ -829,19 +930,63 @@ class HomeScreen(private val context: Context) {
     //  Hero card — name below, tap shows overlay
     // ============================================================
 
+    private fun renderHeroGrid(
+        games: List<GameCardInfo>,
+        layout: HomeCardLayout,
+        onPlay: (String) -> Unit,
+        onManage: (String) -> Unit,
+        deselectAll: () -> Unit,
+        selected: SelectedCardRef,
+        showGameName: Boolean = true,
+        onLongPress: ((GameCardInfo) -> Unit)? = null,
+    ): View {
+        val screenW = context.resources.displayMetrics.widthPixels
+        if (layout == HomeCardLayout.WIDE) {
+            return LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                games.forEach { game ->
+                    addView(createHeroCard(game, onPlay, onManage, deselectAll, selected, (screenW * 0.88f).toInt(), false, showGameName, onLongPress))
+                    addView(spacer(dp(10)))
+                }
+            }
+        }
+
+        val columns = if (layout == HomeCardLayout.GRID_3) 3 else 2
+        val gap = dp(8)
+        val available = screenW - dp(20) - gap * (columns - 1)
+        val cardW = available / columns
+        return GridLayout(context).apply {
+            columnCount = columns
+            alignmentMode = GridLayout.ALIGN_BOUNDS
+            games.forEachIndexed { index, game ->
+                addView(
+                    createHeroCard(game, onPlay, onManage, deselectAll, selected, cardW, true, showGameName, onLongPress),
+                    GridLayout.LayoutParams().apply {
+                        width = cardW
+                        height = WRAP
+                        rightMargin = if ((index + 1) % columns == 0) 0 else gap
+                        bottomMargin = gap
+                    },
+                )
+            }
+        }
+    }
+
     private fun createHeroCard(
         game: GameCardInfo, onPlay: (String) -> Unit, onManage: (String) -> Unit,
         deselectAll: () -> Unit,
         selected: SelectedCardRef,
+        cardW: Int,
+        compact: Boolean,
+        showGameName: Boolean = true,
+        onLongPress: ((GameCardInfo) -> Unit)? = null,
     ): LinearLayout {
         val cardContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(MATCH, WRAP)
+            layoutParams = LinearLayout.LayoutParams(cardW, WRAP)
         }
 
-        val w = context.resources.displayMetrics.widthPixels
-        val cardW = (w * 0.88f).toInt()
-        val cardH = (cardW * 0.62f).toInt()
+        val cardH = (cardW * if (compact) 1.16f else 0.62f).toInt()
 
         // Wrapper stacks card + overlay — blur only hits card
         val cardWrapper = FrameLayout(context).apply {
@@ -869,17 +1014,30 @@ class HomeScreen(private val context: Context) {
         }
         cardFrame.addView(coverImage)
 
+        // Game name placeholder while no cover artwork is available.
+        val enginePlaceholder = TextView(context).apply {
+            text = game.displayName; setTextColor(Color.argb(60, 255, 255, 255))
+            textSize = if (compact) 15f else 28f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
+        }
+        cardFrame.addView(enginePlaceholder)
+
         // Load cover art in background thread
         if (!game.coverUrl.isNullOrBlank()) {
             Thread {
                 try {
-                    val bitmap = android.graphics.BitmapFactory.decodeStream(
-                        java.net.URL(game.coverUrl).openStream()
-                    )
+                    val bitmap = if (game.coverUrl.startsWith("local:")) {
+                        android.graphics.BitmapFactory.decodeFile(game.coverUrl.removePrefix("local:"))
+                    } else {
+                        android.graphics.BitmapFactory.decodeStream(
+                            java.net.URL(game.coverUrl).openStream()
+                        )
+                    }
                     if (bitmap != null) {
                         coverImage.post {
                             coverImage.setImageBitmap(bitmap)
                             coverImage.visibility = View.VISIBLE
+                            enginePlaceholder.visibility = View.GONE
                             coverImage.alpha = 0f
                             coverImage.animate().alpha(1f).setDuration(300).start()
                         }
@@ -889,13 +1047,6 @@ class HomeScreen(private val context: Context) {
                 }
             }.start()
         }
-
-        // Engraved engine label (inside cardFrame, gets blurred)
-        cardFrame.addView(TextView(context).apply {
-            text = game.engineType.label; setTextColor(Color.argb(60, 255, 255, 255))
-            textSize = 36f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
-        })
 
         // Dim overlay — light tint on top
         val dimOverlay = FrameLayout(context).apply {
@@ -915,9 +1066,9 @@ class HomeScreen(private val context: Context) {
 
         // PLAY — fixed symmetric width (only for non-paused games; paused games use the bottom bar)
         if (!game.isPaused) {
-            val btnW = dp(150)
+            val btnW = if (compact) (cardW * 0.78f).toInt() else dp(150)
             val playBtn = TextView(context).apply {
-                text = "PLAY"; setTextColor(Color.rgb(220, 200, 160)); textSize = 16f
+                text = "PLAY"; setTextColor(Color.rgb(220, 200, 160)); textSize = if (compact) 12f else 16f
                 typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
                 setPadding(dp(12), dp(8), dp(12), dp(8))
                 background = glassBg(dp(6), alpha = 100, accent = true)
@@ -930,14 +1081,14 @@ class HomeScreen(private val context: Context) {
 
         // SETTINGS — same width
         val optsBtn = TextView(context).apply {
-            text = "SETTINGS"; setTextColor(Color.rgb(200, 180, 150)); textSize = 16f
+            text = "SETTINGS"; setTextColor(Color.rgb(200, 180, 150)); textSize = if (compact) 11f else 16f
             typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setPadding(dp(12), dp(8), dp(12), dp(8))
             background = glassBg(dp(6), alpha = 80)
             setOnClickListener { onManage(game.storageName) }
             makeLiquid(this)
         }
-        actionPanel.addView(optsBtn, LinearLayout.LayoutParams(dp(150), WRAP))
+        actionPanel.addView(optsBtn, LinearLayout.LayoutParams(if (compact) (cardW * 0.78f).toInt() else dp(150), WRAP))
 
         // Tap wrapper → toggle overlay + blur (single-selection)
         cardWrapper.setOnClickListener {
@@ -962,35 +1113,57 @@ class HomeScreen(private val context: Context) {
             }
         }
 
-        // Game name below card
-        cardContainer.addView(TextView(context).apply {
-            text = game.displayName; setTextColor(TEXT); textSize = 15f
-            typeface = Typeface.create("serif", Typeface.BOLD)
-            gravity = Gravity.CENTER; maxLines = 1
-            setPadding(dp(4), dp(8), dp(4), 0)
-        })
-        cardContainer.addView(TextView(context).apply {
-            text = "${game.engineType.label}  \u2022  ${game.fileCount} files"
-            setTextColor(MUTED); textSize = 11f; gravity = Gravity.CENTER
-            setPadding(0, dp(2), 0, 0)
-        })
-        // Status badge
-        val statusText = when {
-            game.isPaused -> "\u25B6 Paused"
-            game.isReady -> "\u2713 Ready"
-            else -> "\u2022 Installed"
+        // Long press → inspect overlay
+        cardWrapper.setOnLongClickListener {
+            if (onLongPress != null) {
+                deselectAll()
+                onLongPress(game)
+                true
+            } else false
         }
-        val statusColor = when {
-            game.isPaused -> Color.rgb(140, 220, 140)
-            game.isReady -> Color.rgb(207, 174, 126)
-            else -> MUTED
-        }
-        cardContainer.addView(TextView(context).apply {
-            text = statusText; setTextColor(statusColor); textSize = 10f
-            gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD
-            setPadding(0, dp(4), 0, dp(4))
-        })
 
+        // Shadow box for game name (toggleable)
+        if (showGameName) {
+            val shadowBox = FrameLayout(context).apply {
+                layoutParams = LinearLayout.LayoutParams(cardW, dp(28))
+                background = GradientDrawable().apply {
+                    setColor(Color.argb(200, 12, 11, 16))
+                    cornerRadius = dp(10).toFloat()
+                    setStroke(dp(1), Color.argb(30,
+                        Color.red(Theme.active.accent),
+                        Color.green(Theme.active.accent),
+                        Color.blue(Theme.active.accent)))
+                }
+                addView(TextView(context).apply {
+                    text = game.displayName; setTextColor(TEXT); textSize = 12f
+                    typeface = Typeface.create("serif", Typeface.BOLD)
+                    gravity = Gravity.CENTER; maxLines = 1
+                    layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
+                })
+            }
+            cardContainer.addView(shadowBox.apply {
+                (layoutParams as LinearLayout.LayoutParams).setMargins(dp(6), dp(-12), dp(6), 0)
+            })
+        }
+        if (!compact) {
+            cardContainer.addView(TextView(context).apply {
+                text = "${game.engineType.label}  \u2022  ${game.fileCount} files"
+                setTextColor(MUTED); textSize = 11f; gravity = Gravity.CENTER
+                setPadding(0, dp(2), 0, 0)
+            })
+        }
+        // Metadata line
+        val metaParts = mutableListOf<String>()
+        if (game.metadataDeveloper.isNotEmpty()) metaParts.add(game.metadataDeveloper)
+        if (game.metadataYear.isNotEmpty()) metaParts.add(game.metadataYear)
+        if (game.metadataGenres.isNotEmpty()) metaParts.add(game.metadataGenres)
+        if (metaParts.isNotEmpty() && !compact) {
+            cardContainer.addView(TextView(context).apply {
+                text = metaParts.joinToString(" • "); setTextColor(Color.rgb(160, 140, 110))
+                textSize = 10f; gravity = Gravity.CENTER; maxLines = 1
+                setPadding(dp(4), dp(2), dp(4), 0)
+            })
+        }
         return cardContainer
     }
 
@@ -1009,10 +1182,18 @@ class HomeScreen(private val context: Context) {
     private fun glassBg(radius: Int, alpha: Int = 200, accent: Boolean = false): GradientDrawable =
         GradientDrawable().apply {
             setColor(Color.argb(alpha,
-                if (accent) 50 else 22, if (accent) 40 else 20, if (accent) 30 else 26))
+                if (accent) Color.red(Theme.active.accent) / 4 else 22,
+                if (accent) Color.green(Theme.active.accent) / 4 else 20,
+                if (accent) Color.blue(Theme.active.accent) / 4 else 26))
             cornerRadius = dp(radius).toFloat()
-            setStroke(dp(1), Color.argb(if (accent) 80 else 45,
-                if (accent) 180 else 100, if (accent) 140 else 90, if (accent) 100 else 80))
+            if (accent) {
+                setStroke(dp(1), Color.argb(80,
+                    Color.red(Theme.active.accent),
+                    Color.green(Theme.active.accent),
+                    Color.blue(Theme.active.accent)))
+            } else {
+                setStroke(dp(1), Color.argb(45, 100, 90, 80))
+            }
         }
 
     // ============================================================
@@ -1374,13 +1555,225 @@ class HomeScreen(private val context: Context) {
     }
     private fun dp(v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
 
+    // ============================================================
+    //  Inspect Overlay — long press hero card
+    // ============================================================
+
+    fun showInspectOverlay(
+        game: GameCardInfo,
+        onPlay: (String) -> Unit,
+        onManage: (String) -> Unit,
+    ) {
+        val displayMetrics = context.resources.displayMetrics
+        val screenW = displayMetrics.widthPixels
+        val rootView = (context as? android.app.Activity)?.window?.decorView
+            ?.findViewById<ViewGroup>(android.R.id.content) ?: return
+
+        // Overlay – tap on empty space dismisses
+        val overlay = FrameLayout(context).apply {
+            layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
+            setBackgroundColor(Color.argb(200, 0, 0, 0))
+            alpha = 0f
+            animate().alpha(1f).setDuration(250).start()
+            setOnClickListener { dismissOverlay(this, rootView) }
+        }
+
+        // Big card – 80% width
+        val cardW = (screenW * 0.80f).toInt()
+        val cardH = (cardW * 1.2f).toInt()
+        val bigCard = FrameLayout(context).apply {
+            layoutParams = FrameLayout.LayoutParams(cardW, cardH)
+            background = GradientDrawable().apply {
+                setColor(cardColor(game.engineType))
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(2), Color.argb(60,
+                    Color.red(Theme.active.accent),
+                    Color.green(Theme.active.accent),
+                    Color.blue(Theme.active.accent)))
+            }
+            clipToOutline = true
+            setOnClickListener { /* consume tap – doesn't dismiss */ }
+
+            // Cover art image
+            val coverImage = ImageView(context).apply {
+                layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                visibility = View.GONE
+            }
+            addView(coverImage)
+
+            // Placeholder game name
+            val placeholder = TextView(context).apply {
+                text = game.displayName
+                setTextColor(Color.argb(80, 255, 255, 255))
+                textSize = 24f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
+            }
+            addView(placeholder)
+
+            // Load cover art in background if available
+            if (!game.coverUrl.isNullOrBlank()) {
+                Thread {
+                    try {
+                        val bitmap = if (game.coverUrl.startsWith("local:")) {
+                            android.graphics.BitmapFactory.decodeFile(game.coverUrl.removePrefix("local:"))
+                        } else {
+                            android.graphics.BitmapFactory.decodeStream(
+                                java.net.URL(game.coverUrl).openStream()
+                            )
+                        }
+                        if (bitmap != null) {
+                            coverImage.post {
+                                coverImage.setImageBitmap(bitmap)
+                                coverImage.visibility = View.VISIBLE
+                                placeholder.visibility = View.GONE
+                                coverImage.alpha = 0f
+                                coverImage.animate().alpha(1f).setDuration(300).start()
+                            }
+                        }
+                    } catch (_: Exception) { }
+                }.start()
+            }
+        }
+
+        // Compact info panel
+        val infoPanel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(235, 12, 11, 16))
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), Color.argb(60,
+                    Color.red(Theme.active.accent),
+                    Color.green(Theme.active.accent),
+                    Color.blue(Theme.active.accent)))
+            }
+            setOnClickListener { /* consume tap */ }
+        }
+
+        // Game title
+        infoPanel.addView(TextView(context).apply {
+            text = game.displayName; setTextColor(TEXT); textSize = 18f
+            typeface = Typeface.create("serif", Typeface.BOLD); gravity = Gravity.CENTER
+        })
+        infoPanel.addView(TextView(context).apply {
+            text = "${game.engineType.label}  •  ${game.fileCount} files"
+            setTextColor(MUTED); textSize = 11f; gravity = Gravity.CENTER
+            setPadding(0, dp(3), 0, 0)
+        })
+
+        infoPanel.addView(spacer(dp(8)))
+
+        // Metadata
+        val metaData = mutableListOf<Pair<String, String>>()
+        metaData.add("Engine" to game.engineType.label)
+        if (game.metadataDeveloper.isNotEmpty()) metaData.add("Developer" to game.metadataDeveloper)
+        if (game.metadataGenres.isNotEmpty()) metaData.add("Genres" to game.metadataGenres)
+        if (game.metadataYear.isNotEmpty()) metaData.add("Year" to game.metadataYear)
+
+        val sizeStr = when {
+            game.fileSize < 1024 -> "${game.fileSize} B"
+            game.fileSize < 1024 * 1024 -> "${game.fileSize / 1024} KB"
+            game.fileSize < 1024 * 1024 * 1024 -> "%.1f MB".format(game.fileSize / (1024f * 1024f))
+            else -> "%.1f GB".format(game.fileSize / (1024f * 1024f * 1024f))
+        }
+        metaData.add("Size" to sizeStr)
+
+        if (game.totalPlayTime > 0) {
+            val hours = game.totalPlayTime / 3600
+            val minutes = (game.totalPlayTime % 3600) / 60
+            metaData.add("Played" to if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m")
+        }
+        if (game.lastPlayedTimestamp > 0) {
+            val sdf = java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault())
+            metaData.add("Last played" to sdf.format(java.util.Date(game.lastPlayedTimestamp)))
+        }
+
+        metaData.forEachIndexed { i, (label, value) ->
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(2), dp(2), dp(2), dp(2))
+                if (i > 0) setPadding(dp(2), dp(3), dp(2), dp(2))
+                addView(TextView(context).apply {
+                    text = label; setTextColor(MUTED_DIM); textSize = 11f
+                    typeface = Typeface.DEFAULT_BOLD
+                    layoutParams = LinearLayout.LayoutParams(dp(75), WRAP)
+                })
+                addView(TextView(context).apply {
+                    text = value; setTextColor(TEXT); textSize = 12f; maxLines = 1
+                }, LinearLayout.LayoutParams(0, WRAP, 1f))
+            }
+            infoPanel.addView(row)
+        }
+
+        infoPanel.addView(spacer(dp(10)))
+
+        // Buttons
+        val btnRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
+        }
+        btnRow.addView(TextView(context).apply {
+            text = "PLAY"; setTextColor(Theme.active.accentBright); textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            background = GradientDrawable().apply {
+                setColor(Theme.active.accentBg)
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), Color.argb(80,
+                    Color.red(Theme.active.accent),
+                    Color.green(Theme.active.accent),
+                    Color.blue(Theme.active.accent)))
+            }
+            setOnClickListener { v ->
+                v.isClickable = true // consume
+                dismissOverlay(overlay, rootView); onPlay(game.storageName)
+            }
+        }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { setMargins(0, 0, dp(6), 0) })
+        btnRow.addView(TextView(context).apply {
+            text = "SETTINGS"; setTextColor(MUTED); textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            background = glassBg(10, alpha = 80)
+            setOnClickListener { v ->
+                v.isClickable = true
+                dismissOverlay(overlay, rootView); onManage(game.storageName)
+            }
+        }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { setMargins(dp(6), 0, 0, 0) })
+        infoPanel.addView(btnRow)
+
+        // Container – wraps content, centered vertically
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+        }
+        container.addView(spacer(dp(60)))
+        container.addView(bigCard)
+        container.addView(spacer(dp(14)))
+        container.addView(infoPanel)
+
+        // Fade in animations
+        bigCard.translationY = -80f; bigCard.alpha = 0f
+        bigCard.animate().translationY(0f).alpha(1f).setDuration(400)
+            .setInterpolator(OvershootInterpolator(1.1f)).start()
+        infoPanel.translationY = 80f; infoPanel.alpha = 0f
+        infoPanel.animate().translationY(0f).alpha(1f).setDuration(350)
+            .setInterpolator(OvershootInterpolator(1.08f)).start()
+
+        overlay.addView(container, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.TOP))
+        rootView.addView(overlay)
+    }
+
+    private fun dismissOverlay(overlay: FrameLayout, root: ViewGroup) {
+        overlay.animate().alpha(0f).translationY(60f).setDuration(200)
+            .withEndAction { root.removeView(overlay) }.start()
+    }
+
     private companion object {
         val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
         val TEXT = Color.rgb(232, 229, 220)
         val MUTED = Color.rgb(140, 130, 112)
         val MUTED_DIM = Color.rgb(100, 95, 85)
-        val ACCENT = Color.rgb(207, 174, 126)
+        val ACCENT: Int get() = Theme.active.accent
     }
 }
 

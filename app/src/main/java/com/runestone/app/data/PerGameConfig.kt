@@ -21,6 +21,7 @@ data class PerGameConfig(
     val performance: PerformanceSection = PerformanceSection(),
     val cheats: CheatSection = CheatSection(),
     val fonts: FontSection = FontSection(),
+    val metadata: MetadataSection = MetadataSection(),
 ) {
     companion object {
         fun load(file: File): PerGameConfig {
@@ -43,6 +44,7 @@ data class PerGameConfig(
                 performance = PerformanceSection.fromJson(json.optJSONObject("performance")),
                 cheats = CheatSection.fromJson(json.optJSONObject("cheats")),
                 fonts = FontSection.fromJson(json.optJSONObject("fonts")),
+                metadata = MetadataSection.fromJson(json.optJSONObject("metadata")),
             )
         }
     }
@@ -56,6 +58,7 @@ data class PerGameConfig(
         put("performance", performance.toJson())
         put("cheats", cheats.toJson())
         put("fonts", fonts.toJson())
+        put("metadata", metadata.toJson())
     }
 }
 
@@ -65,6 +68,7 @@ data class GameSection(
     val title: String = "",
     val engine: String = "",
     val engineOverride: String? = null,
+    val customCoverPath: String? = null,
 ) {
     companion object {
         fun fromJson(j: JSONObject?): GameSection {
@@ -73,6 +77,7 @@ data class GameSection(
                 title = j.optString("title", ""),
                 engine = j.optString("engine", ""),
                 engineOverride = j.optString("engineOverride", null),
+                customCoverPath = j.optString("customCoverPath", null),
             )
         }
     }
@@ -80,6 +85,7 @@ data class GameSection(
         put("title", title)
         put("engine", engine)
         putOpt("engineOverride", engineOverride)
+        putOpt("customCoverPath", customCoverPath)
     }
 }
 
@@ -361,6 +367,46 @@ data class FontSection(
         put("useGameFonts", useGameFonts)
         put("textOutline", textOutline)
         put("lineSpacing", lineSpacing.toDouble())
+    }
+}
+
+data class MetadataSection(
+    val gameTitle: String = "",
+    val description: String = "",
+    val developer: String = "",
+    val publisher: String = "",
+    val genres: String = "",
+    val releaseYear: String = "",
+    val coverUrl: String = "",
+    val localCoverPath: String = "",
+    val metadataSource: String = "",
+) {
+    companion object {
+        fun fromJson(j: JSONObject?): MetadataSection {
+            if (j == null) return MetadataSection()
+            return MetadataSection(
+                gameTitle = j.optString("gameTitle", ""),
+                description = j.optString("description", ""),
+                developer = j.optString("developer", ""),
+                publisher = j.optString("publisher", ""),
+                genres = j.optString("genres", ""),
+                releaseYear = j.optString("releaseYear", ""),
+                coverUrl = j.optString("coverUrl", ""),
+                localCoverPath = j.optString("localCoverPath", ""),
+                metadataSource = j.optString("metadataSource", ""),
+            )
+        }
+    }
+    fun toJson() = JSONObject().apply {
+        put("gameTitle", gameTitle)
+        put("description", description)
+        put("developer", developer)
+        put("publisher", publisher)
+        put("genres", genres)
+        put("releaseYear", releaseYear)
+        put("coverUrl", coverUrl)
+        put("localCoverPath", localCoverPath)
+        put("metadataSource", metadataSource)
     }
 }
 

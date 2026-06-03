@@ -1,11 +1,6 @@
 /*
  * Runestone - Multi-engine RPG Maker game launcher for Android
  * Copyright (C) 2026 Gerson (KleirRampage45)
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
  */
 
 package com.runestone.app.ui
@@ -22,6 +17,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.OvershootInterpolator
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
@@ -36,16 +32,14 @@ class SettingsScreen(private val context: Context) {
         settings: RunnerSettings,
         onSettingsChanged: (RunnerSettings) -> Unit,
         onBack: () -> Unit,
+        onResetDefaults: () -> Unit,
+        onClearRuntimeCache: () -> Unit = {},
     ): LinearLayout {
-        var current = settings.copy(textScale = 1.0f)
+        var current = settings.copy()
 
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            // Transparent — overlay dim layer provides the background
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-            )
+            layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
         }
 
         root.addView(makeTopBar(onBack))
@@ -53,11 +47,7 @@ class SettingsScreen(private val context: Context) {
         val scroll = ScrollView(context).apply {
             isFillViewport = false
             overScrollMode = ScrollView.OVER_SCROLL_NEVER
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f,
-            )
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f)
         }
         root.addView(scroll)
 
@@ -68,104 +58,582 @@ class SettingsScreen(private val context: Context) {
         scroll.addView(content)
         content.alpha = 0f
 
-        // Layout Mode
-        content.addView(sectionTitle("Play Layout", "Choose how the phone becomes the handheld."))
-        content.addView(
-            layoutSelector(current.layoutMode) { selected ->
-                current = current.copy(layoutMode = selected)
-                onSettingsChanged(current)
-            },
-        )
-
-        content.addView(spacer(14))
-
-        // UI Mode
-        content.addView(sectionTitle("UI Mode", "Choose how your library is displayed."))
-        content.addView(
-            uiModeSelector(current.uiMode) { selected ->
-                current = current.copy(uiMode = selected)
-                onSettingsChanged(current)
-            },
-        )
-
-        content.addView(spacer(14))
-
-        // Touch Controls
-        content.addView(sectionTitle("Touch Controls", "Tune the virtual controller."))
-        content.addView(sliderPanel("Touch Opacity", "${(current.touchOpacity * 100).toInt()}%") { label ->
-            slider(100, (current.touchOpacity * 100).toInt().coerceIn(0, 100)) { progress ->
-                current = current.copy(touchOpacity = progress / 100f)
-                label.text = "${(current.touchOpacity * 100).toInt()}%"
-                onSettingsChanged(current)
-            }
-        })
-        content.addView(spacer(10))
-        content.addView(sliderPanel("Touch Scale", "${(current.touchScale * 100).toInt()}%") { label ->
-            slider(100, ((current.touchScale - 0.5f) * 200).toInt().coerceIn(0, 100)) { progress ->
-                current = current.copy(touchScale = 0.5f + (progress / 200f))
-                label.text = "${(current.touchScale * 100).toInt()}%"
-                onSettingsChanged(current)
-            }
-        })
-        content.addView(spacer(10))
-        // Haptic toggle with animated intensity sub-slider
-        val hapticIntensityPanel = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = if (current.hapticsEnabled) View.VISIBLE else View.GONE
-            setPadding(dp(8), dp(6), dp(8), 0)
+        fun upd(transform: RunnerSettings.() -> RunnerSettings) {
+            current = current.transform()
+            onSettingsChanged(current)
         }
-        hapticIntensityPanel.addView(sliderPanel("Haptic Intensity", "${(current.hapticIntensity * 100).toInt()}%") { label ->
-            slider(100, (current.hapticIntensity * 100).toInt().coerceIn(0, 100)) { progress ->
-                current = current.copy(hapticIntensity = progress / 100f)
-                label.text = "${(current.hapticIntensity * 100).toInt()}%"
-                onSettingsChanged(current)
-            }
-        })
-        content.addView(switchPanel("Haptic Feedback", "Vibrate when virtual controls are pressed.", current.hapticsEnabled) { checked ->
-            current = current.copy(hapticsEnabled = checked)
-            onSettingsChanged(current)
-            if (checked) {
-                hapticIntensityPanel.visibility = View.VISIBLE
-                hapticIntensityPanel.alpha = 0f
-                // Post animation to run after layout so height is available
-                hapticIntensityPanel.post {
-                    hapticIntensityPanel.translationY = -hapticIntensityPanel.height.toFloat()
-                    hapticIntensityPanel.animate().alpha(1f).translationY(0f).setDuration(250)
-                        .setInterpolator(OvershootInterpolator(1.1f)).start()
+
+        // ────────────────────────────────────────────────
+        //  1. DISPLAY & LAYOUT
+        // ────────────────────────────────────────────────
+        accordion(content, "DISPLAY & LAYOUT", "Screen mode, scaling, and UI options.") { panel ->
+            panel.addView(
+                layoutSelector(current.layoutMode) { upd { copy(layoutMode = it) } },
+            )
+            panel.addView(spacer(8))
+            panel.addView(
+                uiModeSelector(current.uiMode) { upd { copy(uiMode = it) } },
+            )
+            panel.addView(spacer(8))
+            panel.addView(switchPanel("Smooth Scaling", "Bilinear filtering for scaled sprites.", current.smoothScaling) {
+                upd { copy(smoothScaling = it) }
+            })
+            panel.addView(spacer(6))
+            panel.addView(switchPanel("Integer Scaling", "Pixel-perfect scaling (no blur).", current.integerScaling) {
+                upd { copy(integerScaling = it) }
+            })
+            panel.addView(spacer(6))
+            panel.addView(sliderPanel("Text Scale", "${(current.textScale * 100).toInt()}%") { label ->
+                slider(100, ((current.textScale - 0.5f) * 200).toInt().coerceIn(0, 100)) { progress ->
+                    val v = 0.5f + (progress / 200f)
+                    upd { copy(textScale = v) }
+                    label.text = "${(v * 100).toInt()}%"
                 }
-            } else {
-                hapticIntensityPanel.animate().alpha(0f).setDuration(180)
-                    .withEndAction { hapticIntensityPanel.visibility = View.GONE }.start()
+            })
+            panel.addView(spacer(6))
+            panel.addView(switchPanel("Keep Screen On", "Prevent device sleep while playing.", current.keepScreenOn) {
+                upd { copy(keepScreenOn = it) }
+            })
+        }
+
+        // ────────────────────────────────────────────────
+        //  2. GAMEPAD & INPUT
+        // ────────────────────────────────────────────────
+        accordion(content, "GAMEPAD & INPUT", "Virtual controller, haptics, and button mapping.") { panel ->
+            panel.addView(sliderPanel("Button Opacity", "${(current.touchOpacity * 100).toInt()}%") { label ->
+                slider(100, (current.touchOpacity * 100).toInt().coerceIn(0, 100)) { progress ->
+                    val v = progress / 100f
+                    upd { copy(touchOpacity = v) }
+                    label.text = "${(v * 100).toInt()}%"
+                }
+            })
+            panel.addView(spacer(6))
+            panel.addView(sliderPanel("Button Size", "${(current.touchScale * 100).toInt()}%") { label ->
+                slider(100, ((current.touchScale - 0.5f) * 200).toInt().coerceIn(0, 100)) { progress ->
+                    val v = 0.5f + (progress / 200f)
+                    upd { copy(touchScale = v) }
+                    label.text = "${(v * 100).toInt()}%"
+                }
+            })
+            panel.addView(spacer(6))
+            panel.addView(switchPanel("Hide Virtual Gamepad", "Hide on-screen controls entirely.", current.hideVirtualGamepad) {
+                upd { copy(hideVirtualGamepad = it) }
+            })
+            panel.addView(spacer(6))
+            panel.addView(switchPanel("Diagonal Movement", "Enable 8-direction D-pad input.", current.diagonalMovement) {
+                upd { copy(diagonalMovement = it) }
+            })
+
+            // Haptic
+            val hapticRow = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                if (!current.hapticsEnabled) visibility = View.GONE
             }
-        })
-        content.addView(hapticIntensityPanel)
-        content.addView(spacer(10))
-        content.addView(spacer(10))
-        content.addView(switchPanel("Show X/Y Buttons", "Extra RPG Maker keys. Usually unnecessary.", current.showExtraButtons) { checked ->
-            current = current.copy(showExtraButtons = checked)
-            onSettingsChanged(current)
-        })
+            hapticRow.addView(spacerAfter(6))
+            hapticRow.addView(sliderPanel("Haptic Intensity", "${(current.hapticIntensity * 100).toInt()}%") { label ->
+                slider(100, (current.hapticIntensity * 100).toInt().coerceIn(0, 100)) { progress ->
+                    val v = progress / 100f
+                    upd { copy(hapticIntensity = v) }
+                    label.text = "${(v * 100).toInt()}%"
+                }
+            })
+            panel.addView(switchPanel("Haptic Feedback", "Vibrate when virtual controls are pressed.", current.hapticsEnabled) { checked ->
+                upd { copy(hapticsEnabled = checked) }
+                hapticRow.visibility = if (checked) View.VISIBLE else View.GONE
+            })
+            panel.addView(hapticRow)
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Show X/Y Buttons", "Extra RPG Maker keys on the overlay.", current.showExtraButtons) {
+                upd { copy(showExtraButtons = it) }
+            })
+            panel.addView(spacerAfter(6))
 
-        content.addView(spacer(14))
+            // Button mapping sub-accordion
+            subAccordion(panel, "BUTTON MAPPING") { btnPanel ->
+                val keyOptions = listOf("ENTER", "ESCAPE", "SPACE", "TAB", "Z", "X", "Q", "B", "A", "S", "D", "W", "V", "C",
+                    "F2", "F8", "CTRL_LEFT", "SHIFT_LEFT", "ALT_LEFT")
+                btnPanel.addView(compactDropdown("Left Button", current.leftButtonKey, keyOptions) { upd { copy(leftButtonKey = it) } })
+                btnPanel.addView(compactDropdown("Right Button", current.rightButtonKey, keyOptions) { upd { copy(rightButtonKey = it) } })
+                btnPanel.addView(compactDropdown("Left M Button", current.leftMButtonKey, keyOptions) { upd { copy(leftMButtonKey = it) } })
+                btnPanel.addView(compactDropdown("Right M Button", current.rightMButtonKey, keyOptions) { upd { copy(rightMButtonKey = it) } })
+                btnPanel.addView(compactDropdown("First Button", current.firstButtonKey, keyOptions) { upd { copy(firstButtonKey = it) } })
+                btnPanel.addView(compactDropdown("Second Button", current.secondButtonKey, keyOptions) { upd { copy(secondButtonKey = it) } })
+                btnPanel.addView(compactDropdown("Third Button", current.thirdButtonKey, keyOptions) { upd { copy(thirdButtonKey = it) } })
+                btnPanel.addView(compactDropdown("Fourth Button", current.fourthButtonKey, keyOptions) { upd { copy(fourthButtonKey = it) } })
+                btnPanel.addView(compactDropdown("Fifth Button", current.fifthButtonKey, keyOptions) { upd { copy(fifthButtonKey = it) } })
+                btnPanel.addView(compactDropdown("Sixth Button", current.sixthButtonKey, keyOptions) { upd { copy(sixthButtonKey = it) } })
+            }
+        }
 
-        // Audio
-        content.addView(sectionTitle("Audio", "WebView game audio settings."))
+        // ────────────────────────────────────────────────
+        //  3. AUDIO
+        // ────────────────────────────────────────────────
+        accordion(content, "AUDIO", "Audio format and emulation settings.") { panel ->
+            panel.addView(
+                audioSelector(current.forceAudioExt) { ext -> upd { copy(forceAudioExt = ext) } },
+            )
+            panel.addView(spacerAfter(6))
+            panel.addView(stubSwitchPanel("Disable Audio Emulation", "Use native audio path for compatibility.", current.disableAudioEmulation) {
+                upd { copy(disableAudioEmulation = it) }
+            })
+        }
+
+        // ────────────────────────────────────────────────
+        //  4. RPG MAKER — RGSS (XP/VX/VX Ace)
+        // ────────────────────────────────────────────────
+        accordion(content, "RPG MAKER (RGSS)", "mkxp-z for XP/VX/VX Ace. Dialog logs wired; rest stored-only.") { panel ->
+            panel.addView(switchPanel("Dialog Logs", "Capture and display message history.", current.dialogLogs) {
+                upd { copy(dialogLogs = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(stubSwitchPanel("Use Ruby 1.8", "Compatibility mode for older RGSS scripts.", current.useRuby18) {
+                upd { copy(useRuby18 = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(stubSwitchPanel("VSync", "Sync rendering to display refresh rate.", current.vsync) {
+                upd { copy(vsync = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(stubSwitchPanel("Frame Skip", "Skip frames to maintain target FPS.", current.frameSkip) {
+                upd { copy(frameSkip = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(stubSwitchPanel("Shaders", "Enable shader/filter effects.", current.shaders) {
+                upd { copy(shaders = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(stubSwitchPanel("Path Cache", "Cache file/resource path lookups.", current.pathCache) {
+                upd { copy(pathCache = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(stubSwitchPanel("Reach Path Distance", "Extended pathfinding range support.", current.reachPathDistance) {
+                upd { copy(reachPathDistance = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(stubSwitchPanel("Enable Preload Scripts", "Load compat scripts before boot.", current.enablePreloadScripts) {
+                upd { copy(enablePreloadScripts = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(stubSwitchPanel("Update Graphics", "Compat toggle for graphics update loop.", current.updateGraphics) {
+                upd { copy(updateGraphics = it) }
+            })
+            panel.addView(spacerAfter(6))
+            val pfOptions = listOf("Normal", "Fast", "Slow")
+            panel.addView(compactDropdown("Pixel Format Speed", current.pixelFormatSpeed, pfOptions) {
+                upd { copy(pixelFormatSpeed = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(stubSwitchPanel("Crop Left Y", "Crop left Y axis in rendering.", current.cropLeftY) {
+                upd { copy(cropLeftY = it) }
+            })
+            panel.addView(spacerAfter(6))
+
+            // Window size sub-accordion
+            subAccordion(panel, "WINDOW & DISPLAY (stub)") { wPanel ->
+                val widthOptions = listOf("320", "480", "640", "800", "1024", "1280")
+                val heightOptions = listOf("240", "360", "480", "600", "768", "720")
+                val alignOptions = listOf("CENTER", "TOP", "BOTTOM", "CENTER_TOP_HALF")
+                wPanel.addView(compactDropdown("Window Width", current.windowWidth.toString(), widthOptions) {
+                    upd { copy(windowWidth = it.toIntOrNull() ?: 640) }
+                })
+                wPanel.addView(compactDropdown("Window Height", current.windowHeight.toString(), heightOptions) {
+                    upd { copy(windowHeight = it.toIntOrNull() ?: 480) }
+                })
+                wPanel.addView(compactDropdown("Screen Alignment", current.virtualScreenAlignment, alignOptions) {
+                    upd { copy(virtualScreenAlignment = it) }
+                })
+            }
+        }
+
+        // ────────────────────────────────────────────────
+        //  5. RPG MAKER — MV/MZ (WebView)
+        // ────────────────────────────────────────────────
+        accordion(content, "RPG MAKER (MV/MZ)", "WebView settings for MV/MZ games.") { panel ->
+            panel.addView(switchPanel("Use WebGL2", "Enable WebGL2 rendering context.", current.useWebgl2) {
+                upd { copy(useWebgl2 = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Decrypter & Readfiles", "Support encrypted RPG Maker assets.", current.decrypterAndReadfiles) {
+                upd { copy(decrypterAndReadfiles = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Use Preload JS", "Inject preload scripts before game boot.", current.usePreloadJs) {
+                upd { copy(usePreloadJs = it) }
+            })
+        }
+
+        // ────────────────────────────────────────────────
+        //  6. REN'PY
+        // ────────────────────────────────────────────────
+        stubAccordion(content, "REN'PY", "Visual novel engine (runtime not yet integrated).") { panel ->
+            panel.addView(switchPanel("Auto Save", "Enable automatic save points.", current.autoSave) {
+                upd { copy(autoSave = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("HW Video", "Hardware-accelerated video decoding.", current.hwVideo) {
+                upd { copy(hwVideo = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Use Prescaled Variant", "Use pre-scaled assets for performance.", current.usePrescaledVariant) {
+                upd { copy(usePrescaledVariant = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("VSync", "Sync rendering to display refresh.", current.renpyVsync) {
+                upd { copy(renpyVsync = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Use Low Memory", "Reduce memory usage at cost of speed.", current.useLowMemory) {
+                upd { copy(useLowMemory = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Low Quality", "Lower rendering quality for performance.", current.lowQuality) {
+                upd { copy(lowQuality = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Multi Pixel Reduction", "Reduce pixel processing load.", current.multiPixelReduction) {
+                upd { copy(multiPixelReduction = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Records Skip", "Enable skip-unseen text feature.", current.recordsSkip) {
+                upd { copy(recordsSkip = it) }
+            })
+            panel.addView(spacer(6))
+            panel.addView(TextView(context).apply {
+                text = "Ren'Py engine runtime is not yet integrated."
+                setTextColor(Color.rgb(140, 110, 80))
+                textSize = 11f
+                gravity = Gravity.CENTER
+                setPadding(0, dp(8), 0, dp(4))
+            })
+        }
+
+        // ────────────────────────────────────────────────
+        //  7. HTML GAMES (WebView)
+        // ────────────────────────────────────────────────
+        accordion(content, "HTML GAMES", "WebView settings for HTML5/Tyrano/Construct games.") { panel ->
+            panel.addView(stubSwitchPanel("Use HTTP Server", "Serve games via local HTTP instead of file://.", current.useHttpServer) {
+                upd { copy(useHttpServer = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(stubSwitchPanel("Preload", "Preload HTML resources for faster startup.", current.preload) {
+                upd { copy(preload = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("WebGL", "Enable WebGL in WebView.", current.webgl) {
+                upd { copy(webgl = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Desktop Mode", "Use desktop user agent and viewport.", current.desktopMode) {
+                upd { copy(desktopMode = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Allow External Modules", "Allow loading external JS/assets. Security risk.", current.allowExternalModules) {
+                upd { copy(allowExternalModules = it) }
+            })
+        }
+
+        // ────────────────────────────────────────────────
+        //  8. RUFFLE (Flash)
+        // ────────────────────────────────────────────────
+        stubAccordion(content, "RUFFLE (Flash)", "Flash/SWF engine (runtime not yet integrated).") { panel ->
+            val backendOptions = listOf("OpenGL", "Vulkan", "Software")
+            val qualityOptions = listOf("Low", "Medium", "High")
+            val scaleModeOptions = listOf("Show All", "No Border", "Exact Fit")
+            val loadBehaviorOptions = listOf("Streaming", "Download", "Local")
+            panel.addView(compactDropdown("Renderer Backend", current.rendererBackend, backendOptions) {
+                upd { copy(rendererBackend = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(compactDropdown("Quality", current.ruffleQuality, qualityOptions) {
+                upd { copy(ruffleQuality = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(compactDropdown("Scale Mode", current.scaleMode, scaleModeOptions) {
+                upd { copy(scaleMode = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Letterbox", "Preserve aspect ratio with black bars.", current.letterbox) {
+                upd { copy(letterbox = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(compactDropdown("Load Behavior", current.loadBehavior, loadBehaviorOptions) {
+                upd { copy(loadBehavior = it) }
+            })
+        }
+
+        // ────────────────────────────────────────────────
+        //  9. APPLICATION
+        // ────────────────────────────────────────────────
+        accordion(content, "APPLICATION", "App-wide preferences and features.") { panel ->
+            val themeOptions = listOf("Dark", "Light", "Wallpaper")
+            val animFrameOptions = listOf("None", "Low", "Medium", "High")
+            panel.addView(compactDropdown("Theme", current.theme, themeOptions) { upd { copy(theme = it) } })
+            panel.addView(spacerAfter(6))
+            panel.addView(compactDropdown("Animation Frames", current.animationFrames, animFrameOptions) { upd { copy(animationFrames = it) } })
+            panel.addView(spacerAfter(6))
+            // Color Palette picker
+            val paletteNames = Theme.palettes.map { it.name }
+            panel.addView(paletteSelector(current.colorPalette, paletteNames) { name ->
+                upd { copy(colorPalette = name) }
+                Theme.active = Theme.byName(name)
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Show Game Names", "Display game title under hero cards.", current.showGameName) {
+                upd { copy(showGameName = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Enable Cheats", "Allow cheat/debug injection in games.", current.enableCheats) {
+                upd { copy(enableCheats = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Lock Screen", "Lock orientation/screen state during gameplay.", current.lockScreen) {
+                upd { copy(lockScreen = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Experimental Features", "Enable unstable/experimental options.", current.experimentalFeatures) {
+                upd { copy(experimentalFeatures = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Context Fix", "Fix WebView context-loss issues.", current.contextFix) {
+                upd { copy(contextFix = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(TextView(context).apply {
+                text = "RAWG API Key"
+                setTextColor(TEXT); textSize = 14f; typeface = Typeface.DEFAULT_BOLD
+                setPadding(0, dp(6), 0, dp(2))
+            })
+            val apiKeyInput = android.widget.EditText(context).apply {
+                setText(current.rawgApiKey); setTextColor(TEXT); setHint("Paste API key here")
+                setHintTextColor(Color.argb(80, 200, 200, 200))
+                setBackgroundColor(Color.argb(120, 10, 10, 14))
+                textSize = 13f; setPadding(dp(10), dp(8), dp(10), dp(8))
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                setOnEditorActionListener { _, _, _ -> upd { copy(rawgApiKey = text.toString()) }; true }
+                setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) upd { copy(rawgApiKey = text.toString()) } }
+            }
+            panel.addView(apiKeyInput, LinearLayout.LayoutParams(MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            panel.addView(TextView(context).apply {
+                text = "Get a free key at rawg.io/apidocs"
+                setTextColor(MUTED); textSize = 10f; setPadding(0, dp(2), 0, 0)
+            })
+        }
+
+        // ────────────────────────────────────────────────
+        //  10. ESSENTIALS
+        // ────────────────────────────────────────────────
+        stubAccordion(content, "ESSENTIALS", "Compatibility toggles (not yet implemented).") { panel ->
+            panel.addView(switchPanel("Preserve Files", "Keep extracted/generated runtime files.", current.preserveFiles) {
+                upd { copy(preserveFiles = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Input Overrides", "Enable per-game input override system.", current.inputOverrides) {
+                upd { copy(inputOverrides = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Timers Tied to Input", "Sync game timers to input timing.", current.timersTiedToInput) {
+                upd { copy(timersTiedToInput = it) }
+            })
+        }
+
+        // ────────────────────────────────────────────────
+        //  11. HELP & ABOUT
+        // ────────────────────────────────────────────────
+        accordion(content, "HELP & ABOUT", "Usage guide and version info.") { panel ->
+            panel.addView(TextView(context).apply {
+                text = """
+HOW TO USE RUNESTONE
+
+1. ADD A GAME — Tap [+ ADD] in the dock. Select the game's root folder.
+2. PLAY — Tap a game card, then tap PLAY. Engine auto-detected.
+3. RESUME — If a game was running, a RESUME bar appears.
+4. OPTIONS — Select a game, tap OPTIONS for per-game settings.
+5. FILTER & SORT — Filter by engine type, sort by name/recent.
+6. SETTINGS — Tap the gear icon. Configure all engine options here.
+7. SAVES — Protected in saves/ folder. Survives reimports.
+8. IMPORT — Games stored as single copy. Reimport keeps saves.
+                """.trimIndent()
+                setTextColor(MUTED); textSize = 11f
+                setLineSpacing(2f, 1f)
+                setPadding(dp(4), dp(4), dp(4), dp(4))
+            })
+            panel.addView(spacer(6))
+            panel.addView(TextView(context).apply {
+                text = """
+Runestone v0.7.0 — Glass UI
+GPLv2+ — github.com/KleirRampage45/Runestone
+Kotlin — 100% programmatic UI
+Built with SDL2, mkxp-z, Ruby, OpenAL, WebView.
+                """.trimIndent()
+                setTextColor(Color.rgb(120, 110, 90)); textSize = 10f
+                setLineSpacing(1.5f, 1f)
+                setPadding(dp(4), dp(2), dp(4), dp(4))
+            })
+        }
+
+        // ────────────────────────────────────────────────
+        //  BOTTOM ACTIONS
+        // ────────────────────────────────────────────────
+        content.addView(spacer(height = 14))
+
+        // Clear Runtime Packages
         content.addView(
-            audioSelector(current.forceAudioExt) { ext ->
-                current = current.copy(forceAudioExt = ext)
-                onSettingsChanged(current)
+            TextView(context).apply {
+                text = "CLEAR RUNTIME PACKAGES"
+                setTextColor(Color.rgb(200, 160, 100))
+                textSize = 13f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setPadding(dp(16), dp(11), dp(16), dp(11))
+                background = GradientDrawable().apply {
+                    setColor(Color.argb(50, 180, 140, 80))
+                    cornerRadius = dp(12).toFloat()
+                    setStroke(dp(1), Color.argb(70, 200, 160, 100))
+                }
+                makeLiquid(this)
+                setOnClickListener {
+                    animTap(this)
+                    onClearRuntimeCache()
+                    android.widget.Toast.makeText(context, "Runtime cache cleared.", android.widget.Toast.LENGTH_SHORT).show()
+                }
             },
         )
+        content.addView(spacer(10))
 
-        content.addView(spacer(16))
-        content.addView(sectionTitle("Help & About", "Learn how Runestone works."))
-        content.addView(expandableButton("HELP — How to use Runestone", ::makeHelpContent))
-        content.addView(spacer(8))
-        content.addView(expandableButton("ABOUT — Version & license", ::makeAboutContent))
+        // Reset to Default
+        content.addView(
+            TextView(context).apply {
+                text = "RESET TO DEFAULT"
+                setTextColor(Color.rgb(240, 120, 120))
+                textSize = 13f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setPadding(dp(16), dp(11), dp(16), dp(11))
+                background = GradientDrawable().apply {
+                    setColor(Color.argb(60, 200, 80, 80))
+                    cornerRadius = dp(12).toFloat()
+                    setStroke(dp(1), Color.argb(80, 200, 100, 100))
+                }
+                makeLiquid(this)
+                setOnClickListener {
+                    animTap(this)
+                    onResetDefaults()
+                }
+            },
+        )
 
         content.animate().alpha(1f).setDuration(300).setInterpolator(OvershootInterpolator(1.1f)).start()
         return root
     }
+
+    // ============================================================
+    //  Accordion Sections
+    // ============================================================
+
+    private fun accordion(
+        parent: LinearLayout,
+        title: String,
+        subtitle: String,
+        build: (LinearLayout) -> Unit,
+    ) {
+        accordion(parent, title, subtitle, isStub = false, build)
+    }
+
+    private fun stubAccordion(
+        parent: LinearLayout,
+        title: String,
+        subtitle: String,
+        build: (LinearLayout) -> Unit,
+    ) {
+        accordion(parent, title, subtitle, isStub = true, build)
+    }
+
+    private fun accordion(
+        parent: LinearLayout,
+        title: String,
+        subtitle: String,
+        isStub: Boolean,
+        build: (LinearLayout) -> Unit,
+    ) {
+        val container = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val contentArea = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL; visibility = View.GONE
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            background = glassBg(14, alpha = 160)
+        }
+        build(contentArea)
+
+        val header = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val alpha = if (isStub) 100 else 180
+            val strokeAlpha = if (isStub) 25 else 50
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(alpha, 18, 16, 22))
+                cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), Color.argb(strokeAlpha, 207, 174, 126))
+            }
+            makeLiquid(this)
+            setOnClickListener {
+                animTap(this)
+                if (contentArea.visibility == View.GONE) {
+                    contentArea.visibility = View.VISIBLE
+                    contentArea.alpha = 0f
+                    contentArea.animate().alpha(1f).setDuration(200).start()
+                } else {
+                    contentArea.animate().alpha(0f).setDuration(120)
+                        .withEndAction { contentArea.visibility = View.GONE }.start()
+                }
+            }
+        }
+        header.addView(TextView(context).apply {
+            text = if (isStub) "$title (pending)" else title
+            setTextColor(if (isStub) Color.argb(180, 140, 110, 80) else ACCENT)
+            textSize = 15f; typeface = Typeface.DEFAULT_BOLD
+        })
+        header.addView(TextView(context).apply {
+            text = subtitle; setTextColor(if (isStub) Color.argb(100, 120, 100, 80) else MUTED); textSize = 11f; setPadding(0, dp(2), 0, 0)
+        })
+        container.addView(header)
+        container.addView(spacerAfter(8))
+        container.addView(contentArea)
+
+        parent.addView(container)
+        parent.addView(spacer(8))
+    }
+
+    private fun subAccordion(parent: LinearLayout, title: String, build: (LinearLayout) -> Unit) {
+        val container = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val contentArea = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL; visibility = View.GONE
+            setPadding(dp(6), dp(6), dp(6), dp(6))
+        }
+        build(contentArea)
+
+        val header = TextView(context).apply {
+            text = title; setTextColor(ACCENT); textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD; setPadding(dp(10), dp(8), dp(10), dp(8))
+            background = glassBg(10, alpha = 140)
+            makeLiquid(this)
+            setOnClickListener {
+                animTap(this)
+                if (contentArea.visibility == View.GONE) {
+                    contentArea.visibility = View.VISIBLE
+                    contentArea.animate().alpha(1f).setDuration(150).start()
+                } else {
+                    contentArea.animate().alpha(0f).setDuration(100)
+                        .withEndAction { contentArea.visibility = View.GONE }.start()
+                }
+            }
+        }
+        container.addView(header)
+        container.addView(contentArea)
+        parent.addView(container)
+    }
+
+    // ============================================================
+    //  Top Bar
+    // ============================================================
 
     private fun makeTopBar(onBack: () -> Unit): LinearLayout =
         LinearLayout(context).apply {
@@ -176,16 +644,19 @@ class SettingsScreen(private val context: Context) {
 
             addView(
                 TextView(context).apply {
-                    text = "Back"
-                    setTextColor(ACCENT)
+                    text = "\u2190 Back"
+                    setTextColor(Theme.active.accent)
                     textSize = 13f
                     typeface = Typeface.DEFAULT_BOLD
                     gravity = Gravity.CENTER
                     setPadding(dp(8), dp(6), dp(8), dp(6))
                     background = GradientDrawable().apply {
-                        setColor(Color.argb(40, 207, 174, 126))
+                        setColor(Theme.active.accentBg)
                         cornerRadius = dp(8).toFloat()
-                        setStroke(dp(1), Color.argb(60, 207, 174, 126))
+                        setStroke(dp(1), Color.argb(60,
+                            Color.red(Theme.active.accent),
+                            Color.green(Theme.active.accent),
+                            Color.blue(Theme.active.accent)))
                     }
                     setOnClickListener { onBack() }
                 },
@@ -206,6 +677,10 @@ class SettingsScreen(private val context: Context) {
 
             addView(View(context), LinearLayout.LayoutParams(dp(80), 1))
         }
+
+    // ============================================================
+    //  Layout Mode Selector
+    // ============================================================
 
     private fun layoutSelector(selected: LayoutMode, onSelect: (LayoutMode) -> Unit): LinearLayout {
         lateinit var cards: List<Pair<LayoutMode, LinearLayout>>
@@ -245,27 +720,21 @@ class SettingsScreen(private val context: Context) {
             }
             background = selectorCardBackground(selected == mode)
             makeLiquid(this)
-            addView(LayoutPreviewView(context, mode), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(122)))
-            addView(
-                TextView(context).apply {
-                    text = title
-                    setTextColor(TEXT)
-                    textSize = 15f
-                    typeface = Typeface.DEFAULT_BOLD
-                    gravity = Gravity.CENTER
-                    setPadding(0, dp(8), 0, 0)
-                },
-            )
-            addView(
-                TextView(context).apply {
-                    text = detail
-                    setTextColor(MUTED)
-                    textSize = 11f
-                    gravity = Gravity.CENTER
-                    setPadding(dp(2), dp(4), dp(2), 0)
-                },
-            )
+            addView(LayoutPreviewView(context, mode), LinearLayout.LayoutParams(MATCH_PARENT, dp(122)))
+            addView(TextView(context).apply {
+                text = title; setTextColor(TEXT); textSize = 15f
+                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setPadding(0, dp(8), 0, 0)
+            })
+            addView(TextView(context).apply {
+                text = detail; setTextColor(MUTED); textSize = 11f
+                gravity = Gravity.CENTER; setPadding(dp(2), dp(4), dp(2), 0)
+            })
         }
+
+    // ============================================================
+    //  UI Mode Selector
+    // ============================================================
 
     private fun uiModeSelector(selected: UIMode, onSelect: (UIMode) -> Unit): LinearLayout {
         lateinit var cards: List<Pair<UIMode, LinearLayout>>
@@ -279,12 +748,7 @@ class SettingsScreen(private val context: Context) {
         val carousel = uiModeCard(UIMode.CAROUSEL_3D, selected, select)
         val list = uiModeCard(UIMode.LIST, selected, select)
         val tiles = uiModeCard(UIMode.TILES, selected, select)
-        cards = listOf(
-            UIMode.GRID to grid,
-            UIMode.CAROUSEL_3D to carousel,
-            UIMode.LIST to list,
-            UIMode.TILES to tiles,
-        )
+        cards = listOf(UIMode.GRID to grid, UIMode.CAROUSEL_3D to carousel, UIMode.LIST to list, UIMode.TILES to tiles)
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             addView(twoColumn(grid, carousel))
@@ -293,37 +757,20 @@ class SettingsScreen(private val context: Context) {
         }
     }
 
-    private fun uiModeCard(
-        mode: UIMode,
-        selected: UIMode,
-        onSelect: (UIMode) -> Unit,
-    ): LinearLayout =
+    private fun uiModeCard(mode: UIMode, selected: UIMode, onSelect: (UIMode) -> Unit): LinearLayout =
         settingsPanel {
-            setOnClickListener {
-                animTap(this)
-                onSelect(mode)
-            }
+            setOnClickListener { animTap(this); onSelect(mode) }
             background = selectorCardBackground(selected == mode)
             makeLiquid(this)
-            addView(
-                TextView(context).apply {
-                    text = mode.label
-                    setTextColor(TEXT)
-                    textSize = 16f
-                    typeface = Typeface.DEFAULT_BOLD
-                    gravity = Gravity.CENTER
-                    setPadding(0, dp(14), 0, 0)
-                },
-            )
-            addView(
-                TextView(context).apply {
-                    text = mode.description
-                    setTextColor(MUTED)
-                    textSize = 12f
-                    gravity = Gravity.CENTER
-                    setPadding(dp(4), dp(4), dp(4), dp(14))
-                },
-            )
+            addView(TextView(context).apply {
+                text = mode.label; setTextColor(TEXT); textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setPadding(0, dp(14), 0, 0)
+            })
+            addView(TextView(context).apply {
+                text = mode.description; setTextColor(MUTED); textSize = 12f
+                gravity = Gravity.CENTER; setPadding(dp(4), dp(4), dp(4), dp(14))
+            })
         }
 
     private fun selectorCardBackground(selected: Boolean): GradientDrawable =
@@ -333,24 +780,23 @@ class SettingsScreen(private val context: Context) {
             corner = 16,
         )
 
+    // ============================================================
+    //  Audio Selector
+    // ============================================================
+
     private fun audioSelector(currentExt: String, onSelect: (String) -> Unit): LinearLayout =
         settingsPanel {
-            addView(
-                twoColumn(
-                    audioCard(".ogg", "Opus audio", currentExt == ".ogg") { onSelect(".ogg") },
-                    audioCard(".m4a", "AAC audio", currentExt == ".m4a") { onSelect(".m4a") },
-                ),
-            )
+            addView(twoColumn(
+                audioCard(".ogg", "Opus audio", currentExt == ".ogg") { onSelect(".ogg") },
+                audioCard(".m4a", "AAC audio", currentExt == ".m4a") { onSelect(".m4a") },
+            ))
         }
 
     private fun audioCard(label: String, detail: String, selected: Boolean, onClick: () -> Unit): TextView =
         TextView(context).apply {
             text = "$label\n$detail"
-            setTextColor(TEXT)
-            textSize = 13f
-            typeface = Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-            minHeight = dp(60)
+            setTextColor(TEXT); textSize = 13f; typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER; minHeight = dp(60)
             setPadding(dp(10), dp(10), dp(10), dp(10))
             background = panelBackground(
                 if (selected) Color.argb(200, 33, 28, 27) else Color.argb(190, 12, 11, 16),
@@ -358,41 +804,12 @@ class SettingsScreen(private val context: Context) {
                 corner = 16,
             )
             makeLiquid(this)
-            setOnClickListener {
-                animTap(this)
-                onClick()
-            }
+            setOnClickListener { animTap(this); onClick() }
         }
 
-    private fun sectionTitle(title: String, detail: String): LinearLayout =
-        LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, 0, dp(10))
-            addView(
-                TextView(context).apply {
-                    text = title
-                    setTextColor(TEXT)
-                    textSize = 18f
-                    typeface = Typeface.DEFAULT_BOLD
-                },
-            )
-            addView(
-                TextView(context).apply {
-                    text = detail
-                    setTextColor(MUTED)
-                    textSize = 12f
-                    setPadding(0, dp(3), 0, 0)
-                },
-            )
-        }
-
-    private fun twoColumn(left: View, right: View): LinearLayout =
-        LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            addView(left, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(spacer(width = 10))
-            addView(right, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        }
+    // ============================================================
+    //  Reusable UI Components
+    // ============================================================
 
     private fun settingsPanel(build: LinearLayout.() -> Unit): LinearLayout =
         LinearLayout(context).apply {
@@ -403,26 +820,24 @@ class SettingsScreen(private val context: Context) {
             build()
         }
 
+    private fun twoColumn(left: View, right: View): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(left, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(spacer(width = 10))
+            addView(right, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+
     private fun sliderPanel(title: String, value: String, sliderFactory: (TextView) -> GlassSlider): LinearLayout =
         settingsPanel {
             val label = TextView(context).apply {
-                text = value
-                setTextColor(ACCENT)
-                textSize = 13f
-                gravity = Gravity.END
+                text = value; setTextColor(ACCENT); textSize = 13f; gravity = Gravity.END
             }
             val row = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(
-                    TextView(context).apply {
-                        text = title
-                        setTextColor(TEXT)
-                        textSize = 15f
-                        typeface = Typeface.DEFAULT_BOLD
-                    },
-                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-                )
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                addView(TextView(context).apply {
+                    text = title; setTextColor(TEXT); textSize = 14f; typeface = Typeface.DEFAULT_BOLD
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 addView(label)
             }
             addView(row)
@@ -430,38 +845,159 @@ class SettingsScreen(private val context: Context) {
         }
 
     private fun switchPanel(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit): LinearLayout =
-        settingsPanel {
-            val row = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
+        switchPanelImpl(title, detail, checked, onChange, isStub = false)
+
+    private fun stubSwitchPanel(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit): LinearLayout =
+        switchPanelImpl(title, detail, checked, onChange, isStub = true)
+
+    private fun switchPanelImpl(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit, isStub: Boolean): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             val copy = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(
-                    TextView(context).apply {
-                        text = title
-                        setTextColor(TEXT)
-                        textSize = 15f
-                        typeface = Typeface.DEFAULT_BOLD
-                    },
-                )
-                addView(
-                    TextView(context).apply {
-                        text = detail
-                        setTextColor(MUTED)
-                        textSize = 11f
-                        setPadding(0, dp(3), dp(10), 0)
-                    },
-                )
+                addView(TextView(context).apply {
+                    text = if (isStub) "$title (stub)" else title
+                    setTextColor(if (isStub) Color.argb(160, 140, 110, 80) else TEXT)
+                    textSize = 14f; typeface = Typeface.DEFAULT_BOLD
+                })
+                addView(TextView(context).apply {
+                    text = detail; setTextColor(if (isStub) Color.argb(100, 120, 100, 80) else MUTED)
+                    textSize = 11f; setPadding(0, dp(3), dp(10), 0)
+                })
             }
-            row.addView(copy, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            row.addView(
-                Switch(context).apply {
-                    isChecked = checked
-                    setOnCheckedChangeListener { _, value -> onChange(value) }
-                },
-            )
+            addView(copy, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(Switch(context).apply {
+                isChecked = checked
+                isEnabled = !isStub
+                setOnCheckedChangeListener { _, value -> if (!isStub) onChange(value) }
+            })
+        }
+
+    private fun compactDropdown(title: String, currentValue: String, options: List<String>, onSelect: (String) -> Unit): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(3), 0, dp(3))
+            addView(TextView(context).apply {
+                text = title; setTextColor(TEXT); textSize = 13f; typeface = Typeface.DEFAULT_BOLD
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(TextView(context).apply {
+                text = currentValue; setTextColor(ACCENT); textSize = 12f
+                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.END
+                setPadding(dp(8), dp(3), dp(8), dp(3))
+                background = glassBg(6, alpha = 80)
+                makeLiquid(this)
+                setOnClickListener {
+                    animTap(this)
+                    val idx = options.indexOf(currentValue)
+                    val nextIdx = (idx + 1) % options.size
+                    text = options[nextIdx]
+                    onSelect(options[nextIdx])
+                }
+            })
+        }
+
+    private fun dropdownRow(title: String, currentValue: String, options: List<String>, onSelect: (String) -> Unit): LinearLayout =
+        settingsPanel {
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            }
+            row.addView(TextView(context).apply {
+                text = title; setTextColor(TEXT); textSize = 14f; typeface = Typeface.DEFAULT_BOLD
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(TextView(context).apply {
+                text = currentValue; setTextColor(ACCENT); textSize = 13f
+                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.END
+                setPadding(dp(8), dp(4), dp(8), dp(4))
+                background = glassBg(8, alpha = 80)
+                makeLiquid(this)
+                setOnClickListener {
+                    animTap(this)
+                    val currentIndex = options.indexOf(currentValue)
+                    val nextIndex = (currentIndex + 1) % options.size
+                    text = options[nextIndex]
+                    onSelect(options[nextIndex])
+                }
+            })
             addView(row)
+        }
+
+    private fun paletteSelector(currentPalette: String, paletteNames: List<String>, onSelect: (String) -> Unit): LinearLayout =
+        settingsPanel {
+            addView(TextView(context).apply {
+                text = "Color Palette"; setTextColor(TEXT); textSize = 14f; typeface = Typeface.DEFAULT_BOLD
+            })
+            addView(spacer(height = 8))
+            val swatchRow = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
+            }
+            paletteNames.forEach { name ->
+                val palette = Theme.byName(name)
+                val isActive = name == currentPalette
+                val swatch = FrameLayout(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+                        setMargins(dp(3), 0, dp(3), 0)
+                    }
+                    val inner = View(context).apply {
+                        layoutParams = FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER)
+                        background = GradientDrawable().apply {
+                            setColor(palette.accent)
+                            cornerRadius = dp(14).toFloat()
+                            if (isActive) {
+                                setStroke(dp(3), Color.argb(200, 255, 255, 255))
+                            }
+                        }
+                    }
+                    addView(inner)
+                    val label = TextView(context).apply {
+                        text = name.first().toString() // first letter
+                        setTextColor(Color.rgb(232, 229, 220)); textSize = 9f
+                        gravity = Gravity.CENTER
+                        layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, WRAP, Gravity.BOTTOM)
+                        setPadding(0, 0, 0, dp(2))
+                    }
+                    addView(label)
+                    setOnClickListener {
+                        onSelect(name)
+                        // Refresh the parent to show updated selection
+                        swatchRow.removeAllViews()
+                        // Rebuild
+                        paletteNames.forEach { n ->
+                            val p = Theme.byName(n)
+                            val active = n == name
+                            swatchRow.addView(FrameLayout(context).apply {
+                                layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+                                    setMargins(dp(3), 0, dp(3), 0)
+                                }
+                                addView(View(context).apply {
+                                    layoutParams = FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER)
+                                    background = GradientDrawable().apply {
+                                        setColor(p.accent)
+                                        cornerRadius = dp(14).toFloat()
+                                        if (active) setStroke(dp(3), Color.argb(200, 255, 255, 255))
+                                    }
+                                })
+                                addView(TextView(context).apply {
+                                    text = n.first().toString()
+                                    setTextColor(Color.rgb(232, 229, 220)); textSize = 9f
+                                    gravity = Gravity.CENTER
+                                    layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, WRAP, Gravity.BOTTOM)
+                                    setPadding(0, 0, 0, dp(2))
+                                })
+                            })
+                        }
+                    }
+                }
+                swatchRow.addView(swatch)
+            }
+            addView(spacer(height = 6))
+            addView(TextView(context).apply {
+                text = "Current: $currentPalette"
+                setTextColor(Theme.byName(currentPalette).accent); textSize = 11f
+                gravity = Gravity.CENTER
+            })
+            addView(swatchRow)
         }
 
     private fun slider(max: Int, progress: Int, onChange: (Int) -> Unit): GlassSlider =
@@ -479,38 +1015,29 @@ class SettingsScreen(private val context: Context) {
             layoutParams = LinearLayout.LayoutParams(dp(width), dp(height))
         }
 
+    private fun spacerAfter(height: Int): View {
+        val v = View(context)
+        v.layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(height))
+        return v
+    }
+
     private fun dp(value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
 
     private fun makeLiquid(view: View) {
         view.setOnTouchListener { v, event ->
             when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    v.animate().cancel()
-                    v.scaleX = 1.08f
-                    v.scaleY = 1.08f
-                }
                 MotionEvent.ACTION_MOVE -> {
-                    val cx = v.width / 2f
-                    val cy = v.height / 2f
-                    val dx = (event.x - cx) * 0.06f
-                    val dy = (event.y - cy) * 0.06f
-                    v.translationX = dx
-                    v.translationY = dy
+                    val cx = v.width / 2f; val cy = v.height / 2f
+                    v.translationX = (event.x - cx) * 0.06f
+                    v.translationY = (event.y - cy) * 0.06f
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     v.animate().cancel()
-                    v.animate()
-                        .scaleX(1f).scaleY(1f)
-                        .translationX(0f).translationY(0f)
-                        .setDuration(250)
-                        .setInterpolator(OvershootInterpolator(1.6f))
-                        .withEndAction {
-                            v.scaleX = 1f; v.scaleY = 1f
-                            v.translationX = 0f; v.translationY = 0f
-                        }
-                        .start()
+                    v.animate().translationX(0f).translationY(0f)
+                        .setDuration(200).setInterpolator(OvershootInterpolator(1.4f)).start()
                 }
+                else -> {}
             }
             false
         }
@@ -527,101 +1054,80 @@ class SettingsScreen(private val context: Context) {
     private fun glassBg(radius: Int, alpha: Int = 200, accent: Boolean = false): GradientDrawable =
         GradientDrawable().apply {
             setColor(Color.argb(alpha,
-                if (accent) 50 else 22, if (accent) 40 else 20, if (accent) 30 else 26))
+                if (accent) Color.red(Theme.active.accent) / 4 else 22,
+                if (accent) Color.green(Theme.active.accent) / 4 else 20,
+                if (accent) Color.blue(Theme.active.accent) / 4 else 26))
             cornerRadius = dp(radius).toFloat()
-            setStroke(dp(1), Color.argb(if (accent) 80 else 45,
-                if (accent) 180 else 100, if (accent) 140 else 90, if (accent) 100 else 80))
+            if (accent) {
+                setStroke(dp(1), Color.argb(80,
+                    Color.red(Theme.active.accent),
+                    Color.green(Theme.active.accent),
+                    Color.blue(Theme.active.accent)))
+            } else {
+                setStroke(dp(1), Color.argb(45, 100, 90, 80))
+            }
         }
+
+    // ============================================================
+    //  Layout Preview
+    // ============================================================
 
     private class LayoutPreviewView(context: Context, private val mode: LayoutMode) : View(context) {
         private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(207, 174, 126)
-            style = Paint.Style.STROKE
-            strokeWidth = 3f
+            color = Color.rgb(207, 174, 126); style = Paint.Style.STROKE; strokeWidth = 3f
         }
         private val phone = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(9, 9, 11)
-            style = Paint.Style.FILL
+            color = Color.rgb(9, 9, 11); style = Paint.Style.FILL
         }
         private val game = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(56, 68, 58)
-            style = Paint.Style.FILL
+            color = Color.rgb(56, 68, 58); style = Paint.Style.FILL
         }
         private val controls = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(42, 32, 36)
-            style = Paint.Style.FILL
+            color = Color.rgb(42, 32, 36); style = Paint.Style.FILL
         }
         private val accentPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(207, 174, 126)
-            style = Paint.Style.FILL
+            color = Color.rgb(207, 174, 126); style = Paint.Style.FILL
         }
         private val rect = RectF()
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            val w = width.toFloat()
-            val h = height.toFloat()
+            val w = width.toFloat(); val h = height.toFloat()
             val landscape = mode != LayoutMode.PORTRAIT_CONSOLE
             val pw = if (landscape) w * 0.88f else w * 0.50f
             val ph = if (landscape) h * 0.58f else h * 0.92f
-            val left = (w - pw) / 2f
-            val top = (h - ph) / 2f
+            val left = (w - pw) / 2f; val top = (h - ph) / 2f
             rect.set(left, top, left + pw, top + ph)
-            // Phone body
             canvas.drawRoundRect(rect, 22f, 22f, phone)
             canvas.drawRoundRect(rect, 22f, 22f, stroke)
-
             val inset = if (landscape) ph * 0.10f else pw * 0.09f
 
             if (mode == LayoutMode.PORTRAIT_CONSOLE) {
-                // Game area (top ~46%)
                 canvas.drawRoundRect(left + inset, top + ph * 0.08f, left + pw - inset, top + ph * 0.46f, 8f, 8f, game)
-                // Inner screen (black center)
                 val scInset = inset * 1.3f
                 canvas.drawRoundRect(left + scInset, top + ph * 0.11f, left + pw - scInset, top + ph * 0.43f, 4f, 4f, phone)
-                // Controls area (bottom ~53%)
                 canvas.drawRoundRect(left + inset, top + ph * 0.53f, left + pw - inset, top + ph * 0.88f, 8f, 8f, controls)
-                // D-pad on left side of controls
                 canvas.drawCircle(left + pw * 0.28f, top + ph * 0.70f, ph * 0.06f, game)
-                // Buttons on right side
                 drawButtonDots(canvas, left + pw * 0.72f, top + ph * 0.70f, pw * 0.05f)
             } else if (mode == LayoutMode.LANDSCAPE) {
-                // Landscape: full game area with side controls
                 canvas.drawRoundRect(left + inset, top + inset, left + pw - inset, top + ph - inset, 8f, 8f, game)
                 val scInset = inset * 1.4f
                 canvas.drawRoundRect(left + scInset, top + scInset, left + pw - scInset, top + ph - scInset, 6f, 6f, phone)
-                // D-pad on left
                 canvas.drawCircle(left + pw * 0.22f, top + ph * 0.58f, ph * 0.07f, controls)
                 drawButtonDots(canvas, left + pw * 0.78f, top + ph * 0.58f, ph * 0.04f)
             } else {
-                // Gamepad mode: phone with controller icon overlay
                 canvas.drawRoundRect(left + inset, top + inset, left + pw - inset, top + ph - inset, 8f, 8f, game)
                 val scInset = inset * 1.4f
                 canvas.drawRoundRect(left + scInset, top + scInset, left + pw - scInset, top + ph - scInset, 6f, 6f, phone)
-                // Controller body
-                val cx = left + pw / 2f
-                val cy = top + ph / 2f
-                val cw = pw * 0.35f
-                val ch = ph * 0.20f
-                // Controller body (rounded rect)
+                val cx = left + pw / 2f; val cy = top + ph / 2f
+                val cw = pw * 0.35f; val ch = ph * 0.20f
                 val bodyRect = RectF(cx - cw, cy - ch * 0.5f, cx + cw, cy + ch * 0.5f)
                 canvas.drawRoundRect(bodyRect, ch * 0.5f, ch * 0.5f, controls)
-                canvas.drawRoundRect(bodyRect, ch * 0.5f, ch * 0.5f, Paint().apply {
-                    color = Color.argb(60, 207, 174, 126)
-                    style = Paint.Style.STROKE
-                    strokeWidth = 1.5f
-                })
-                // Left stick
                 canvas.drawCircle(cx - cw * 0.45f, cy, ch * 0.25f, game)
-                // Right stick
                 canvas.drawCircle(cx + cw * 0.45f, cy, ch * 0.25f, game)
-                // D-pad cross
-                val dpx = cx - cw * 0.18f
-                val dpy = cy
-                val ds = ch * 0.08f
+                val dpx = cx - cw * 0.18f; val dpy = cy; val ds = ch * 0.08f
                 canvas.drawRoundRect(dpx - ds, dpy - ds * 2.2f, dpx + ds, dpy + ds * 2.2f, 2f, 2f, accentPaint)
                 canvas.drawRoundRect(dpx - ds * 2.2f, dpy - ds, dpx + ds * 2.2f, dpy + ds, 2f, 2f, accentPaint)
-                // Face buttons (ABXY)
                 val fcx = cx + cw * 0.18f
                 canvas.drawCircle(fcx + ds * 1.6f, cy - ds * 1.6f, ds * 0.6f, accentPaint)
                 canvas.drawCircle(fcx - ds * 1.6f, cy - ds * 1.6f, ds * 0.6f, accentPaint)
@@ -638,99 +1144,10 @@ class SettingsScreen(private val context: Context) {
         }
     }
 
-    private fun expandableButton(label: String, contentBuilder: (LinearLayout) -> Unit): LinearLayout {
-        val container = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        val contentArea = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL; visibility = View.GONE
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-            background = glassBg(14, alpha = 160)
-        }
-        contentBuilder(contentArea)
+    // ============================================================
+    //  Glass Slider
+    // ============================================================
 
-        val btn = TextView(context).apply {
-            text = label; setTextColor(ACCENT); textSize = 13f
-            typeface = Typeface.DEFAULT_BOLD
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-            background = glassBg(14, alpha = 180)
-            makeLiquid(this)
-            setOnClickListener {
-                animTap(this)
-                if (contentArea.visibility == View.GONE) {
-                    contentArea.visibility = View.VISIBLE
-                    contentArea.alpha = 0f; contentArea.animate().alpha(1f).setDuration(150).start()
-                } else {
-                    contentArea.animate().alpha(0f).setDuration(100)
-                        .withEndAction { contentArea.visibility = View.GONE }.start()
-                }
-            }
-        }
-        container.addView(btn); container.addView(contentArea)
-        return container
-    }
-
-    private fun makeHelpContent(panel: LinearLayout) {
-        panel.addView(TextView(context).apply {
-            text = """
-1. ADD A GAME — Tap the dock bar [+ ADD]. Select the game's root folder (containing www/, Game.exe, or Data/).
-
-2. PLAY — Tap a game card to select it, then tap PLAY. The game launches with auto-detected engine.
-
-3. RESUME — If a game was running, a RESUME bar appears at the bottom of the home screen. Tap RESUME to continue, or STOP to end the session.
-
-4. OPTIONS — Tap a game card to select it, then tap OPTIONS. This opens per-game settings: reimport data, change engine, view saves, or remove the game.
-
-5. FILTER & SORT — Tap the filter button (top-right) to filter games by engine type (MV/MZ, VX/ACE, XP, 2000, RNPY) or search by name. Sort by name, recently played, or date added.
-
-6. SETTINGS — Tap the gear icon on the dock. Configure layout mode (Portrait Console / Landscape / Gamepad), touch opacity, touch scale, haptics, and audio fallback format.
-
-7. KEYBOARD — In-game, tap the keyboard button (bottom-right) to show the phone keyboard for text input.
-
-8. SAVES — Game saves are protected in a separate saves/ folder. When reimporting or deleting game data, saves are preserved and auto-restored.
-
-9. IMPORT — Games are stored as a single copy. Reimporting replaces game data but keeps saves intact.
-            """.trimIndent()
-            setTextColor(MUTED); textSize = 11f; setPadding(0, dp(2), 0, dp(2))
-            setLineSpacing(2f, 1f)
-        })
-    }
-
-    private fun makeAboutContent(panel: LinearLayout) {
-        panel.addView(TextView(context).apply {
-            text = """
-Runestone v0.6.10 — "Glass UI"
-Released: May 2026
-
-Open-source multi-engine game launcher for Android.
-Supports RPG Maker XP/VX/VX Ace (mkxp-z), MV/MZ (WebView),
-TyranoBuilder, Construct 2/3, and more planned.
-
-License: GPLv2+
-GitHub: github.com/KleirRampage45/Runestone
-
-Built with Kotlin — 100% programmatic UI, no XML layouts.
-Uses SDL2, mkxp-z, Ruby, OpenAL, and system WebView.
-
-Features:
-- Engine auto-detection from game files
-- Glassmorphism UI with blur effects
-- Portrait Console / Landscape / Gamepad layouts
-- Virtual touch controls with adjustable opacity and scale
-- Haptic feedback support
-- Protected save storage (survives reimports)
-- SAF-based folder import
-- Single-copy game storage
-
-No copyrighted game files included.
-All games must be legally owned by the user.
-            """.trimIndent()
-            setTextColor(MUTED); textSize = 11f; setPadding(0, dp(2), 0, dp(2))
-            setLineSpacing(2f, 1f)
-        })
-    }
-
-    /**
-     * GlassSlider — custom drawn slider with glass aesthetic
-     */
     private inner class GlassSlider(
         context: Context,
         private val maxVal: Int,
@@ -738,71 +1155,46 @@ All games must be legally owned by the user.
         private val onChanged: (Int) -> Unit,
     ) : View(context) {
         private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(60, 255, 255, 255)
-            style = Paint.Style.FILL
+            color = Color.argb(60, 255, 255, 255); style = Paint.Style.FILL
         }
         private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(207, 174, 126)
-            style = Paint.Style.FILL
+            color = Color.rgb(207, 174, 126); style = Paint.Style.FILL
         }
         private val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(232, 229, 220)
-            style = Paint.Style.FILL
+            color = Color.rgb(232, 229, 220); style = Paint.Style.FILL
         }
         private val thumbStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(207, 174, 126)
-            style = Paint.Style.STROKE
-            strokeWidth = 2f
+            color = Color.rgb(207, 174, 126); style = Paint.Style.STROKE; strokeWidth = 2f
         }
         private var isTracking = false
         private val trackH = dp(6)
         private val thumbR = dp(12)
 
-        init {
-            minimumHeight = dp(40)
-        }
+        init { minimumHeight = dp(40) }
 
         override fun onDraw(canvas: Canvas) {
-            val w = width.toFloat()
-            val h = height.toFloat()
+            val w = width.toFloat(); val h = height.toFloat()
             val cy = h / 2f
-            val trackL = thumbR.toFloat()
-            val trackR = w - thumbR
+            val trackL = thumbR.toFloat(); val trackR = w - thumbR
             val frac = currentProgress.toFloat() / maxVal.coerceAtLeast(1)
             val thumbX = trackL + (trackR - trackL) * frac
-
-            // Track background
             canvas.drawRoundRect(trackL, cy - trackH / 2f, trackR, cy + trackH / 2f, trackH / 2f, trackH / 2f, bgPaint)
-            // Filled track
             canvas.drawRoundRect(trackL, cy - trackH / 2f, thumbX, cy + trackH / 2f, trackH / 2f, trackH / 2f, fillPaint)
-            // Thumb
             val scale = if (isTracking) 1.25f else 1f
             canvas.drawCircle(thumbX, cy, thumbR * scale, thumbPaint)
             canvas.drawCircle(thumbX, cy, thumbR * scale, thumbStroke)
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean = when (event.action) {
-            MotionEvent.ACTION_DOWN -> {
-                isTracking = true
-                updateProgress(event.x)
-                true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                updateProgress(event.x)
-                true
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                isTracking = false
-                invalidate()
-                true
-            }
+            MotionEvent.ACTION_DOWN -> { isTracking = true; updateProgress(event.x); true }
+            MotionEvent.ACTION_MOVE -> { updateProgress(event.x); true }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { isTracking = false; invalidate(); true }
             else -> false
         }
 
         private fun updateProgress(x: Float) {
             val w = width.toFloat()
-            val trackL = thumbR.toFloat()
-            val trackR = w - thumbR
+            val trackL = thumbR.toFloat(); val trackR = w - thumbR
             val frac = ((x - trackL) / (trackR - trackL)).coerceIn(0f, 1f)
             currentProgress = (frac * maxVal).toInt().coerceIn(0, maxVal)
             onChanged(currentProgress)
@@ -811,9 +1203,10 @@ All games must be legally owned by the user.
     }
 
     private companion object {
-        val PANEL: Int = Color.argb(190, 12, 11, 16)
+        val MATCH_PARENT = ViewGroup.LayoutParams.MATCH_PARENT
+        val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
         val TEXT: Int = Color.rgb(232, 229, 220)
         val MUTED: Int = Color.rgb(140, 130, 112)
-        val ACCENT: Int = Color.rgb(207, 174, 126)
+        val ACCENT: Int get() = Theme.active.accent
     }
 }

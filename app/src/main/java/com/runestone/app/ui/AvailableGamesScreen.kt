@@ -761,6 +761,6 @@ class AvailableGamesScreen(private val context: Context) {
         val TEXT = Color.rgb(232, 229, 220)
         val MUTED = Color.rgb(140, 130, 112)
         val MUTED_DIM = Color.rgb(100, 95, 85)
-        val ACCENT = Color.rgb(207, 174, 126)
+        val ACCENT: Int get() = Theme.active.accent
     }
 }

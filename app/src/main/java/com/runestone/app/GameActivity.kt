@@ -56,6 +56,21 @@ class GameActivity : Activity() {
         private const val EXTRA_HAPTIC_INTENSITY = "haptic_intensity"
         private const val EXTRA_SHOW_EXTRA_BTNS = "show_extra_btns"
         private const val EXTRA_AUDIO_EXT = "audio_ext"
+        private const val EXTRA_SMOOTH_SCALING = "smooth_scaling"
+        private const val EXTRA_INTEGER_SCALING = "integer_scaling"
+        private const val EXTRA_TEXT_SCALE = "text_scale"
+        private const val EXTRA_HIDE_GAMEPAD = "hide_gamepad"
+        private const val EXTRA_DIAGONAL = "diagonal_movement"
+        private const val EXTRA_KEEP_SCREEN_ON = "keep_screen_on"
+        private const val EXTRA_USE_HTTP_SERVER = "use_http_server"
+        private const val EXTRA_WEBGL = "webgl"
+        private const val EXTRA_DESKTOP_MODE = "desktop_mode"
+        private const val EXTRA_ALLOW_EXTERNAL = "allow_external"
+        private const val EXTRA_DIALOG_LOGS = "dialog_logs"
+        private const val EXTRA_USE_RUBY18 = "use_ruby18"
+        private const val EXTRA_VSYNC = "vsync"
+        private const val EXTRA_FRAME_SKIP = "frame_skip"
+        private const val EXTRA_SHADERS = "shaders"
 
         fun start(activity: Activity, gamePath: String, engineType: String? = null, settings: RunnerSettings = RunnerSettings()) {
             val intent = Intent(activity, GameActivity::class.java).apply {
@@ -68,6 +83,21 @@ class GameActivity : Activity() {
                 putExtra(EXTRA_HAPTIC_INTENSITY, settings.hapticIntensity)
                 putExtra(EXTRA_SHOW_EXTRA_BTNS, settings.showExtraButtons)
                 putExtra(EXTRA_AUDIO_EXT, settings.forceAudioExt)
+                putExtra(EXTRA_SMOOTH_SCALING, settings.smoothScaling)
+                putExtra(EXTRA_INTEGER_SCALING, settings.integerScaling)
+                putExtra(EXTRA_TEXT_SCALE, settings.textScale)
+                putExtra(EXTRA_HIDE_GAMEPAD, settings.hideVirtualGamepad)
+                putExtra(EXTRA_DIAGONAL, settings.diagonalMovement)
+                putExtra(EXTRA_KEEP_SCREEN_ON, settings.keepScreenOn)
+                putExtra(EXTRA_USE_HTTP_SERVER, settings.useHttpServer)
+                putExtra(EXTRA_WEBGL, settings.webgl)
+                putExtra(EXTRA_DESKTOP_MODE, settings.desktopMode)
+                putExtra(EXTRA_ALLOW_EXTERNAL, settings.allowExternalModules)
+                putExtra(EXTRA_DIALOG_LOGS, settings.dialogLogs)
+                putExtra(EXTRA_USE_RUBY18, settings.useRuby18)
+                putExtra(EXTRA_VSYNC, settings.vsync)
+                putExtra(EXTRA_FRAME_SKIP, settings.frameSkip)
+                putExtra(EXTRA_SHADERS, settings.shaders)
             }
             activity.startActivity(intent)
         }
@@ -161,7 +191,8 @@ class GameActivity : Activity() {
         setContentView(root)
 
         // ── Game area (fills all space for landscape/gamepad, split for portrait console) ──
-        if (isPortraitConsole) {
+        val hideOverlay = settings.hideVirtualGamepad
+        if (isPortraitConsole && !hideOverlay) {
             // Portrait Console: game above (52%), controls below (48%)
             val splitLayout = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -199,6 +230,14 @@ class GameActivity : Activity() {
             splitLayout.addView(controlPanel)
 
             setupTouchOverlay(controlPanel, engine)
+        } else if (isPortraitConsole && hideOverlay) {
+            // Portrait, no virtual gamepad — game fills screen
+            val engine = WebViewEngine(this)
+            webViewEngine = engine
+            root.addView(engine, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ))
         } else {
             // Landscape or Gamepad: game fills the whole screen
             val engine = WebViewEngine(this)
@@ -208,7 +247,7 @@ class GameActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
             ))
 
-            if (isLandscape) {
+            if (isLandscape && !hideOverlay) {
                 // Landscape: overlay controls on top of game
                 val overlayContainer = FrameLayout(this).apply {
                     setBackgroundColor(Color.TRANSPARENT)
@@ -231,6 +270,13 @@ class GameActivity : Activity() {
                 fakeGreenworks = true,
                 showFps = true,
                 forceAudioExt = settings.forceAudioExt,
+                smoothScaling = settings.smoothScaling,
+                integerScaling = settings.integerScaling,
+                textScale = settings.textScale,
+                webgl = settings.webgl,
+                desktopMode = settings.desktopMode,
+                allowExternalModules = settings.allowExternalModules,
+                dialogLogs = settings.dialogLogs,
             ))
             // Make WebView focusable for keyboard input
             eng.isFocusable = true
@@ -297,6 +343,7 @@ class GameActivity : Activity() {
             hapticsEnabled = settings.hapticsEnabled
             hapticIntensity = settings.hapticIntensity
             showExtraButtons = settings.showExtraButtons
+            diagonalMovement = settings.diagonalMovement
             controlsOnly = (settings.layoutMode == LayoutMode.PORTRAIT_CONSOLE)
 
             onInput = { zone, pressed ->
@@ -343,6 +390,39 @@ class GameActivity : Activity() {
         }
     }
 
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Forward keyboard events to the game's JS input system
+        if (event.action == KeyEvent.ACTION_DOWN || event.action == KeyEvent.ACTION_UP) {
+            val engine = webViewEngine
+            if (engine != null) {
+                val isDown = event.action == KeyEvent.ACTION_DOWN
+                val keyChar = event.unicodeChar
+                val keyCode = event.keyCode
+
+                // Forward as Android key event for WebView
+                engine.dispatchKeyEvent(event)
+
+                // Also inject into RPG Maker's Input system via JS
+                val jsAction = if (isDown) "_onKeyDown" else "_onKeyUp"
+                val js = """(function(){
+                    try {
+                        if (window.Input && window.Input.$jsAction)
+                            window.Input.$jsAction({which:$keyCode, keyCode:$keyCode});
+                        if (window.TouchInput && window.TouchInput.$jsAction)
+                            window.TouchInput.$jsAction({which:$keyCode, keyCode:$keyCode});
+                        // Also forward character-based keys for chat mods
+                        if ($isDown && $keyChar > 31) {
+                            var c = String.fromCharCode($keyChar).toLowerCase();
+                            window.dispatchEvent(new CustomEvent('rune_key', {detail:{key:c,code:$keyCode}}));
+                        }
+                    } catch(e){}
+                })();""".trimIndent()
+                engine.evaluateJavascript(js, null)
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     private var keyboardVisible = false
 
     private fun toggleKeyboard() {
@@ -364,16 +444,40 @@ class GameActivity : Activity() {
         TouchOverlayView.Zone.DPAD_DOWN -> KeyEvent.KEYCODE_DPAD_DOWN
         TouchOverlayView.Zone.DPAD_LEFT -> KeyEvent.KEYCODE_DPAD_LEFT
         TouchOverlayView.Zone.DPAD_RIGHT -> KeyEvent.KEYCODE_DPAD_RIGHT
-        TouchOverlayView.Zone.BTN_A -> KeyEvent.KEYCODE_Z
-        TouchOverlayView.Zone.BTN_B -> KeyEvent.KEYCODE_X
-        TouchOverlayView.Zone.BTN_X -> KeyEvent.KEYCODE_Q
-        TouchOverlayView.Zone.BTN_Y -> KeyEvent.KEYCODE_W
-        TouchOverlayView.Zone.SELECT -> KeyEvent.KEYCODE_ESCAPE
-        TouchOverlayView.Zone.START -> KeyEvent.KEYCODE_ENTER
-        TouchOverlayView.Zone.MENU, TouchOverlayView.Zone.SETTINGS -> KeyEvent.KEYCODE_M
+        TouchOverlayView.Zone.BTN_A -> keyNameToCode(settings.firstButtonKey)
+        TouchOverlayView.Zone.BTN_B -> keyNameToCode(settings.secondButtonKey)
+        TouchOverlayView.Zone.BTN_X -> keyNameToCode(settings.thirdButtonKey)
+        TouchOverlayView.Zone.BTN_Y -> keyNameToCode(settings.fourthButtonKey)
+        TouchOverlayView.Zone.SELECT -> keyNameToCode(settings.leftButtonKey)
+        TouchOverlayView.Zone.START -> keyNameToCode(settings.rightButtonKey)
+        TouchOverlayView.Zone.MENU -> keyNameToCode(settings.leftMButtonKey)
+        TouchOverlayView.Zone.SETTINGS -> keyNameToCode(settings.rightMButtonKey)
         TouchOverlayView.Zone.HOME -> KeyEvent.KEYCODE_HOME
-        TouchOverlayView.Zone.L1 -> KeyEvent.KEYCODE_BUTTON_L1
-        TouchOverlayView.Zone.R1 -> KeyEvent.KEYCODE_BUTTON_R1
+        TouchOverlayView.Zone.L1 -> keyNameToCode(settings.fifthButtonKey)
+        TouchOverlayView.Zone.R1 -> keyNameToCode(settings.sixthButtonKey)
+    }
+
+    private fun keyNameToCode(name: String): Int = when (name) {
+        "ENTER" -> KeyEvent.KEYCODE_ENTER
+        "ESCAPE" -> KeyEvent.KEYCODE_ESCAPE
+        "SPACE" -> KeyEvent.KEYCODE_SPACE
+        "TAB" -> KeyEvent.KEYCODE_TAB
+        "Z" -> KeyEvent.KEYCODE_Z
+        "X" -> KeyEvent.KEYCODE_X
+        "Q" -> KeyEvent.KEYCODE_Q
+        "B" -> KeyEvent.KEYCODE_B
+        "A" -> KeyEvent.KEYCODE_A
+        "S" -> KeyEvent.KEYCODE_S
+        "D" -> KeyEvent.KEYCODE_D
+        "W" -> KeyEvent.KEYCODE_W
+        "V" -> KeyEvent.KEYCODE_V
+        "C" -> KeyEvent.KEYCODE_C
+        "F2" -> KeyEvent.KEYCODE_F2
+        "F8" -> KeyEvent.KEYCODE_F8
+        "CTRL_LEFT" -> KeyEvent.KEYCODE_CTRL_LEFT
+        "SHIFT_LEFT" -> KeyEvent.KEYCODE_SHIFT_LEFT
+        "ALT_LEFT" -> KeyEvent.KEYCODE_ALT_LEFT
+        else -> KeyEvent.KEYCODE_UNKNOWN
     }
 
     private fun launchRgssGame(gameDir: File) {

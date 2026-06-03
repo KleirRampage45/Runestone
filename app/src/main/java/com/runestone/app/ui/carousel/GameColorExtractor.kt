@@ -30,7 +30,11 @@ class GameColorExtractor(private val context: Context) {
 
         Thread {
             try {
-                val bitmap = BitmapFactory.decodeStream(URL(coverUrl).openStream())
+                val bitmap = if (coverUrl.startsWith("local:")) {
+                    BitmapFactory.decodeFile(coverUrl.removePrefix("local:"))
+                } else {
+                    BitmapFactory.decodeStream(URL(coverUrl).openStream())
+                }
                 if (bitmap != null) {
                     val palette = Palette.from(bitmap).generate()
                     val color = palette.getVibrantColor(palette.getMutedColor(metadataColor(gameTitle, engineType)))

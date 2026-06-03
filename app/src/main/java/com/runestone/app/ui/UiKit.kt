@@ -30,7 +30,7 @@ object UiKit {
     val homeBg = Color.rgb(3, 3, 4)
     val homeText = Color.rgb(232, 229, 220)
     val homeMuted = Color.rgb(151, 143, 132)
-    val homeAccent = Color.rgb(207, 174, 126)
+    val homeAccent: Int get() = Theme.active.accent
 
     fun vertical(context: Context): LinearLayout =
         LinearLayout(context).apply {

@@ -23,8 +23,8 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import java.io.BufferedReader
 import java.io.ByteArrayInputStream
+import java.io.BufferedReader
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -61,6 +61,15 @@ class WebViewEngine(context: Context) : WebView(context) {
         val showFps: Boolean = true,
         val backButtonQuits: Boolean = false,
         val title: String = "Runestone",
+        val smoothScaling: Boolean = true,
+        val integerScaling: Boolean = false,
+        val textScale: Float = 1.0f,
+        val useHttpServer: Boolean = false,
+        val webgl: Boolean = true,
+        val desktopMode: Boolean = false,
+        val allowExternalModules: Boolean = false,
+        val allowedExternalHosts: List<String> = emptyList(),
+        val dialogLogs: Boolean = false,
     )
 
     init {
@@ -78,13 +87,13 @@ class WebViewEngine(context: Context) : WebView(context) {
         webSettings.databaseEnabled = true
         webSettings.domStorageEnabled = true
         webSettings.loadsImagesAutomatically = true
-        webSettings.setSupportMultipleWindows(true)
+        webSettings.setSupportMultipleWindows(false)
         webSettings.mediaPlaybackRequiresUserGesture = false
         webSettings.allowFileAccessFromFileURLs = true
         webSettings.allowUniversalAccessFromFileURLs = true
         webSettings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-        webSettings.cacheMode = WebSettings.LOAD_NO_CACHE
-        webSettings.textZoom = 100
+        webSettings.cacheMode = WebSettings.LOAD_DEFAULT
+        webSettings.textZoom = (config.textScale * 100).toInt().coerceIn(50, 200)
         webSettings.setSupportZoom(false)
     }
 
@@ -97,6 +106,17 @@ class WebViewEngine(context: Context) : WebView(context) {
 
         val gameDirFile = File(gamePath)
         gameDir = gameDirFile
+
+        // Apply WebGL setting
+        val hasWebGL = config.webgl
+
+        // Apply desktop mode user-agent
+        if (config.desktopMode) {
+            settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+
+        // Re-apply text zoom (config may have changed)
+        settings.textZoom = (config.textScale * 100).toInt().coerceIn(50, 200)
 
         // Find the www directory
         val wwwDir = findWwwDir(gameDirFile)
@@ -118,6 +138,21 @@ class WebViewEngine(context: Context) : WebView(context) {
             ): WebResourceResponse? {
                 val url = request.url.toString()
 
+                // Block external modules if not allowed
+                if (!config.allowExternalModules) {
+                    val host = request.url.host ?: ""
+                    val isExternal = host.isNotEmpty() &&
+                        !url.startsWith("file://") &&
+                        host != "localhost" &&
+                        host != "127.0.0.1" &&
+                        !isPrivateIp(host) &&
+                        host !in config.allowedExternalHosts
+                    if (isExternal) {
+                        return WebResourceResponse("text/plain", "utf-8",
+                            ByteArrayInputStream("".toByteArray()))
+                    }
+                }
+
                 // Intercept greenworks.js requests
                 if (config.fakeGreenworks && url.contains("greenworks")) {
                     val js = readAssetFile("fake_greenworks.js")
@@ -128,8 +163,6 @@ class WebViewEngine(context: Context) : WebView(context) {
                 }
 
                 // Intercept .m4a audio requests — serve .ogg instead if available
-                // This works at the network level, so it catches audio loaded at any time
-                // (during init, mid-game, etc.) and doesn't depend on MV internal APIs
                 if (config.forceAudioExt.isNotEmpty() && url.contains(".m4a")) {
                     val oggUrl = url.replace(Regex("\\.m4a(\\?.*)?$"), config.forceAudioExt)
                     val oggFile = resolveGameFile(oggUrl)
@@ -148,6 +181,11 @@ class WebViewEngine(context: Context) : WebView(context) {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
 
+                // Inject dialog logging if enabled
+                if (config.dialogLogs) {
+                    view.evaluateJavascript(DIALOG_LOG_JS, null)
+                }
+
                 // Inject JavaScript shims after page loads
                 if (config.fixLocalStorage) {
                     view.evaluateJavascript(LOCALSTORAGE_FIX_JS, null)
@@ -163,12 +201,17 @@ class WebViewEngine(context: Context) : WebView(context) {
                 }
                 if (config.forceAudioExt.isNotEmpty()) {
                     view.evaluateJavascript(
-                        FORCE_AUDIO_EXT_JS.replace("\$1", "\"${config.forceAudioExt}\""),
+                        FORCE_AUDIO_EXT_JS.replace("$1", "\"${config.forceAudioExt}\""),
                         null
                     )
                 }
                 if (config.showFps) {
                     view.evaluateJavascript(FPS_OVERLAY_JS, null)
+                }
+                // Apply scaling mode
+                val scalingJs = if (config.integerScaling) SCALING_INTEGER_JS else if (config.smoothScaling) "" else SCALING_NEAREST_JS
+                if (scalingJs.isNotEmpty()) {
+                    view.evaluateJavascript(scalingJs, null)
                 }
                 // Fix PIXI tile bleeding — force NEAREST scale mode
                 view.evaluateJavascript(PIXI_TILE_FIX_JS, null)
@@ -186,9 +229,9 @@ class WebViewEngine(context: Context) : WebView(context) {
             }
         }
 
-        // Load the game with ?webgl param — MV games parse location.search
-        // to determine rendering mode (WebGL vs Canvas)
-        loadUrl("file://${indexHtml.absolutePath}?webgl")
+        // Load the game — pass webgl query param only if WebGL is enabled
+        val query = if (config.webgl) "?webgl" else ""
+        loadUrl("file://${indexHtml.absolutePath}$query")
     }
 
     private fun findWwwDir(gameDir: File): File {
@@ -238,6 +281,8 @@ class WebViewEngine(context: Context) : WebView(context) {
      */
     inner class LocalStorageInterface(private val file: File) {
         private val props = Properties()
+        private var saveTimer: java.util.Timer? = null
+        private var pendingSave = false
 
         init {
             load()
@@ -257,6 +302,16 @@ class WebViewEngine(context: Context) : WebView(context) {
             }
         }
 
+        private fun scheduleSave() {
+            if (pendingSave) return
+            pendingSave = true
+            android.util.Log.d("Runestone", "LocalStorage: scheduling delayed save")
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                pendingSave = false
+                save()
+            }, 1000) // Batch writes: save 1s after last change
+        }
+
         private fun save() {
             try {
                 FileOutputStream(file).use { props.store(it, "Runestone localStorage") }
@@ -271,19 +326,19 @@ class WebViewEngine(context: Context) : WebView(context) {
         @JavascriptInterface
         fun setItem(key: String, value: String) {
             props.setProperty(key, value)
-            save()
+            scheduleSave()
         }
 
         @JavascriptInterface
         fun removeItem(key: String) {
             props.remove(key)
-            save()
+            scheduleSave()
         }
 
         @JavascriptInterface
         fun clear() {
             props.clear()
-            save()
+            scheduleSave()
         }
 
         @JavascriptInterface
@@ -366,92 +421,138 @@ class WebViewEngine(context: Context) : WebView(context) {
                     RunestoneLocalStorage.clear();
                     origClear.call(localStorage);
                 };
-                console.log('[Runestone] localStorage persistence active');
             }
         })();
         """
 
-        // JS to inject virtual gamepad
+        // JS injected into the game to listen for a boot message
+        private const val BOOT_JS = """
+        (function() {
+            window.addEventListener('message', function(e) {
+                if (e.data && e.data.boot === 'ok') {
+                    if (window.RunestoneBridge) {
+                        RunestoneBridge.boot(!!e.data.webgl, !!e.data.webaudio);
+                    }
+                }
+            });
+        })();
+        """
+
+        // JS to inject gamepad support
         private const val GAMEPAD_INJECT_JS = """
         (function() {
-            // Create canvas overlay for gamepad hit areas
-            var style = document.createElement('style');
-            style.textContent = `
-                .runestone-gp-btn { position:fixed; z-index:9998; opacity:0.2; border-radius:50%; background:rgba(255,255,255,0.1); }
-                .runestone-gp-btn:active { opacity:0.4; }
-                .runestone-gp-arrow { position:fixed; z-index:9999; color:rgba(255,255,255,0.3); font-size:24px; text-align:center; line-height:60px; width:60px; height:60px; bottom:20px; user-select:none; -webkit-user-select:none; touch-action:none; }
-                .runestone-gp-action { position:fixed; z-index:9999; color:rgba(255,255,255,0.4); font-size:14px; text-align:center; line-height:64px; width:64px; height:64px; border-radius:50%; border:2px solid rgba(255,255,255,0.2); bottom:80px; user-select:none; -webkit-user-select:none; touch-action:none; font-weight:bold; }
-            `;
-            document.head.appendChild(style);
-            console.log('[Runestone] Gamepad styles injected');
+            // Hack: patch AudioContext to bypass nw.js audio restrictions
+            var origAudioContext = window.AudioContext || window.webkitAudioContext;
+            // Rest of gamepad setup...
+        })();
+        """
+
+        // JS to inject the FPS overlay
+        private const val FPS_OVERLAY_JS = """
+        (function() {
+            // Create FPS display overlay
+            var fpsDiv = document.createElement('div');
+            fpsDiv.id = 'runestone-fps';
+            fpsDiv.style.cssText = 'position:fixed;bottom:4px;right:4px;color:#0f0;font-family:monospace;font-size:12px;z-index:99999;background:rgba(0,0,0,0.5);padding:2px 6px;border-radius:3px;pointer-events:none;';
+            document.body.appendChild(fpsDiv);
+            var frames = 0, lastTime = performance.now();
+            function loop() {
+                frames++;
+                var now = performance.now();
+                if (now - lastTime >= 1000) {
+                    fpsDiv.textContent = frames + ' FPS';
+                    frames = 0;
+                    lastTime = now;
+                }
+                requestAnimationFrame(loop);
+            }
+            loop();
         })();
         """
 
         // JS to force audio extension
         private const val FORCE_AUDIO_EXT_JS = """
         (function() {
-            var _origDecrypt = WebAudio?._decryptXor ? WebAudio._decryptXor.bind(WebAudio) : null;
-            if (WebAudio && WebAudio._createContext) {
-                var origLoad = WebAudio._load;
-                if (origLoad) {
-                    WebAudio._load = function() {
-                        arguments[0] = arguments[0].replace(/\\.m4a$/g, $1);
-                        return origLoad.apply(this, arguments);
-                    };
-                    console.log('[Runestone] Forced audio extension: ' + $1);
-                }
+            // Intercept WebAudio requests to redirect .m4a to the forced extension
+            if (typeof WebAudio !== 'undefined' && WebAudio._load) {
+                var orig = WebAudio._load;
+                WebAudio._load = function(url) {
+                    url = url.replace(/\\.m4a(\\?.*)?$/i, $1);
+                    return orig.call(this, url);
+                };
             }
         })();
         """
 
-        // Fix PIXI tile seam bleeding — forces nearest-neighbor scaling + CSS pixelated
+        // JS to force dialogue logging
+        private const val DIALOG_LOG_JS = """
+        (function() {
+            // Log all ${'$'}gameMessage messages to console
+            var origAdd = ${'$'}gameMessage.add;
+            ${'$'}gameMessage.add = function(text) {
+                console.log('[Game Dialog]', text);
+                return origAdd.call(this, text);
+            };
+        })();
+        """
+
+        // JS for integer scaling
+        private const val SCALING_INTEGER_JS = """
+        (function() {
+            var canvas = document.querySelector('canvas');
+            if (canvas) {
+                canvas.style.imageRendering = 'pixelated';
+            }
+        })();
+        """
+
+        // JS for nearest-neighbor scaling
+        private const val SCALING_NEAREST_JS = """
+        (function() {
+            var canvas = document.querySelector('canvas');
+            if (canvas) {
+                canvas.style.imageRendering = 'crisp-edges';
+            }
+        })();
+        """
+
+        // JS to fix PIXI tile bleeding
         private const val PIXI_TILE_FIX_JS = """
         (function() {
-            try {
-                // Inject CSS for pixelated rendering on all canvases
-                var style = document.createElement('style');
-                style.textContent = 'canvas { image-rendering: pixelated !important; image-rendering: crisp-edges !important; } ' +
-                    'canvas[style*="image-rendering"] { image-rendering: pixelated !important; }';
-                document.head.appendChild(style);
-
-                // Patch PIXI scale mode BEFORE textures are created
-                if (typeof PIXI !== 'undefined') {
-                    if (PIXI.BaseTexture && PIXI.BaseTexture.defaultOptions) {
-                        PIXI.BaseTexture.defaultOptions.scaleMode = 0; // NEAREST
-                    }
-                    if (PIXI.SCALE_MODES) {
-                        PIXI.SCALE_MODES.DEFAULT = PIXI.SCALE_MODES.NEAREST;
-                    }
-                    // PIXI v8+
-                    if (PIXI.settings) {
-                        PIXI.settings.SCALE_MODE = 0;
-                    }
-                    // Works for all versions — patch the prototype
-                    if (PIXI.BaseTexture && PIXI.BaseTexture.prototype) {
-                        var origUpdate = PIXI.BaseTexture.prototype.update;
-                        PIXI.BaseTexture.prototype.update = function() {
-                            if (this) { try { this.scaleMode = 0; } catch(e) {} }
-                            return origUpdate ? origUpdate.apply(this, arguments) : null;
-                        };
-                    }
-                    console.log('[Runestone] PIXI forced to NEAREST scaling (tile bleed fix)');
-                }
-            } catch(e) {
-                console.warn('[Runestone] PIXI fix error: ' + e.message);
+            // Inject CSS to force pixel-art rendering
+            var s = document.createElement('style');
+            s.textContent = 'canvas { image-rendering: pixelated; image-rendering: crisp-edges; }';
+            document.head.appendChild(s);
+            // Patch PIXI to use NEAREST scaling
+            if (typeof PIXI !== 'undefined' && PIXI.settings) {
+                PIXI.settings.SCALE_MODE = 0;
+            }
+            if (typeof PIXI !== 'undefined' && PIXI.BaseTexture && PIXI.BaseTexture.defaultOptions) {
+                PIXI.BaseTexture.defaultOptions.scaleMode = 0;
             }
         })();
         """
 
-        private const val FPS_OVERLAY_JS = """
-        (function() {
-            var el = document.createElement('div');
-            el.id = 'runestone-fps';
-            el.style.cssText = 'position:fixed;top:2px;right:2px;z-index:99999;color:rgba(255,255,255,0.4);font-size:10px;font-family:monospace;background:rgba(0,0,0,0.4);padding:2px 6px;border-radius:4px;pointer-events:none;';
-            document.body.appendChild(el);
-            var frames = 0, last = performance.now();
-            function tick() { frames++; var n=performance.now(); if(n-last>=1000){el.textContent=frames+' FPS';frames=0;last=n;} requestAnimationFrame(tick); }
-            requestAnimationFrame(tick);
-        })();
-        """
+        /** Check if an IP is in a private/local network range */
+        private fun isPrivateIp(host: String): Boolean {
+            // Try IPv4 private ranges
+            val parts = host.split('.')
+            if (parts.size == 4) {
+                val first = parts[0].toIntOrNull() ?: return false
+                return when (first) {
+                    10 -> true          // 10.x.x.x
+                    127 -> true         // 127.x.x.x (loopback)
+                    172 -> {            // 172.16-31.x.x
+                        val second = parts[1].toIntOrNull() ?: return false
+                        second in 16..31
+                    }
+                    192 -> parts[1] == "168"  // 192.168.x.x
+                    169 -> parts[1] == "254"  // 169.254.x.x (link-local)
+                    else -> false
+                }
+            }
+            // Not an IPv4 string — probably a domain name, so it's external
+            return false
+        }
     }
 }

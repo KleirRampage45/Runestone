@@ -30,6 +30,7 @@ class TouchOverlayView(context: Context) : View(context) {
     var hapticIntensity: Float = 0.55f
     var controlsOnly: Boolean = false
     var showExtraButtons: Boolean = false
+    var diagonalMovement: Boolean = false
     var onInput: ((Zone, pressed: Boolean) -> Unit)? = null
 
     // Active presses for visual feedback
@@ -379,13 +380,12 @@ class TouchOverlayView(context: Context) : View(context) {
             MotionEvent.ACTION_DOWN,
             MotionEvent.ACTION_POINTER_DOWN -> {
                 val idx = event.actionIndex
-                val px = event.getX(idx)
-                val py = event.getY(idx)
-                val zone = hitTest(px, py)
-                if (zone != null) {
-                    activeZones.add(zone)
-                    onInput?.invoke(zone, true)
-                    vibrate()
+                val zones = hitTestMulti(event.getX(idx), event.getY(idx))
+                if (zones.isNotEmpty()) {
+                    val newZones = zones - activeZones
+                    activeZones.addAll(zones)
+                    newZones.forEach { onInput?.invoke(it, true) }
+                    if (newZones.isNotEmpty()) vibrate()
                     invalidate()
                 }
                 return true
@@ -395,8 +395,7 @@ class TouchOverlayView(context: Context) : View(context) {
                 // Track which fingers are where
                 val newActive = mutableSetOf<Zone>()
                 for (i in 0 until event.pointerCount) {
-                    val zone = hitTest(event.getX(i), event.getY(i))
-                    if (zone != null) newActive.add(zone)
+                    newActive.addAll(hitTestMulti(event.getX(i), event.getY(i)))
                 }
                 val released = activeZones - newActive
                 val pressed = newActive - activeZones
@@ -417,8 +416,7 @@ class TouchOverlayView(context: Context) : View(context) {
                 val newActive = mutableSetOf<Zone>()
                 for (i in 0 until event.pointerCount) {
                     if (event.actionMasked == MotionEvent.ACTION_POINTER_UP && i == event.actionIndex) continue
-                    val zone = hitTest(event.getX(i), event.getY(i))
-                    if (zone != null) newActive.add(zone)
+                    newActive.addAll(hitTestMulti(event.getX(i), event.getY(i)))
                 }
                 if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
                     newActive.clear()
@@ -432,6 +430,13 @@ class TouchOverlayView(context: Context) : View(context) {
             }
         }
         return false
+    }
+
+    private fun hitTestMulti(x: Float, y: Float): Set<Zone> {
+        return if (diagonalMovement) hitTestZones(x, y) else {
+            val single = hitTest(x, y)
+            if (single != null) setOf(single) else emptySet()
+        }
     }
 
     private fun hitTest(x: Float, y: Float): Zone? {
@@ -470,6 +475,44 @@ class TouchOverlayView(context: Context) : View(context) {
         }
 
         return null
+    }
+
+    private fun hitTestZones(x: Float, y: Float): Set<Zone> {
+        val s = scale
+        val panelTop = if (controlsOnly) 0f else height * 0.55f
+        if (y < panelTop) return emptySet()
+
+        // L1/R1 shoulder buttons (check first — they're at the top)
+        if (l1Rect.contains(x, y)) return setOf(Zone.L1)
+        if (r1Rect.contains(x, y)) return setOf(Zone.R1)
+
+        // Bottom bar buttons
+        if (selectRect.contains(x, y)) return setOf(Zone.SELECT)
+        if (startRect.contains(x, y)) return setOf(Zone.START)
+        if (menuRect.contains(x, y)) return setOf(Zone.SETTINGS)
+
+        // Action buttons
+        val result = mutableSetOf<Zone>()
+        if (showExtraButtons && dist(x, y, btnY.x, btnY.y) < radiusFor(Control.Y)) result.add(Zone.BTN_Y)
+        if (showExtraButtons && dist(x, y, btnX.x, btnX.y) < radiusFor(Control.X)) result.add(Zone.BTN_X)
+        if (dist(x, y, btnB.x, btnB.y) < radiusFor(Control.B)) result.add(Zone.BTN_B)
+        if (dist(x, y, btnA.x, btnA.y) < radiusFor(Control.A)) result.add(Zone.BTN_A)
+        if (result.isNotEmpty()) return result
+
+        // D-pad with diagonal support: overlapping angle ranges
+        val outer = dpadRadius * s
+        val inner = dpadInnerRadius * s
+        val d = dist(x, y, dpadCenter.x, dpadCenter.y)
+        if (d < outer && d >= inner) {
+            val angle = Math.atan2((y - dpadCenter.y).toDouble(), (x - dpadCenter.x).toDouble())
+            val result2 = mutableSetOf<Zone>()
+            if (angle in -Math.PI / 4.0 * 1.3..Math.PI / 4.0 * 1.3) result2.add(Zone.DPAD_RIGHT)
+            if (angle in Math.PI / 4.0 * 0.7..3.0 * Math.PI / 4.0 * 0.85) result2.add(Zone.DPAD_DOWN)
+            if (angle in -3.0 * Math.PI / 4.0 * 0.85..-Math.PI / 4.0 * 0.7) result2.add(Zone.DPAD_UP)
+            if (angle <= -Math.PI * 0.75 || angle >= Math.PI * 0.75) result2.add(Zone.DPAD_LEFT)
+            return result2
+        }
+        return emptySet()
     }
 
     private fun dist(x1: Float, y1: Float, x2: Float, y2: Float): Float =

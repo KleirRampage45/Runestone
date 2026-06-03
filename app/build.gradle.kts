@@ -12,8 +12,8 @@ android {
         applicationId = "com.runestone.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "0.6.15"
+        versionCode = 21
+        versionName = "0.7.1"
 
         ndk {
             abiFilters += "arm64-v8a"

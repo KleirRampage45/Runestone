@@ -35,8 +35,11 @@ import com.runestone.app.engine.EngineRegistry
 import com.runestone.app.ui.SortMode
 import com.runestone.app.importer.SafGameImporter
 import com.runestone.app.importer.SafImportResult
+import com.runestone.app.importer.SafStorageBrowser
 import com.runestone.app.ui.AvailableGamesScreen
+import com.runestone.app.ui.GameFolderBrowserScreen
 import com.runestone.app.ui.GameCardInfo
+import com.runestone.app.ui.HomeCardLayout
 import com.runestone.app.ui.HomeScreen
 import com.runestone.app.ui.ImportProgressScreen
 import com.runestone.app.ui.ImportProgressView
@@ -45,6 +48,7 @@ import com.runestone.app.ui.PerGameSettingsScreen
 import com.runestone.app.ui.ProviderSettingsScreen
 import com.runestone.app.ui.SettingsScreen
 import com.runestone.app.ui.SettingsStore
+import com.runestone.app.ui.Theme
 import com.runestone.app.ui.SourcesScreen
 import com.runestone.app.services.GameMetadataService
 import com.runestone.app.provider.AvailableGame
@@ -60,6 +64,7 @@ import com.runestone.app.workspace.WorkspaceStorageReporter
 import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : Activity() {
 
@@ -80,6 +85,9 @@ class MainActivity : Activity() {
     private var manageFilesVisible = false
     private var storageCache: Map<String, WorkspaceStorage> = emptyMap()
     private var pendingImportStorage: String? = null
+    private var pendingCoverStorage: String? = null
+    private var pendingCoverCallback: ((String) -> Unit)? = null
+    private val importBrowserStack = mutableListOf<SafStorageBrowser.Folder>()
     private var downloadProgressMap = mutableMapOf<String, DownloadManager.DownloadProgress>()
 
     // Overlay navigation - root container set once, overlays added on top
@@ -90,6 +98,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQUEST_IMPORT_FOLDER = 9001
+        private const val REQUEST_COVER_IMAGE = 9002
         private const val TAG = "Runestone"
         private const val NOTIFICATION_CHANNEL = "runestone_downloads"
         private const val NOTIFICATION_ID_DOWNLOAD = 2001
@@ -100,6 +109,7 @@ class MainActivity : Activity() {
     private var activeEngineFilter: EngineType? = null
     private var currentSort: SortMode = SortMode.DATE_ADDED
     private var searchQuery: String = ""
+    private var homeCardLayout = HomeCardLayout.GRID_2
     private var availableGames: List<AvailableGame> = emptyList()
     private var isLoadingGames = false
     private var gamesErrorMessage: String? = null
@@ -113,6 +123,7 @@ class MainActivity : Activity() {
             .getString("paused_game", null)
         getSharedPreferences("runestone", MODE_PRIVATE).edit()
             .remove("paused_game").apply()
+        pausedGamePath = null // game process died with the app
         settingsStore = SettingsStore(this)
         workspaceManager = WorkspaceManager(this)
         installStateStore = InstallStateStore(workspaceManager)
@@ -123,6 +134,13 @@ class MainActivity : Activity() {
         extractionManager = ExtractionManager(this)
         metadataService = GameMetadataService(this)
         settings = settingsStore.load()
+        Theme.active = Theme.byName(settings.colorPalette)
+        homeCardLayout = runCatching {
+            HomeCardLayout.valueOf(
+                getSharedPreferences("runestone-settings-v1", MODE_PRIVATE)
+                    .getString("homeCardLayout", HomeCardLayout.GRID_2.name).orEmpty(),
+            )
+        }.getOrDefault(HomeCardLayout.GRID_2)
         refreshGames()
         createNotificationChannel()
         setupDownloadCallbacks()
@@ -381,14 +399,41 @@ class MainActivity : Activity() {
         renderAvailableGamesScreen()
     }
 
-    private fun toCardInfo(g: WorkspaceManager.GameInfo) = GameCardInfo(
-        storageName = g.storageName,
-        displayName = g.displayName,
-        engineType = g.engineType,
-        fileCount = g.fileCount,
-        isReady = true,
-        isPaused = pausedGamePath == g.originalPath,
-    )
+    private fun toCardInfo(g: WorkspaceManager.GameInfo): GameCardInfo {
+        val perGame = runCatching {
+            com.runestone.app.data.GameConfigService(this, workspaceManager).loadPerGame(g.storageName)
+        }.getOrNull()
+
+        // Priority: custom cover > metadata local cover > nothing (will be filled by pipeline)
+        val customCoverPath = perGame?.game?.customCoverPath?.let { path ->
+            if (File(path).exists()) return@let "local:$path"
+            null
+        }
+        val metadataCoverPath = perGame?.metadata?.localCoverPath?.takeIf { it.isNotEmpty() }?.let { path ->
+            if (File(path).exists()) return@let "local:$path"
+            null
+        }
+        val coverUrl = customCoverPath ?: metadataCoverPath
+
+        return GameCardInfo(
+            storageName = g.storageName,
+            displayName = perGame?.metadata?.gameTitle?.takeIf { it.isNotEmpty() } ?: g.displayName,
+            engineType = g.engineType,
+            fileCount = g.fileCount,
+            fileSize = runCatching {
+                val dir = java.io.File(g.originalPath)
+                if (dir.isDirectory) dir.walkTopDown().filter { it.isFile }.sumOf { it.length() } else dir.length()
+            }.getOrNull() ?: 0L,
+            totalPlayTime = getSharedPreferences("play_stats", MODE_PRIVATE).getLong("total_${g.storageName}", 0L),
+            lastPlayedTimestamp = getSharedPreferences("play_stats", MODE_PRIVATE).getLong("last_played_${g.storageName}", 0L),
+            isReady = true,
+            isPaused = pausedGamePath == g.originalPath,
+            coverUrl = coverUrl,
+            metadataDeveloper = perGame?.metadata?.developer ?: "",
+            metadataGenres = perGame?.metadata?.genres ?: "",
+            metadataYear = perGame?.metadata?.releaseYear ?: "",
+        )
+    }
 
     // ═══════════════════════════════════════════════════════
     //  Overlay system — dimmed panels over home screen
@@ -459,7 +504,7 @@ class MainActivity : Activity() {
 
             val titleText = TextView(this@MainActivity).apply {
                 text = "RUNESTONE"
-                setTextColor(Color.rgb(207, 174, 126)) // ACCENT color
+                setTextColor(Theme.active.accent) // ACCENT color
                 textSize = 32f
                 typeface = Typeface.create("serif", Typeface.BOLD)
                 letterSpacing = 0.3f
@@ -525,6 +570,8 @@ class MainActivity : Activity() {
             SortMode.DATE_ADDED -> filtered.sortedByDescending { java.io.File(it.originalPath).parentFile?.lastModified() ?: 0L }
         }
         val cards = filtered.map { toCardInfo(it) }.map { card ->
+            // Keep custom cover if already set
+            if (card.coverUrl != null) return@map card
             // First try to find matching cover from available games by title
             val availableCoverUrl = availableGames.firstOrNull {
                 it.title.equals(card.displayName, ignoreCase = true) ||
@@ -555,7 +602,7 @@ class MainActivity : Activity() {
         val homeView = HomeScreen(this).create(
             games = cards,
             onPlay = { playGame(it) },
-            onManage = { showManageFiles(it) },
+            onManage = { showPerGameSettings(it) },
             onAddGame = { startFolderImport() },
             onBrowse = { showAvailableGames() },
             onManageAll = { showManageFiles() },
@@ -571,11 +618,36 @@ class MainActivity : Activity() {
             currentSort = currentSort,
             pausedGame = pausedGame,
             uiMode = settings.uiMode,
+            cardLayout = homeCardLayout,
+            showGameName = settings.showGameName,
+            onLongPress = { game ->
+                HomeScreen(this).showInspectOverlay(game, { playGame(it) }, { showPerGameSettings(it) })
+            },
+            onCardLayoutChanged = { layout ->
+                homeCardLayout = layout
+                getSharedPreferences("runestone-settings-v1", MODE_PRIVATE)
+                    .edit()
+                    .putString("homeCardLayout", layout.name)
+                    .apply()
+                showHome()
+            },
             onResume = if (pausedGame != null) {{ playGame(pausedGame.storageName) }} else null,
             onStop = if (pausedGame != null) {{ storageName ->
                 val game = games.find { it.storageName == storageName }
                 if (game != null) {
                     Log.i(TAG, "STOP game: $storageName path=${game.originalPath}")
+                    // Record play session
+                    val playStats = getSharedPreferences("play_stats", MODE_PRIVATE)
+                    val sessionStart = playStats.getLong("session_start_${storageName}", 0L)
+                    if (sessionStart > 0L) {
+                        val elapsed = (System.currentTimeMillis() - sessionStart) / 1000
+                        val total = playStats.getLong("total_${storageName}", 0L)
+                        playStats.edit()
+                            .putLong("total_${storageName}", total + elapsed)
+                            .putLong("last_played_${storageName}", System.currentTimeMillis())
+                            .remove("session_start_${storageName}")
+                            .apply()
+                    }
                     pausedGamePath = null
                     getSharedPreferences("runestone", MODE_PRIVATE).edit()
                         .remove("paused_game").apply()
@@ -648,6 +720,17 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    private fun clearRuntimeCache() {
+        val runtimeDir = java.io.File(filesDir, "runtime")
+        if (runtimeDir.exists()) {
+            runtimeDir.deleteRecursively()
+        }
+        val cacheDir = java.io.File(filesDir, "cache")
+        if (cacheDir.exists()) {
+            cacheDir.deleteRecursively()
+        }
+    }
+
     private fun showSettings() {
         manageFilesVisible = false
         showOverlay(
@@ -658,6 +741,14 @@ class MainActivity : Activity() {
                     settingsStore.save(newSettings)
                 },
                 onBack = { dismissOverlay() },
+                onResetDefaults = {
+                    settings = RunnerSettings()
+                    settingsStore.save(settings)
+                    showSettings()
+                },
+                onClearRuntimeCache = {
+                    clearRuntimeCache()
+                },
             ),
         )
     }
@@ -676,6 +767,36 @@ class MainActivity : Activity() {
                     configService.savePerGame(storageName, newConfig)
                 },
                 onBack = { dismissOverlay() },
+                onPickCover = { resultCallback ->
+                    pendingCoverStorage = storageName
+                    pendingCoverCallback = resultCallback
+                    val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(android.content.Intent.CATEGORY_OPENABLE)
+                        type = "image/*"
+                        putExtra(android.content.Intent.EXTRA_ALLOW_MULTIPLE, false)
+                    }
+                    startActivityForResult(intent, REQUEST_COVER_IMAGE)
+                },
+                onFetchMetadata = { resultCallback ->
+                    val fetched = AtomicBoolean(false)
+                    metadataService.fetchAndApplyMetadata(
+                        gameTitle = game.displayName,
+                        storageName = storageName,
+                        configService = configService,
+                        forceFresh = true,
+                    ) { section ->
+                        if (section != null && !fetched.getAndSet(true)) {
+                            resultCallback(true)
+                            runOnUiThread {
+                                dismissOverlay()
+                                // Reopen with fresh data
+                                showPerGameSettings(storageName)
+                            }
+                        } else if (!fetched.getAndSet(true)) {
+                            resultCallback(false)
+                        }
+                    }
+                },
             ),
         )
     }
@@ -777,6 +898,9 @@ class MainActivity : Activity() {
         pausedGamePath = game.originalPath
         getSharedPreferences("runestone", MODE_PRIVATE).edit()
             .putString("paused_game", game.originalPath).apply()
+        // Track play session start
+        val playStats = getSharedPreferences("play_stats", MODE_PRIVATE)
+        playStats.edit().putLong("session_start_${storageName}", System.currentTimeMillis()).apply()
 
         val intent = Intent(this, GameActivity::class.java).apply {
             putExtra("game_path", game.originalPath)
@@ -796,12 +920,112 @@ class MainActivity : Activity() {
         Log.i(TAG, "startFolderImport: requestedName=$requestedName")
         importMessage = null
         pendingImportStorage = requestedName
+        importBrowserStack.clear()
+        showGameFolderBrowser()
+    }
+
+    private fun requestStorageAccess() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
             addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
         }
         startActivityForResult(intent, REQUEST_IMPORT_FOLDER)
+    }
+
+    private fun showGameFolderBrowser() {
+        val browser = SafStorageBrowser(contentResolver)
+        val current = importBrowserStack.lastOrNull()
+        val folders = current?.let { runCatching { browser.listFolders(it.uri) }.getOrDefault(emptyList()) } ?: emptyList()
+        showOverlay(
+            GameFolderBrowserScreen(this).create(
+                roots = browser.listRoots(),
+                currentFolder = current,
+                folders = folders,
+                canNavigateUp = importBrowserStack.isNotEmpty(),
+                onBack = {
+                    if (importBrowserStack.isNotEmpty()) {
+                        importBrowserStack.clear()
+                        showGameFolderBrowser()
+                    } else {
+                        dismissOverlay()
+                    }
+                },
+                onUp = {
+                    if (importBrowserStack.isNotEmpty()) importBrowserStack.removeAt(importBrowserStack.lastIndex)
+                    showGameFolderBrowser()
+                },
+                onOpenRoot = { storageRoot ->
+                    importBrowserStack.clear()
+                    importBrowserStack += browser.describeFolder(storageRoot.documentUri)
+                    showGameFolderBrowser()
+                },
+                onOpenFolder = { folder ->
+                    importBrowserStack += folder
+                    showGameFolderBrowser()
+                },
+                onImportFolder = { folder -> importSelectedFolder(folder.uri) },
+                onGrantStorage = { requestStorageAccess() },
+            ),
+        )
+    }
+
+    private fun importSelectedFolder(folderUri: Uri) {
+        if (pendingImportStorage != null) {
+            val backedUp = saveManager.syncFromActive(pendingImportStorage!!)
+            Log.i(TAG, "Backed up $backedUp saves for $pendingImportStorage before import")
+        }
+
+        showImportProgress("Importing game")
+        Log.i(TAG, "importSelectedFolder: progress screen shown, starting thread uri=$folderUri")
+
+        Thread {
+            val importer = SafGameImporter(
+                contentResolver = contentResolver,
+                workspaceManager = workspaceManager,
+                onProgress = { msg ->
+                    runOnUiThread {
+                        Log.d(TAG, "import progress: $msg")
+                        val pv = activeImportProgressView
+                        if (pv != null) {
+                            when {
+                                msg.startsWith("Copying game") -> { pv.phaseView.text = msg; pv.fileView.text = ""; pv.countView.text = "" }
+                                msg.startsWith("Copying ") -> pv.fileView.text = msg.removePrefix("Copying ")
+                                else -> { pv.phaseView.text = msg; pv.fileView.text = "" }
+                            }
+                        }
+                        importMessage = msg
+                    }
+                },
+            )
+            val result = importer.importTree(folderUri, pendingImportStorage)
+            Log.i(TAG, "import finished: $result")
+
+            runOnUiThread {
+                pendingImportStorage = null
+                importBrowserStack.clear()
+                when (result) {
+                    is SafImportResult.Success -> {
+                        Log.i(TAG, "Import OK: ${result.storageName} (${result.fileCount} files)")
+                        importMessage = null
+                        saveManager.restoreToActive(result.storageName)
+                        activeImportProgressView = null
+                        refreshGames()
+                        dismissOverlay()
+                    }
+                    is SafImportResult.Failure -> {
+                        Log.e(TAG, "Import FAILED: ${result.reason}")
+                        val pv = activeImportProgressView
+                        if (pv != null) { pv.phaseView.text = "[FAIL] Import failed"; pv.fileView.text = result.reason; pv.countView.text = "" }
+                        importMessage = "Import failed: ${result.reason}"
+                        android.os.Handler(mainLooper).postDelayed({
+                            refreshGames(); activeImportProgressView = null
+                            dismissOverlay { showManageFiles() }
+                        }, 3000)
+                    }
+                }
+            }
+        }.start()
     }
 
     private fun confirmRemoveGameData(storageName: String) {
@@ -862,6 +1086,35 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun handleCoverImageResult(resultCode: Int, data: Intent?) {
+        val callback = pendingCoverCallback
+        pendingCoverCallback = null
+        val storageName = pendingCoverStorage
+        pendingCoverStorage = null
+
+        if (resultCode != Activity.RESULT_OK || data?.data == null || storageName == null) return
+
+        val uri = data.data!!
+        val coverDir = File(filesDir, "game_covers").apply { mkdirs() }
+        val destFile = File(coverDir, "${storageName}.jpg")
+        try {
+            val inputStream = contentResolver.openInputStream(uri)
+                ?: throw IllegalStateException("Unable to open selected cover image")
+            inputStream.use { input ->
+                destFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            callback?.invoke(destFile.absolutePath)
+            runOnUiThread { showHome() }
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "Failed to save cover image", e)
+            runOnUiThread {
+                android.widget.Toast.makeText(this, "Failed to set cover image", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     private fun formatBytes(bytes: Long): String {
         val gb = 1024.0 * 1024.0 * 1024.0; val mb = 1024.0 * 1024.0
         return if (bytes >= gb) String.format("%.2f GB", bytes / gb) else String.format("%.1f MB", bytes / mb)
@@ -874,7 +1127,12 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         Log.i(TAG, "onActivityResult: requestCode=$requestCode resultCode=$resultCode data=$data")
-        if (requestCode != REQUEST_IMPORT_FOLDER) return
+        if (requestCode != REQUEST_IMPORT_FOLDER) {
+            if (requestCode == REQUEST_COVER_IMAGE) {
+                handleCoverImageResult(resultCode, data)
+            }
+            return
+        }
         if (resultCode != Activity.RESULT_OK) {
             Log.w(TAG, "onActivityResult: result not OK")
             return
@@ -887,62 +1145,15 @@ class MainActivity : Activity() {
         runCatching { contentResolver.takePersistableUriPermission(
             treeUri, data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         ) }
-
-        if (pendingImportStorage != null) {
-            val backedUp = saveManager.syncFromActive(pendingImportStorage!!)
-            Log.i(TAG, "Backed up $backedUp saves for $pendingImportStorage before import")
+        val browser = SafStorageBrowser(contentResolver)
+        importBrowserStack.clear()
+        runCatching {
+            importBrowserStack += browser.describeFolder(browser.rootFromTreeUri(treeUri).documentUri)
+        }.onFailure { error ->
+            Log.w(TAG, "Could not open authorized storage location", error)
+            Toast.makeText(this, "Could not open that storage location", Toast.LENGTH_SHORT).show()
         }
-
-        showImportProgress("Importing game")
-        Log.i(TAG, "onActivityResult: import progress screen shown, starting thread")
-
-        Thread {
-            val importer = SafGameImporter(
-                contentResolver = contentResolver,
-                workspaceManager = workspaceManager,
-                onProgress = { msg ->
-                    runOnUiThread {
-                        Log.d(TAG, "import progress: $msg")
-                        val pv = activeImportProgressView
-                        if (pv != null) {
-                            when {
-                                msg.startsWith("Copying game") -> { pv.phaseView.text = msg; pv.fileView.text = ""; pv.countView.text = "" }
-                                msg.startsWith("Copying ") -> pv.fileView.text = msg.removePrefix("Copying ")
-                                else -> { pv.phaseView.text = msg; pv.fileView.text = "" }
-                            }
-                        }
-                        importMessage = msg
-                    }
-                },
-            )
-            val result = importer.importTree(treeUri, pendingImportStorage)
-            Log.i(TAG, "import finished: $result")
-
-            runOnUiThread {
-                pendingImportStorage = null
-                when (result) {
-                    is SafImportResult.Success -> {
-                        Log.i(TAG, "Import OK: ${result.storageName} (${result.fileCount} files)")
-                        importMessage = null
-                        saveManager.restoreToActive(result.storageName)
-                        activeImportProgressView = null
-                        refreshGames()
-                        // Fade out import overlay, show refreshed home
-                        dismissOverlay()
-                    }
-                    is SafImportResult.Failure -> {
-                        Log.e(TAG, "Import FAILED: ${result.reason}")
-                        val pv = activeImportProgressView
-                        if (pv != null) { pv.phaseView.text = "[FAIL] Import failed"; pv.fileView.text = result.reason; pv.countView.text = "" }
-                        importMessage = "Import failed: ${result.reason}"
-                        android.os.Handler(mainLooper).postDelayed({
-                            refreshGames(); activeImportProgressView = null
-                            dismissOverlay { showManageFiles() }
-                        }, 3000)
-                    }
-                }
-            }
-        }.start()
+        showGameFolderBrowser()
     }
 
     override fun onResume() {

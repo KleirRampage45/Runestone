@@ -8,6 +8,8 @@
 package com.runestone.app.ui
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -15,11 +17,14 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.OvershootInterpolator
+import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
 import com.runestone.app.data.*
+import java.io.File
 
 class PerGameSettingsScreen(private val context: Context) {
 
@@ -28,6 +33,8 @@ class PerGameSettingsScreen(private val context: Context) {
         config: PerGameConfig,
         onConfigChanged: (PerGameConfig) -> Unit,
         onBack: () -> Unit,
+        onPickCover: ((pathCallback: (String) -> Unit) -> Unit) = {},
+        onFetchMetadata: ((Boolean) -> Unit) -> Unit = {},
     ): LinearLayout {
         var current = config
 
@@ -59,17 +66,92 @@ class PerGameSettingsScreen(private val context: Context) {
         scroll.addView(content)
         content.alpha = 0f
 
+        // ── Hero Card Cover ──
+        content.addView(sectionTitle("Hero Card", "Custom cover image for game card"))
+        content.addView(coverPicker(current.game.customCoverPath,
+            onPick = { setPath ->
+                onPickCover { pickedPath ->
+                    if (pickedPath.isNotEmpty()) {
+                        current = current.copy(game = current.game.copy(customCoverPath = pickedPath))
+                        onConfigChanged(current)
+                        setPath(pickedPath)
+                        (context as? android.app.Activity)?.runOnUiThread {
+                            android.widget.Toast.makeText(context, "Cover image set!", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            },
+            onClear = { clearPath ->
+                current = current.copy(game = current.game.copy(customCoverPath = null))
+                onConfigChanged(current)
+                clearPath(current.game.customCoverPath.orEmpty())
+            }
+        ))
+        content.addView(spacer(h = 14))
+
+        // ── Metadata ──
+        content.addView(sectionTitle("Metadata", "Game info from RAWG. Fetch or edit manually."))
+        val meta = current.metadata
+
+        content.addView(metadataEditRow("Title", meta.gameTitle) { v ->
+            current = current.copy(metadata = current.metadata.copy(gameTitle = v)); onConfigChanged(current) })
+        content.addView(metadataEditRow("Developer", meta.developer) { v ->
+            current = current.copy(metadata = current.metadata.copy(developer = v)); onConfigChanged(current) })
+        content.addView(metadataEditRow("Publisher", meta.publisher) { v ->
+            current = current.copy(metadata = current.metadata.copy(publisher = v)); onConfigChanged(current) })
+        content.addView(metadataEditRow("Genres", meta.genres) { v ->
+            current = current.copy(metadata = current.metadata.copy(genres = v)); onConfigChanged(current) })
+        content.addView(metadataEditRow("Year", meta.releaseYear) { v ->
+            current = current.copy(metadata = current.metadata.copy(releaseYear = v)); onConfigChanged(current) })
+        content.addView(metadataEditRow("Description", meta.description) { v ->
+            current = current.copy(metadata = current.metadata.copy(description = v)); onConfigChanged(current) })
+        content.addView(spacer(h = 6))
+
+        val fetchBtn = TextView(context).apply {
+            val hasMetadata = meta.metadataSource.isNotEmpty()
+            text = if (hasMetadata) "REFETCH FROM RAWG (\u2192)" else "FETCH FROM RAWG (\u2192)"
+            setTextColor(Theme.active.accent); textSize = 13f; typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER; setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = GradientDrawable().apply {
+                setColor(Theme.active.accentBg)
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), Color.argb(80,
+                    Color.red(Theme.active.accent),
+                    Color.green(Theme.active.accent),
+                    Color.blue(Theme.active.accent)))
+            }
+            makeLiquid(this)
+            setOnClickListener {
+                text = "FETCHING..."
+                isEnabled = false
+                onFetchMetadata { ok ->
+                    post {
+                        text = if (ok) "DONE" else "RETRY"
+                        isEnabled = true
+                    }
+                }
+            }
+        }
+        content.addView(fetchBtn)
+        if (meta.metadataSource.isNotEmpty()) {
+            content.addView(TextView(context).apply {
+                text = "Source: ${meta.metadataSource}"
+                setTextColor(MUTED); textSize = 10f; setPadding(dp(4), dp(3), 0, 0)
+            })
+        }
+        content.addView(spacer(h = 14))
+
         // ── Input Section ──
         content.addView(sectionTitle("Input", "Touch controls and haptics"))
-        
-        content.addView(switchPanel("Haptic Feedback", "Vibrate when controls are pressed", 
+
+        content.addView(switchPanel("Haptic Feedback", "Vibrate when controls are pressed",
             current.input.hapticsEnabled) { checked ->
             current = current.copy(input = current.input.copy(hapticsEnabled = checked))
             onConfigChanged(current)
         })
         content.addView(spacer(10))
 
-        content.addView(sliderPanel("Haptic Intensity", 
+        content.addView(sliderPanel("Haptic Intensity",
             "${(current.input.hapticIntensity * 100).toInt()}%") { label ->
             slider(100, (current.input.hapticIntensity * 100).toInt().coerceIn(0, 100)) { progress ->
                 current = current.copy(input = current.input.copy(hapticIntensity = progress / 100f))
@@ -79,7 +161,7 @@ class PerGameSettingsScreen(private val context: Context) {
         })
         content.addView(spacer(10))
 
-        content.addView(sliderPanel("Button Opacity", 
+        content.addView(sliderPanel("Button Opacity",
             "${(current.input.buttonOpacity * 100).toInt()}%") { label ->
             slider(100, (current.input.buttonOpacity * 100).toInt().coerceIn(0, 100)) { progress ->
                 current = current.copy(input = current.input.copy(buttonOpacity = progress / 100f))
@@ -89,7 +171,7 @@ class PerGameSettingsScreen(private val context: Context) {
         })
         content.addView(spacer(10))
 
-        content.addView(sliderPanel("Button Scale", 
+        content.addView(sliderPanel("Button Scale",
             "${(current.input.buttonScale * 100).toInt()}%") { label ->
             slider(100, ((current.input.buttonScale - 0.5f) * 200).toInt().coerceIn(0, 100)) { progress ->
                 current = current.copy(input = current.input.copy(buttonScale = 0.5f + progress / 200f))
@@ -102,35 +184,35 @@ class PerGameSettingsScreen(private val context: Context) {
         // ── Video Section ──
         content.addView(sectionTitle("Video", "Display and rendering"))
 
-        content.addView(switchPanel("Show FPS", "Display frame rate counter", 
+        content.addView(switchPanel("Show FPS", "Display frame rate counter",
             current.video.showFps) { checked ->
             current = current.copy(video = current.video.copy(showFps = checked))
             onConfigChanged(current)
         })
         content.addView(spacer(10))
 
-        content.addView(switchPanel("VSync", "Synchronize frame rate with display", 
+        content.addView(switchPanel("VSync", "Synchronize frame rate with display",
             current.video.vsync) { checked ->
             current = current.copy(video = current.video.copy(vsync = checked))
             onConfigChanged(current)
         })
         content.addView(spacer(10))
 
-        content.addView(switchPanel("Integer Scaling", "Pixel-perfect scaling (may add black bars)", 
+        content.addView(switchPanel("Integer Scaling", "Pixel-perfect scaling (may add black bars)",
             current.video.integerScaling) { checked ->
             current = current.copy(video = current.video.copy(integerScaling = checked))
             onConfigChanged(current)
         })
         content.addView(spacer(10))
 
-        content.addView(switchPanel("Smooth Scaling", "Bilinear filtering for smoother image", 
+        content.addView(switchPanel("Smooth Scaling", "Bilinear filtering for smoother image",
             current.video.smoothScaling) { checked ->
             current = current.copy(video = current.video.copy(smoothScaling = checked))
             onConfigChanged(current)
         })
         content.addView(spacer(10))
 
-        content.addView(sliderPanel("Brightness", 
+        content.addView(sliderPanel("Brightness",
             "${(current.video.brightness * 100).toInt()}%") { label ->
             slider(200, (current.video.brightness * 100).toInt().coerceIn(0, 200)) { progress ->
                 current = current.copy(video = current.video.copy(brightness = progress / 100f))
@@ -140,7 +222,7 @@ class PerGameSettingsScreen(private val context: Context) {
         })
         content.addView(spacer(10))
 
-        content.addView(sliderPanel("Contrast", 
+        content.addView(sliderPanel("Contrast",
             "${(current.video.contrast * 100).toInt()}%") { label ->
             slider(200, (current.video.contrast * 100).toInt().coerceIn(0, 200)) { progress ->
                 current = current.copy(video = current.video.copy(contrast = progress / 100f))
@@ -153,28 +235,28 @@ class PerGameSettingsScreen(private val context: Context) {
         // ── Audio Section ──
         content.addView(sectionTitle("Audio", "Sound and music"))
 
-        content.addView(switchPanel("Mute Music", "Disable background music", 
+        content.addView(switchPanel("Mute Music", "Disable background music",
             current.audio.muteMusic) { checked ->
             current = current.copy(audio = current.audio.copy(muteMusic = checked))
             onConfigChanged(current)
         })
         content.addView(spacer(10))
 
-        content.addView(switchPanel("Mute Sound Effects", "Disable sound effects", 
+        content.addView(switchPanel("Mute Sound Effects", "Disable sound effects",
             current.audio.muteSfx) { checked ->
             current = current.copy(audio = current.audio.copy(muteSfx = checked))
             onConfigChanged(current)
         })
         content.addView(spacer(10))
 
-        content.addView(switchPanel("Mute Video Audio", "Disable video sound", 
+        content.addView(switchPanel("Mute Video Audio", "Disable video sound",
             current.audio.muteVideo) { checked ->
             current = current.copy(audio = current.audio.copy(muteVideo = checked))
             onConfigChanged(current)
         })
         content.addView(spacer(10))
 
-        content.addView(sliderPanel("Master Volume", 
+        content.addView(sliderPanel("Master Volume",
             "${(current.audio.volume * 100).toInt()}%") { label ->
             slider(100, (current.audio.volume * 100).toInt().coerceIn(0, 100)) { progress ->
                 current = current.copy(audio = current.audio.copy(volume = progress / 100f))
@@ -184,7 +266,7 @@ class PerGameSettingsScreen(private val context: Context) {
         })
         content.addView(spacer(10))
 
-        content.addView(sliderPanel("Music Volume", 
+        content.addView(sliderPanel("Music Volume",
             "${(current.audio.volumeMusic * 100).toInt()}%") { label ->
             slider(100, (current.audio.volumeMusic * 100).toInt().coerceIn(0, 100)) { progress ->
                 current = current.copy(audio = current.audio.copy(volumeMusic = progress / 100f))
@@ -194,7 +276,7 @@ class PerGameSettingsScreen(private val context: Context) {
         })
         content.addView(spacer(10))
 
-        content.addView(sliderPanel("SFX Volume", 
+        content.addView(sliderPanel("SFX Volume",
             "${(current.audio.volumeSfx * 100).toInt()}%") { label ->
             slider(100, (current.audio.volumeSfx * 100).toInt().coerceIn(0, 100)) { progress ->
                 current = current.copy(audio = current.audio.copy(volumeSfx = progress / 100f))
@@ -207,35 +289,35 @@ class PerGameSettingsScreen(private val context: Context) {
         // ── Performance Section ──
         content.addView(sectionTitle("Performance", "Optimization settings"))
 
-        content.addView(switchPanel("Threaded Rendering", "Use multiple threads for rendering", 
+        content.addView(switchPanel("Threaded Rendering", "Use multiple threads for rendering",
             current.performance.threadedRendering) { checked ->
             current = current.copy(performance = current.performance.copy(threadedRendering = checked))
             onConfigChanged(current)
         })
         content.addView(spacer(10))
 
-        content.addView(switchPanel("Background Loading", "Load assets in background", 
+        content.addView(switchPanel("Background Loading", "Load assets in background",
             current.performance.backgroundLoading) { checked ->
             current = current.copy(performance = current.performance.copy(backgroundLoading = checked))
             onConfigChanged(current)
         })
         content.addView(spacer(10))
 
-        content.addView(switchPanel("Reduce Shadows", "Lower shadow quality for better performance", 
+        content.addView(switchPanel("Reduce Shadows", "Lower shadow quality for better performance",
             current.performance.reduceShadows) { checked ->
             current = current.copy(performance = current.performance.copy(reduceShadows = checked))
             onConfigChanged(current)
         })
         content.addView(spacer(10))
 
-        content.addView(switchPanel("Reduce Particles", "Lower particle effects for better performance", 
+        content.addView(switchPanel("Reduce Particles", "Lower particle effects for better performance",
             current.performance.reduceParticles) { checked ->
             current = current.copy(performance = current.performance.copy(reduceParticles = checked))
             onConfigChanged(current)
         })
         content.addView(spacer(10))
 
-        content.addView(sliderPanel("Frame Skip", 
+        content.addView(sliderPanel("Frame Skip",
             "${current.performance.frameSkip}") { label ->
             slider(5, current.performance.frameSkip.coerceIn(0, 5)) { progress ->
                 current = current.copy(performance = current.performance.copy(frameSkip = progress))
@@ -245,7 +327,7 @@ class PerGameSettingsScreen(private val context: Context) {
         })
         content.addView(spacer(10))
 
-        content.addView(sliderPanel("Texture Cache Size", 
+        content.addView(sliderPanel("Texture Cache Size",
             "${current.performance.textureCacheSize} MB") { label ->
             slider(256, (current.performance.textureCacheSize / 4).coerceIn(8, 64)) { progress ->
                 val size = progress * 4
@@ -259,28 +341,28 @@ class PerGameSettingsScreen(private val context: Context) {
         // ── Fonts Section ──
         content.addView(sectionTitle("Fonts", "Text rendering"))
 
-        content.addView(switchPanel("Use Game Fonts", "Prefer fonts bundled with the game", 
+        content.addView(switchPanel("Use Game Fonts", "Prefer fonts bundled with the game",
             current.fonts.useGameFonts) { checked ->
             current = current.copy(fonts = current.fonts.copy(useGameFonts = checked))
             onConfigChanged(current)
         })
         content.addView(spacer(10))
 
-        content.addView(switchPanel("Bold Text", "Make all text bold", 
+        content.addView(switchPanel("Bold Text", "Make all text bold",
             current.fonts.boldText) { checked ->
             current = current.copy(fonts = current.fonts.copy(boldText = checked))
             onConfigChanged(current)
         })
         content.addView(spacer(10))
 
-        content.addView(switchPanel("Italic Text", "Make all text italic", 
+        content.addView(switchPanel("Italic Text", "Make all text italic",
             current.fonts.italicText) { checked ->
             current = current.copy(fonts = current.fonts.copy(italicText = checked))
             onConfigChanged(current)
         })
         content.addView(spacer(10))
 
-        content.addView(sliderPanel("Font Scale", 
+        content.addView(sliderPanel("Font Scale",
             "${(current.fonts.fontScale * 100).toInt()}%") { label ->
             slider(200, ((current.fonts.fontScale - 0.5f) * 200).toInt().coerceIn(0, 200)) { progress ->
                 current = current.copy(fonts = current.fonts.copy(fontScale = 0.5f + progress / 200f))
@@ -290,7 +372,7 @@ class PerGameSettingsScreen(private val context: Context) {
         })
         content.addView(spacer(10))
 
-        content.addView(sliderPanel("Line Spacing", 
+        content.addView(sliderPanel("Line Spacing",
             "${(current.fonts.lineSpacing * 100).toInt()}%") { label ->
             slider(200, ((current.fonts.lineSpacing - 0.5f) * 200).toInt().coerceIn(0, 200)) { progress ->
                 current = current.copy(fonts = current.fonts.copy(lineSpacing = 0.5f + progress / 200f))
@@ -313,15 +395,18 @@ class PerGameSettingsScreen(private val context: Context) {
             addView(
                 TextView(context).apply {
                     text = "Back"
-                    setTextColor(ACCENT)
+                    setTextColor(Theme.active.accent)
                     textSize = 13f
                     typeface = Typeface.DEFAULT_BOLD
                     gravity = Gravity.CENTER
                     setPadding(dp(8), dp(6), dp(8), dp(6))
                     background = GradientDrawable().apply {
-                        setColor(Color.argb(40, 207, 174, 126))
+                        setColor(Theme.active.accentBg)
                         cornerRadius = dp(8).toFloat()
-                        setStroke(dp(1), Color.argb(60, 207, 174, 126))
+                        setStroke(dp(1), Color.argb(60,
+                            Color.red(Theme.active.accent),
+                            Color.green(Theme.active.accent),
+                            Color.blue(Theme.active.accent)))
                     }
                     setOnClickListener { onBack() }
                 },
@@ -437,11 +522,252 @@ class PerGameSettingsScreen(private val context: Context) {
             addView(row)
         }
 
+    private fun metadataEditRow(label: String, value: String, onChange: (String) -> Unit): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            addView(TextView(context).apply {
+                text = label; setTextColor(MUTED); textSize = 11f
+                typeface = Typeface.DEFAULT_BOLD
+                layoutParams = LinearLayout.LayoutParams(dp(72), ViewGroup.LayoutParams.WRAP_CONTENT)
+            })
+            val valView = TextView(context).apply {
+                text = if (value.isEmpty()) "(tap to edit)" else value
+                setTextColor(if (value.isEmpty()) Color.argb(120, 140, 130, 112) else TEXT)
+                textSize = 13f; setPadding(dp(6), dp(3), dp(6), dp(3))
+                maxLines = 3; ellipsize = android.text.TextUtils.TruncateAt.END
+                background = glassBg(8, alpha = 80)
+                makeLiquid(this)
+            }
+            valView.setOnClickListener {
+                showMetadataEditOverlay(label, value) { newValue ->
+                    onChange(newValue)
+                    valView.text = if (newValue.isEmpty()) "(tap to edit)" else newValue
+                    valView.setTextColor(if (newValue.isEmpty()) Color.argb(120, 140, 130, 112) else TEXT)
+                }
+            }
+            addView(valView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+
+    private fun showMetadataEditOverlay(label: String, currentValue: String, onSave: (String) -> Unit) {
+        val displayMetrics = context.resources.displayMetrics
+        val screenW = displayMetrics.widthPixels
+        val rootView = (context as? android.app.Activity)?.window?.decorView
+            ?.findViewById<ViewGroup>(android.R.id.content) ?: return
+
+        // Backdrop
+        val overlay = FrameLayout(context).apply {
+            layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+            setBackgroundColor(Color.argb(180, 0, 0, 0))
+            alpha = 0f
+            animate().alpha(1f).setDuration(250).start()
+        }
+
+        // Glass panel
+        val panelW = (screenW * 0.82f).toInt()
+        val panel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(20), dp(20), dp(16))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(230, 12, 11, 16))
+                cornerRadius = dp(20).toFloat()
+                setStroke(dp(1), Color.argb(70, 160, 140, 110))
+            }
+            translationY = 100f; alpha = 0f
+            animate().translationY(0f).alpha(1f).setDuration(350)
+                .setInterpolator(OvershootInterpolator(1.1f)).start()
+        }
+
+        // Title
+        panel.addView(TextView(context).apply {
+            text = "Edit $label"
+            setTextColor(ACCENT); textSize = 16f; typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, 0, 0, dp(12))
+        })
+
+        // EditText with glass styling
+        val editText = android.widget.EditText(context).apply {
+            setText(currentValue); setTextColor(TEXT); setHint("Enter $label...")
+            setHintTextColor(Color.argb(80, 200, 200, 200))
+            setBackgroundColor(Color.argb(30, 255, 255, 255))
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            textSize = 15f
+            setSelection(text?.length ?: 0)
+        }
+        // Rounded corner background for EditText
+        editText.background = GradientDrawable().apply {
+            setColor(Color.argb(30, 255, 255, 255))
+            cornerRadius = dp(12).toFloat()
+            setStroke(dp(1), Color.argb(40, 200, 180, 150))
+        }
+        panel.addView(editText)
+        panel.addView(spacer(h = 18))
+
+        // Button row
+        val btnRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
+        }
+        // Cancel
+        btnRow.addView(TextView(context).apply {
+            text = "Cancel"; setTextColor(MUTED); textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(40, 200, 180, 150))
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), Color.argb(40, 200, 180, 150))
+            }
+            setOnClickListener {
+                overlay.animate().alpha(0f).translationY(60f).setDuration(180)
+                    .withEndAction { rootView.removeView(overlay) }.start()
+            }
+        }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { setMargins(0, 0, dp(6), 0) })
+        // Save
+        btnRow.addView(TextView(context).apply {
+            text = "Save"; setTextColor(Theme.active.accentBright); textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(60, 200, 170, 130))
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), Color.argb(80, 200, 170, 130))
+            }
+            setOnClickListener {
+                val newVal = editText.text.toString()
+                onSave(newVal)
+                overlay.animate().alpha(0f).translationY(60f).setDuration(180)
+                    .withEndAction { rootView.removeView(overlay) }.start()
+            }
+        }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { setMargins(dp(6), 0, 0, 0) })
+        panel.addView(btnRow)
+
+        // Mount
+        overlay.addView(panel, FrameLayout.LayoutParams(panelW, WRAP, Gravity.CENTER))
+        rootView.addView(overlay)
+
+        // Backdrop dismiss
+        overlay.setOnClickListener { v ->
+            v.animate().alpha(0f).translationY(60f).setDuration(180)
+                .withEndAction { rootView.removeView(v) }.start()
+        }
+        // Allow text interaction without dismissing
+        panel.setOnClickListener { /* consume tap */ }
+    }
+
+    private fun coverPicker(
+        currentPath: String?,
+        onPick: (setPath: (String) -> Unit) -> Unit,
+        onClear: (clearPath: (String) -> Unit) -> Unit,
+    ): LinearLayout = settingsPanel {
+        var previewImage: ImageView? = null
+        lateinit var clearBtn: TextView
+
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        }
+
+        // Thumbnail preview
+        val thumb = ImageView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(64), dp(96))
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setBackgroundColor(Color.argb(40, 255, 255, 255))
+            if (!currentPath.isNullOrEmpty()) {
+                val bmp = loadCoverBitmap(currentPath)
+                if (bmp != null) setImageBitmap(bmp)
+            }
+        }
+        previewImage = thumb
+        row.addView(thumb)
+        row.addView(spacer(h = 0, w = 12))
+
+        // Buttons column
+        val btnCol = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val pickBtn = TextView(context).apply {
+            text = "CHOOSE IMAGE"
+            setTextColor(Theme.active.accent); textSize = 13f; typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER; setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = GradientDrawable().apply {
+                setColor(Theme.active.accentBg)
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), Color.argb(80,
+                    Color.red(Theme.active.accent),
+                    Color.green(Theme.active.accent),
+                    Color.blue(Theme.active.accent)))
+            }
+            makeLiquid(this)
+            setOnClickListener {
+                onPick { pickedPath ->
+                    runCatching {
+                        val bmp = loadCoverBitmap(pickedPath)
+                        if (bmp != null) previewImage?.setImageBitmap(bmp)
+                    }
+                    clearBtn.visibility = View.VISIBLE
+                }
+            }
+        }
+        btnCol.addView(pickBtn)
+        btnCol.addView(spacer(h = 6))
+
+        clearBtn = TextView(context).apply {
+            text = "REMOVE"
+            setTextColor(Color.rgb(200, 120, 120)); textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(50, 180, 80, 80))
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), Color.argb(80, 180, 80, 80))
+            }
+            visibility = if (currentPath.isNullOrEmpty()) View.GONE else View.VISIBLE
+            makeLiquid(this)
+            setOnClickListener {
+                previewImage?.setImageDrawable(null)
+                previewImage?.setBackgroundColor(Color.argb(40, 255, 255, 255))
+                visibility = View.GONE
+                onClear { cleared ->
+                    // no-op, handled by caller
+                }
+            }
+        }
+        btnCol.addView(clearBtn)
+
+        row.addView(btnCol)
+        addView(row)
+    }
+
+    private fun loadCoverBitmap(path: String): Bitmap? {
+        return runCatching {
+            val file = File(path)
+            if (!file.exists()) return@runCatching null
+            val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+            val bmp = BitmapFactory.decodeFile(path, opts)
+            // Scale to fit the thumbnail area maintaining aspect ratio
+            if (bmp != null) {
+                val maxW = dp(64).toFloat(); val maxH = dp(96).toFloat()
+                val scale = minOf(maxW / bmp.width, maxH / bmp.height)
+                if (scale < 1f) {
+                    val w = (bmp.width * scale).toInt()
+                    val h = (bmp.height * scale).toInt()
+                    Bitmap.createScaledBitmap(bmp, w, h, true)
+                } else bmp
+            } else null
+        }.getOrNull()
+    }
+
     private fun slider(max: Int, progress: Int, onChange: (Int) -> Unit): GlassSlider =
         GlassSlider(context, max, progress, onChange)
 
-    private fun spacer(h: Int): View = View(context).apply {
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(h))
+    private fun spacer(h: Int = 0, w: Int = 0): View {
+        val lp = LinearLayout.LayoutParams(
+            if (w > 0) dp(w) else ViewGroup.LayoutParams.MATCH_PARENT,
+            if (h > 0) dp(h) else ViewGroup.LayoutParams.WRAP_CONTENT,
+        )
+        return View(context).apply { layoutParams = lp }
     }
 
     private fun dp(v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
@@ -449,11 +775,6 @@ class PerGameSettingsScreen(private val context: Context) {
     private fun makeLiquid(view: View) {
         view.setOnTouchListener { v, event ->
             when (event.action) {
-                android.view.MotionEvent.ACTION_DOWN -> {
-                    v.animate().cancel()
-                    v.scaleX = 1.08f
-                    v.scaleY = 1.08f
-                }
                 android.view.MotionEvent.ACTION_MOVE -> {
                     val cx = v.width / 2f
                     val cy = v.height / 2f
@@ -465,16 +786,12 @@ class PerGameSettingsScreen(private val context: Context) {
                 android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
                     v.animate().cancel()
                     v.animate()
-                        .scaleX(1f).scaleY(1f)
                         .translationX(0f).translationY(0f)
-                        .setDuration(250)
-                        .setInterpolator(OvershootInterpolator(1.6f))
-                        .withEndAction {
-                            v.scaleX = 1f; v.scaleY = 1f
-                            v.translationX = 0f; v.translationY = 0f
-                        }
+                        .setDuration(200)
+                        .setInterpolator(OvershootInterpolator(1.4f))
                         .start()
                 }
+                else -> {}
             }
             false
         }
@@ -484,7 +801,10 @@ class PerGameSettingsScreen(private val context: Context) {
         GradientDrawable().apply {
             setColor(Color.argb(alpha, 18, 18, 24))
             cornerRadius = dp(radius).toFloat()
-            setStroke(dp(1), Color.argb(40, 207, 174, 126))
+            setStroke(dp(1), Color.argb(40,
+                Color.red(Theme.active.accent),
+                Color.green(Theme.active.accent),
+                Color.blue(Theme.active.accent)))
         }
 
     private inner class GlassSlider(
@@ -562,6 +882,8 @@ class PerGameSettingsScreen(private val context: Context) {
     companion object {
         private val TEXT = Color.rgb(232, 229, 220)
         private val MUTED = Color.rgb(140, 130, 112)
-        private val ACCENT = Color.rgb(207, 174, 126)
+        private val ACCENT: Int get() = Theme.active.accent
+        private val MATCH_PARENT = ViewGroup.LayoutParams.MATCH_PARENT
+        private val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
     }
 }

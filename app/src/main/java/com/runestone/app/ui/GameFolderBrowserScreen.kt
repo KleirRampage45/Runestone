@@ -278,6 +278,6 @@ class GameFolderBrowserScreen(private val context: Context) {
         val TEXT = Color.rgb(232, 229, 220)
         val MUTED = Color.rgb(140, 130, 112)
         val MUTED_DIM = Color.rgb(100, 95, 85)
-        val ACCENT: Int get() = Theme.ACCENT
+        val ACCENT: Int get() = Theme.active.accent
     }
 }

@@ -36,7 +36,8 @@ class SafGameImporter(
 
     fun importTree(treeUri: Uri, requestedStorageName: String? = null): SafImportResult {
         Log.i(TAG, "importTree: uri=$treeUri requested=$requestedStorageName")
-        val gameName = requestedStorageName ?: deriveGameName(treeUri)
+        val rootDocumentUri = resolveDocumentUri(treeUri)
+        val gameName = requestedStorageName ?: queryDocument(rootDocumentUri).name
         Log.i(TAG, "importTree: gameName=$gameName")
         val sanitized = sanitizeName(gameName)
         val gameDir: File = if (requestedStorageName != null && workspaceManager.isInstalled(requestedStorageName)) {
@@ -53,9 +54,6 @@ class SafGameImporter(
         incoming.mkdirs()
 
         return runCatching {
-            val rootDocumentId = DocumentsContract.getTreeDocumentId(treeUri)
-            Log.i(TAG, "importTree: rootDocumentId=$rootDocumentId")
-            val rootDocumentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootDocumentId)
             Log.i(TAG, "importTree: rootDocumentUri=$rootDocumentUri")
 
             onProgress("Copying game files...")
@@ -168,20 +166,17 @@ class SafGameImporter(
         return DocumentMeta(documentUri, "document", "")
     }
 
+    private fun resolveDocumentUri(uri: Uri): Uri {
+        val documentId = runCatching { DocumentsContract.getDocumentId(uri) }
+            .getOrElse { DocumentsContract.getTreeDocumentId(uri) }
+        return DocumentsContract.buildDocumentUriUsingTree(uri, documentId)
+    }
+
     private fun sanitizeName(name: String): String {
         val cleaned = name.replace('/', '_').replace('\\', '_').trim()
         if (cleaned.isEmpty()) throw IllegalArgumentException("Empty file name")
         if (cleaned == "." || cleaned == "..") throw IllegalArgumentException("Unsafe name: $name")
         return cleaned
-    }
-
-    private fun deriveGameName(treeUri: Uri): String {
-        return treeUri.lastPathSegment
-            ?.let { Uri.decode(it) }
-            ?.replace(Regex("^tree/|^document/|^primary:"), "")
-            ?.trimEnd('/')
-            ?.ifEmpty { "imported-game" }
-            ?: "imported-game"
     }
 
     private data class DocumentMeta(
