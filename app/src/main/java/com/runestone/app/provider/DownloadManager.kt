@@ -85,7 +85,8 @@ class DownloadManager(private val context: Context) {
 
         val thread = Thread {
             val resolvedUrl = try {
-                validateDownloadUrl(url)
+                val resolved = HosterResolver.resolve(url)
+                validateDownloadUrl(resolved)
             } catch (e: Exception) {
                 Log.e(TAG, "Invalid download URL for $gameId: ${e.message}", e)
                 setState(gameId, DownloadState.FAILED)
@@ -119,7 +120,8 @@ class DownloadManager(private val context: Context) {
 
         val thread = Thread {
             val resolvedUrl = try {
-                validateDownloadUrl(url)
+                val resolved = HosterResolver.resolve(url)
+                validateDownloadUrl(resolved)
             } catch (e: Exception) {
                 Log.e(TAG, "Invalid download URL for $gameId: ${e.message}", e)
                 setState(gameId, DownloadState.FAILED)

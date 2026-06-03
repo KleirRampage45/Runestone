@@ -80,6 +80,25 @@ class SourcesScreen(private val context: Context) {
                 setPadding(dp(16), dp(4), dp(16), 0)
                 setLineSpacing(2f, 1f)
             })
+            content.addView(spacer(dp(20)))
+            // Use Public Catalogue button
+            content.addView(TextView(context).apply {
+                text = "USE PUBLIC CATALOGUE"; setTextColor(Color.rgb(140, 220, 160)); textSize = 13f
+                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setPadding(dp(16), dp(12), dp(16), dp(12))
+                background = GradientDrawable().apply {
+                    setColor(Color.argb(40, 80, 160, 80)); cornerRadius = dp(10).toFloat()
+                    setStroke(dp(1), Color.argb(60, 100, 200, 120))
+                }
+                setOnClickListener {
+                    animTap(this)
+                    onAddSource(DEFAULT_CATALOGUE_URL)
+                }
+                makeLiquid(this)
+            }, LinearLayout.LayoutParams(
+                (context.resources.displayMetrics.widthPixels * 0.8f).toInt(),
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = Gravity.CENTER })
         } else {
             sources.forEach { source ->
                 content.addView(sourceRow(source, onRemoveSource))
@@ -314,6 +333,7 @@ class SourcesScreen(private val context: Context) {
     private fun dp(v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
 
     private companion object {
+        const val DEFAULT_CATALOGUE_URL = "https://kleirrampage45.github.io/runestone-catalogue/games.json"
         val TEXT = Color.rgb(232, 229, 220)
         val MUTED = Color.rgb(140, 130, 112)
         val MUTED_DIM = Color.rgb(100, 95, 85)

@@ -195,7 +195,12 @@ class SourcesManager(private val context: Context) {
 
     private fun validateHttpsUrl(rawUrl: String): String {
         val trimmed = rawUrl.trim()
-        val url = URL(trimmed)
+        val upgraded = if (trimmed.startsWith("http://", ignoreCase = true)) {
+            "https://" + trimmed.substringAfter("://")
+        } else {
+            trimmed
+        }
+        val url = URL(upgraded)
         require(url.protocol.equals("https", ignoreCase = true)) { "Only HTTPS URLs are supported" }
         require(url.host.isNotBlank()) { "URL must include a host" }
         require(url.userInfo == null) { "URLs with embedded credentials are not supported" }

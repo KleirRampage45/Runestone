@@ -31,6 +31,7 @@ import android.widget.TextView
 import com.runestone.app.provider.AvailableGame
 import com.runestone.app.provider.DownloadManager
 import com.runestone.app.provider.DownloadOption
+import com.runestone.app.provider.HosterResolver
 import com.runestone.app.provider.SourcesManager
 
 class AvailableGamesScreen(private val context: Context) {
@@ -535,21 +536,27 @@ class AvailableGamesScreen(private val context: Context) {
         panel.addView(spacer(dp(14)))
 
         game.downloadOptions.forEach { option ->
+            val hostStatus = HosterResolver.isSupported(option.url)
+            val isSupported = hostStatus.supported
+
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(12), dp(10), dp(12), dp(10))
-                background = glassBg(dp(10), alpha = 60)
-                setOnClickListener {
-                    animTap(this)
-                    val singleOptionGame = game.copy(downloadOptions = listOf(option))
-                    onDownload(singleOptionGame)
-                    val rootView = (context as? android.app.Activity)?.window?.decorView
-                        ?.findViewById<ViewGroup>(android.R.id.content)
-                    overlay.animate().alpha(0f).translationY(60f).setDuration(200).withEndAction {
-                        rootView?.removeView(overlay)
-                    }.start()
+                alpha = if (isSupported) 1f else 0.45f
+                background = glassBg(dp(10), alpha = 60, accent = isSupported)
+                if (isSupported) {
+                    setOnClickListener {
+                        animTap(this)
+                        val singleOptionGame = game.copy(downloadOptions = listOf(option))
+                        onDownload(singleOptionGame)
+                        val rootView = (context as? android.app.Activity)?.window?.decorView
+                            ?.findViewById<ViewGroup>(android.R.id.content)
+                        overlay.animate().alpha(0f).translationY(60f).setDuration(200).withEndAction {
+                            rootView?.removeView(overlay)
+                        }.start()
+                    }
+                    makeLiquid(this)
                 }
-                makeLiquid(this)
             }
 
             val infoCol = LinearLayout(context).apply {
@@ -559,15 +566,22 @@ class AvailableGamesScreen(private val context: Context) {
                 text = option.name; setTextColor(TEXT); textSize = 14f
                 typeface = Typeface.DEFAULT_BOLD
             })
+            if (!isSupported) {
+                infoCol.addView(TextView(context).apply {
+                    text = "Not available on Android"
+                    setTextColor(Color.rgb(200, 120, 100)); textSize = 10f
+                    setPadding(0, dp(2), 0, 0)
+                })
+            }
             row.addView(infoCol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
             row.addView(TextView(context).apply {
-                text = option.host; setTextColor(ACCENT); textSize = 11f
+                text = option.host; setTextColor(if (isSupported) ACCENT else Color.rgb(140, 100, 90)); textSize = 11f
                 typeface = Typeface.DEFAULT_BOLD
                 setPadding(dp(8), dp(3), dp(8), dp(3))
                 background = GradientDrawable().apply {
-                    setColor(Color.argb(40, 200, 170, 130)); cornerRadius = dp(5).toFloat()
-                    setStroke(dp(1), Color.argb(50, 200, 170, 130))
+                    setColor(Color.argb(if (isSupported) 40 else 20, 200, 170, 130)); cornerRadius = dp(5).toFloat()
+                    setStroke(dp(1), Color.argb(if (isSupported) 50 else 20, 200, 170, 130))
                 }
             })
 
