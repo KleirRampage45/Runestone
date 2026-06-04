@@ -10,8 +10,9 @@
 
 package com.runestone.app.ui
 
+import android.content.Context
 import android.graphics.Color
-
+import android.provider.Settings
 /**
  * Shared UI theme constants and color palette system.
  * Use these instead of duplicating color values across screens.
@@ -33,7 +34,7 @@ object Theme {
     // Text colors — consistent across all palettes
     val TEXT = Color.rgb(232, 229, 220)
     val MUTED = Color.rgb(140, 130, 112)
-    val MUTED_DIM = Color.rgb(100, 95, 85)
+    val MUTED_DIM = Color.rgb(120, 112, 104)  // #787068 — 4.5:1 AA on #0F0E10
     val PANEL_BG = Color.argb(190, 12, 11, 16)
 
     // ── Palette Definitions ──
@@ -114,4 +115,11 @@ object Theme {
 
     fun byName(name: String): ColorPalette =
         palettes.find { it.name == name } ?: Amber
+
+    fun isReducedMotion(context: Context): Boolean {
+        val appPrefs = context.getSharedPreferences("runestone-settings-v1", Context.MODE_PRIVATE)
+        val appSetting = appPrefs.getBoolean("reduceMotion", false)
+        val systemScale = Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+        return appSetting || systemScale == 0f
+    }
 }

@@ -456,7 +456,7 @@ class HomeScreen(private val context: Context) {
         val homeIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_home)
         }
-        bar.addView(dockItem(homeIcon) {
+        bar.addView(dockItem(homeIcon, "Home") {
             selectDockItem(it)
             onHome()
         })
@@ -465,7 +465,7 @@ class HomeScreen(private val context: Context) {
         val storeIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_store)
         }
-        bar.addView(dockItem(storeIcon) {
+        bar.addView(dockItem(storeIcon, "Store") {
             selectDockItem(it)
             onBrowse()
         })
@@ -474,7 +474,7 @@ class HomeScreen(private val context: Context) {
         val addIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_add)
         }
-        bar.addView(dockItem(addIcon) {
+        bar.addView(dockItem(addIcon, "Add game") {
             selectDockItem(it)
             onAdd()
         })
@@ -483,7 +483,7 @@ class HomeScreen(private val context: Context) {
         val folderIcon = ImageView(context).apply {
             setImageResource(R.drawable.ic_folder)
         }
-        bar.addView(dockItem(folderIcon) {
+        bar.addView(dockItem(folderIcon, "Manage files") {
             selectDockItem(it)
             onManage()
         })
@@ -499,15 +499,19 @@ class HomeScreen(private val context: Context) {
         }
         gearIcon.setOnTouchListener { _, event ->
             when (event.action) {
-                MotionEvent.ACTION_DOWN -> gearRotator.start()
+                MotionEvent.ACTION_DOWN -> { if (!Theme.isReducedMotion(context)) gearRotator.start() }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     gearRotator.cancel()
-                    gearIcon.animate().cancel()
-                    gearIcon.animate()
-                        .rotation(0f)
-                        .setDuration(250)
-                        .setInterpolator(OvershootInterpolator(1.6f))
-                        .start()
+                    if (!Theme.isReducedMotion(context)) {
+                        gearIcon.animate().cancel()
+                        gearIcon.animate()
+                            .rotation(0f)
+                            .setDuration(250)
+                            .setInterpolator(OvershootInterpolator(1.6f))
+                            .start()
+                    } else {
+                        gearIcon.rotation = 0f
+                    }
                 }
             }
             false
@@ -521,7 +525,7 @@ class HomeScreen(private val context: Context) {
                 gearIcon.rotation = 0f
             }
         })
-        bar.addView(dockItem(gearIcon) {
+        bar.addView(dockItem(gearIcon, "Settings") {
             gearRotator.cancel()
             gearIcon.animate().cancel()
             gearIcon.rotation = 0f
@@ -531,9 +535,13 @@ class HomeScreen(private val context: Context) {
         return bar
     }
 
-    private fun dockItem(icon: View, onClick: (FrameLayout) -> Unit): FrameLayout = FrameLayout(context).apply {
+    private fun dockItem(icon: View, label: String, onClick: (FrameLayout) -> Unit): FrameLayout = FrameLayout(context).apply {
+        minimumWidth = dp(48); minimumHeight = dp(48)
         layoutParams = LinearLayout.LayoutParams(0, MATCH, 1f)
-        addView(icon, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
+        icon.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        addView(icon, FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER))
+        contentDescription = label
+        isClickable = true
         setOnClickListener { onClick(this) }
         makeLiquid(this)
     }
@@ -670,7 +678,7 @@ class HomeScreen(private val context: Context) {
         val screenW = displayMetrics.widthPixels
 
         // ── Helpers (defined first so all code below can reference them) ──
-        fun animTap(v: View) {
+        fun animTap(v: View) { if (Theme.isReducedMotion(context)) return
             v.animate().scaleX(0.88f).scaleY(0.88f).setDuration(60)
                 .withEndAction {
                     v.animate().scaleX(1f).scaleY(1f).setDuration(180)
@@ -749,6 +757,7 @@ class HomeScreen(private val context: Context) {
             text = "X"; setTextColor(MUTED_DIM); textSize = 12f
             typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setPadding(dp(8), dp(4), dp(8), dp(4))
+            minimumWidth = dp(48); minimumHeight = dp(48)
             visibility = if (initialSearch.isNotEmpty()) View.VISIBLE else View.INVISIBLE
             setOnClickListener {
                 animTap(this)
@@ -1064,21 +1073,6 @@ class HomeScreen(private val context: Context) {
         }
         dimOverlay.addView(actionPanel)
 
-        // PLAY — fixed symmetric width (only for non-paused games; paused games use the bottom bar)
-        if (!game.isPaused) {
-            val btnW = if (compact) (cardW * 0.78f).toInt() else dp(150)
-            val playBtn = TextView(context).apply {
-                text = "PLAY"; setTextColor(Color.rgb(220, 200, 160)); textSize = if (compact) 12f else 16f
-                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setPadding(dp(12), dp(8), dp(12), dp(8))
-                background = glassBg(dp(6), alpha = 100, accent = true)
-                setOnClickListener { onPlay(game.storageName) }
-                makeLiquid(this)
-            }
-            actionPanel.addView(playBtn, LinearLayout.LayoutParams(btnW, WRAP))
-            actionPanel.addView(spacer(dp(14)))
-        }
-
         // SETTINGS — same width
         val optsBtn = TextView(context).apply {
             text = "SETTINGS"; setTextColor(Color.rgb(200, 180, 150)); textSize = if (compact) 11f else 16f
@@ -1089,6 +1083,19 @@ class HomeScreen(private val context: Context) {
             makeLiquid(this)
         }
         actionPanel.addView(optsBtn, LinearLayout.LayoutParams(if (compact) (cardW * 0.78f).toInt() else dp(150), WRAP))
+        if (!game.isPaused) {
+            actionPanel.addView(spacer(dp(14)))
+            val btnW = if (compact) (cardW * 0.78f).toInt() else dp(150)
+            val playBtn = TextView(context).apply {
+                text = "PLAY"; setTextColor(Color.rgb(220, 200, 160)); textSize = if (compact) 12f else 16f
+                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                background = glassBg(dp(6), alpha = 100, accent = true)
+                setOnClickListener { onPlay(game.storageName) }
+                makeLiquid(this)
+            }
+            actionPanel.addView(playBtn, LinearLayout.LayoutParams(btnW, WRAP))
+        }
 
         // Tap wrapper → toggle overlay + blur (single-selection)
         cardWrapper.setOnClickListener {
@@ -1200,7 +1207,7 @@ class HomeScreen(private val context: Context) {
     //  Liquid Glass touch — zoom + parallax on press-and-move
     // ============================================================
 
-    private fun makeLiquid(view: View) {
+    private fun makeLiquid(view: View) { if (Theme.isReducedMotion(context)) return
         view.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -1772,7 +1779,7 @@ class HomeScreen(private val context: Context) {
         val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
         val TEXT = Color.rgb(232, 229, 220)
         val MUTED = Color.rgb(140, 130, 112)
-        val MUTED_DIM = Color.rgb(100, 95, 85)
+        val MUTED_DIM = Color.rgb(120, 112, 104)
         val ACCENT: Int get() = Theme.active.accent
     }
 }

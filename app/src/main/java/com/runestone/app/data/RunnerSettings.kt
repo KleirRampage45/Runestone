@@ -109,4 +109,7 @@ data class RunnerSettings(
 
     // Metadata
     val rawgApiKey: String = "",
+
+    // Accessibility
+    val reduceMotion: Boolean = false,
 )

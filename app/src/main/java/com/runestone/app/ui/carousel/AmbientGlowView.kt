@@ -18,6 +18,7 @@ import android.view.animation.OvershootInterpolator
 import com.runestone.app.data.EngineType
 
 class AmbientGlowView(context: Context) : View(context) {
+    init { importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
 
     private var currentColor: Int = Color.argb(40, 207, 174, 126) // default accent
     private var targetColor: Int = currentColor

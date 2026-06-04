@@ -71,7 +71,7 @@ class ManageFilesScreen(private val context: Context) {
 
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(28))
+            setPadding(dp(14), dp(12), dp(14), dp(24))
         }
         scroll.addView(content, ViewGroup.LayoutParams(MATCH, WRAP))
 
@@ -95,7 +95,7 @@ class ManageFilesScreen(private val context: Context) {
                     onPerGameSettings = onPerGameSettings,
                 ),
             )
-            content.addView(spacer(14))
+            content.addView(spacer(10))
         }
 
         content.addView(footerNote())
@@ -110,7 +110,7 @@ class ManageFilesScreen(private val context: Context) {
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(14))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
             setBackgroundColor(Color.rgb(15, 14, 18))
 
             addView(TextView(context).apply {
@@ -131,7 +131,7 @@ class ManageFilesScreen(private val context: Context) {
             }
             titleColumn.addView(TextView(context).apply {
                 text = "Game Files"
-                setTextColor(TEXT); textSize = 21f; typeface = Typeface.create("serif", Typeface.BOLD); gravity = Gravity.CENTER
+                setTextColor(TEXT); textSize = 19f; typeface = Typeface.create("serif", Typeface.BOLD); gravity = Gravity.CENTER
             })
             titleColumn.addView(TextView(context).apply {
                 text = "imports, cache, saves"
@@ -150,21 +150,21 @@ class ManageFilesScreen(private val context: Context) {
         val saves = storages.sumOf { it.savesBytes }
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(15), dp(16), dp(15))
+            setPadding(dp(14), dp(12), dp(14), dp(12))
             background = GradientDrawable().apply {
                 setColor(Color.argb(220, 12, 11, 16))
-                cornerRadius = dp(18).toFloat()
+                cornerRadius = dp(14).toFloat()
                 setStroke(dp(1), Color.argb(70, 160, 140, 110))
             }
             alpha = 0f
             animate().alpha(1f).setDuration(300).setInterpolator(OvershootInterpolator(1.05f)).start()
             addView(TextView(context).apply {
                 text = "Workspace Storage"
-                setTextColor(TEXT); textSize = 17f; typeface = Typeface.DEFAULT_BOLD
+                setTextColor(TEXT); textSize = 15.5f; typeface = Typeface.DEFAULT_BOLD
             })
             addView(TextView(context).apply {
                 text = if (isRefreshing && storages.isEmpty()) "Checking storage..." else "${formatBytes(total)} total · ${formatBytes(saves)} saves"
-                setTextColor(ACCENT); textSize = 13f; setPadding(0, dp(5), 0, 0)
+                setTextColor(ACCENT); textSize = 12f; setPadding(0, dp(4), 0, 0)
             })
         }
     }
@@ -183,19 +183,19 @@ class ManageFilesScreen(private val context: Context) {
         onPerGameSettings: (String) -> Unit,
     ): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(16), dp(16), dp(16), dp(16))
+        setPadding(dp(14), dp(12), dp(14), dp(12))
         background = GradientDrawable().apply {
             setColor(Color.argb(190, 12, 11, 16))
-            cornerRadius = dp(16).toFloat()
+            cornerRadius = dp(14).toFloat()
             setStroke(dp(1), Color.argb(60, 160, 140, 110))
         }
         alpha = 0f
         animate().alpha(1f).setDuration(300).setInterpolator(OvershootInterpolator(1.05f)).start()
 
         addView(gameHeader(game))
-        addView(spacer(12))
+        addView(spacer(8))
         addView(storageBlock(storage))
-        addView(spacer(14))
+        addView(spacer(10))
         addView(actionBlock(game, onImport, onDelete, onViewSaves, onChangeEngine, onPerGameSettings))
     }
 
@@ -207,7 +207,8 @@ class ManageFilesScreen(private val context: Context) {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         addView(TextView(context).apply {
             text = game.displayName
-            setTextColor(TEXT); textSize = 19f; typeface = Typeface.create("serif", Typeface.BOLD)
+            setTextColor(TEXT); textSize = 16.5f; typeface = Typeface.create("serif", Typeface.BOLD)
+            maxLines = 2
         }, LinearLayout.LayoutParams(0, WRAP, 1f))
         addView(TextView(context).apply {
             text = game.engineType.label.uppercase()
@@ -223,7 +224,7 @@ class ManageFilesScreen(private val context: Context) {
 
     private fun storageBlock(storage: WorkspaceStorage?): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(12), dp(12), dp(12), dp(12))
+            setPadding(dp(10), dp(10), dp(10), dp(10))
         background = GradientDrawable().apply {
             setColor(Color.argb(120, 10, 10, 13))
             cornerRadius = dp(12).toFloat()
@@ -241,7 +242,7 @@ class ManageFilesScreen(private val context: Context) {
         addView(TextView(context).apply {
             text = if (storage.savesBytes > 0L) "Saves are protected outside the game files." else "No saves detected yet."
             setTextColor(if (storage.savesBytes > 0L) Color.rgb(190, 224, 176) else MUTED)
-            textSize = 12f; setPadding(0, dp(2), 0, dp(10))
+            textSize = 11.5f; setPadding(0, dp(2), 0, dp(8))
         })
         addView(storageLine("Game files", storage.originalBytes))
         addView(storageLine("Saves", storage.savesBytes))
@@ -268,15 +269,15 @@ class ManageFilesScreen(private val context: Context) {
     ): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
 
-        addView(glassBigButton("PER-GAME SETTINGS", "Customize settings for this game", Color.argb(58, 180, 140, 100)) { onPerGameSettings(game.storageName) })
-        addView(spacer(9))
-        addView(glassBigButton("REIMPORT GAME", "Replace game files, keep saves", Color.argb(64, 132, 36, 42)) { onImport(game.storageName) })
-        addView(spacer(9))
+        addView(glassBigButton("PER-GAME SETTINGS", "Customize this game", Color.argb(58, 180, 140, 100)) { onPerGameSettings(game.storageName) })
+        addView(spacer(7))
+        addView(glassBigButton("REIMPORT GAME", "Replace files, keep saves", Color.argb(64, 132, 36, 42)) { onImport(game.storageName) })
+        addView(spacer(7))
         addView(twoButtonRow(
             glassBigButton("VIEW SAVES", "Browse or restore save files", Color.argb(58, 130, 170, 200)) { onViewSaves(game.storageName) },
             glassBigButton("CHANGE ENGINE", "Force engine type if detection fails", Color.argb(58, 200, 170, 130)) { onChangeEngine(game.storageName) },
         ))
-        addView(spacer(9))
+        addView(spacer(7))
         addView(glassBigButton("REMOVE DATA", "Delete game, keep saves", Color.argb(54, 145, 31, 43)) { onDelete(game.storageName) })
     }
 
@@ -290,9 +291,9 @@ class ManageFilesScreen(private val context: Context) {
     private fun glassBigButton(label: String, detail: String, tint: Int, onClick: () -> Unit): TextView =
         TextView(context).apply {
             text = "$label\n$detail"
-            setTextColor(TEXT); textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            includeFontPadding = true; minHeight = dp(58)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
+            setTextColor(TEXT); textSize = 12f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            includeFontPadding = true; minHeight = dp(48)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
             background = GradientDrawable().apply {
                 setColor(tint)
                 cornerRadius = dp(14).toFloat()
@@ -337,7 +338,7 @@ class ManageFilesScreen(private val context: Context) {
     //  Glass touch helpers — ported from HomeScreen
     // ============================================================
 
-    private fun makeLiquid(view: View) {
+    private fun makeLiquid(view: View) { if (Theme.isReducedMotion(context)) return
         view.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -364,7 +365,7 @@ class ManageFilesScreen(private val context: Context) {
         }
     }
 
-    private fun animTap(v: View) {
+    private fun animTap(v: View) { if (Theme.isReducedMotion(context)) return
         v.animate().scaleX(0.88f).scaleY(0.88f).setDuration(60)
             .withEndAction {
                 v.animate().scaleX(1f).scaleY(1f).setDuration(180)
@@ -408,7 +409,7 @@ class ManageFilesScreen(private val context: Context) {
         val PANEL = Color.argb(190, 12, 11, 16)
         val TEXT = Color.rgb(232, 229, 220)
         val MUTED = Color.rgb(140, 130, 112)
-        val MUTED_DIM = Color.rgb(100, 95, 85)
+        val MUTED_DIM = Color.rgb(120, 112, 104)
         val ACCENT: Int get() = Theme.active.accent
     }
 }

@@ -7,6 +7,7 @@ import android.os.Looper
 import android.view.View
 
 class GrainOverlay(context: Context) : View(context) {
+    init { importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO; setLayerType(LAYER_TYPE_HARDWARE, null) }
     private val frames: List<Bitmap>
     private var currentFrame = 0
     private val grainPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {

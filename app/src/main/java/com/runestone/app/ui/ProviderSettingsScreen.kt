@@ -72,7 +72,7 @@ class ProviderSettingsScreen(private val context: Context) {
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(14))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
             setBackgroundColor(Color.rgb(15, 14, 18))
 
             addView(TextView(context).apply {
@@ -92,8 +92,9 @@ class ProviderSettingsScreen(private val context: Context) {
             addView(TextView(context).apply {
                 text = "Provider Settings"
                 setTextColor(TEXT); textSize = 21f
-                letterSpacing = 0.5f; gravity = Gravity.CENTER
+                letterSpacing = 0.02f; gravity = Gravity.CENTER
                 typeface = Typeface.create("serif", Typeface.BOLD)
+                maxLines = 1
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
             addView(View(context), LinearLayout.LayoutParams(dp(84), 1))
@@ -126,17 +127,16 @@ class ProviderSettingsScreen(private val context: Context) {
             text = """
 Runestone loads games from user-added HTTPS JSON sources.
 
-\u2022 The app does not include or recommend source URLs
-\u2022 Add sources from Available Games > Manage Sources
-\u2022 Each source is a JSON file with a "games" array
-\u2022 Use only files you are authorized to distribute or download
+- The app does not include or recommend source URLs
+- Add sources from Available Games > Manage Sources
+- Each source is a JSON file with a "games" array
+- Use only files you are authorized to distribute or download
 
-Each game entry needs: id, title, engine, and either downloadUrl
-or downloadOptions. Download URLs must use HTTPS.
+Required fields: id, title, engine, and either downloadUrl or downloadOptions.
+Download URLs must use HTTPS.
 
 Example:
-{"games":[{"id":"demo","title":"Demo","engine":"mv",
-"downloadUrl":"https://example.com/demo.zip"}]}
+{"games":[{"id":"demo","title":"Demo","engine":"mv","downloadUrl":"https://example.com/demo.zip"}]}
             """.trimIndent()
             setTextColor(MUTED); textSize = 11f
             setPadding(0, dp(2), 0, dp(2))
@@ -193,7 +193,7 @@ Example:
                 if (accent) 180 else 100, if (accent) 140 else 90, if (accent) 100 else 80))
         }
 
-    private fun makeLiquid(view: View) {
+    private fun makeLiquid(view: View) { if (Theme.isReducedMotion(context)) return
         view.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -214,7 +214,7 @@ Example:
         }
     }
 
-    private fun animTap(v: View) {
+    private fun animTap(v: View) { if (Theme.isReducedMotion(context)) return
         v.animate().scaleX(0.88f).scaleY(0.88f).setDuration(60)
             .withEndAction {
                 v.animate().scaleX(1f).scaleY(1f).setDuration(180)
@@ -231,7 +231,7 @@ Example:
     private companion object {
         val TEXT = Color.rgb(232, 229, 220)
         val MUTED = Color.rgb(140, 130, 112)
-        val MUTED_DIM = Color.rgb(100, 95, 85)
+        val MUTED_DIM = Color.rgb(120, 112, 104)
         val ACCENT: Int get() = Theme.active.accent
     }
 }

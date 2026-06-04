@@ -772,7 +772,7 @@ class PerGameSettingsScreen(private val context: Context) {
 
     private fun dp(v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
 
-    private fun makeLiquid(view: View) {
+    private fun makeLiquid(view: View) { if (Theme.isReducedMotion(context)) return
         view.setOnTouchListener { v, event ->
             when (event.action) {
                 android.view.MotionEvent.ACTION_MOVE -> {

@@ -5,6 +5,10 @@ import android.graphics.*
 import android.view.View
 
 class VignetteOverlay(context: Context) : View(context) {
+    init {
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        setLayerType(LAYER_TYPE_HARDWARE, null)
+    }
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     override fun onDraw(canvas: Canvas) {

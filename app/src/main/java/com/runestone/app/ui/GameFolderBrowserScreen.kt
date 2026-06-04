@@ -49,7 +49,7 @@ class GameFolderBrowserScreen(private val context: Context) {
 
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(28))
+            setPadding(dp(14), dp(12), dp(14), dp(24))
         }
         val scroll = ScrollView(context).apply {
             overScrollMode = ScrollView.OVER_SCROLL_NEVER
@@ -119,13 +119,13 @@ class GameFolderBrowserScreen(private val context: Context) {
     private fun topBar(onBack: () -> Unit): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(16), dp(14), dp(16), dp(14))
+        setPadding(dp(12), dp(10), dp(12), dp(10))
         setBackgroundColor(Color.rgb(15, 14, 18))
         addView(smallButton("Back", onBack), LinearLayout.LayoutParams(dp(84), WRAP))
         addView(TextView(context).apply {
             text = "Add Game"
             setTextColor(TEXT)
-            textSize = 21f
+            textSize = 19f
             gravity = Gravity.CENTER
             typeface = Typeface.create("serif", Typeface.BOLD)
         }, LinearLayout.LayoutParams(0, WRAP, 1f))
@@ -135,10 +135,10 @@ class GameFolderBrowserScreen(private val context: Context) {
     private fun introPanel(): TextView = TextView(context).apply {
         text = "Choose a storage location, then open the folder that contains your game files. Runestone highlights folders that look importable."
         setTextColor(MUTED)
-        textSize = 13f
+        textSize = 12.5f
         setLineSpacing(2f, 1f)
-        setPadding(dp(14), dp(13), dp(14), dp(13))
-        background = glassBg(dp(14))
+        setPadding(dp(12), dp(11), dp(12), dp(11))
+        background = glassBg(dp(12))
     }
 
     private fun folderHeader(folder: SafStorageBrowser.Folder, canNavigateUp: Boolean, onUp: () -> Unit): LinearLayout =
@@ -169,10 +169,10 @@ class GameFolderBrowserScreen(private val context: Context) {
         TextView(context).apply {
             text = "${root.name}\nAuthorized storage location"
             setTextColor(TEXT)
-            textSize = 14f
+            textSize = 13f
             typeface = Typeface.DEFAULT_BOLD
-            setPadding(dp(14), dp(13), dp(14), dp(13))
-            background = glassBg(dp(14))
+            setPadding(dp(12), dp(11), dp(12), dp(11))
+            background = glassBg(dp(12))
             setOnClickListener { animTap(this); onClick() }
             makeLiquid(this)
         }
@@ -181,8 +181,8 @@ class GameFolderBrowserScreen(private val context: Context) {
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            background = glassBg(dp(14), accent = folder.gameHint != null)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = glassBg(dp(12), accent = folder.gameHint != null)
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(TextView(context).apply {
@@ -214,11 +214,11 @@ class GameFolderBrowserScreen(private val context: Context) {
         TextView(context).apply {
             text = "$label\n$detail"
             setTextColor(TEXT)
-            textSize = 13f
+            textSize = 12.5f
             gravity = Gravity.CENTER
             typeface = Typeface.DEFAULT_BOLD
-            setPadding(dp(12), dp(11), dp(12), dp(11))
-            background = glassBg(dp(14), accent = accent)
+            setPadding(dp(10), dp(9), dp(10), dp(9))
+            background = glassBg(dp(12), accent = accent)
             setOnClickListener { animTap(this); onClick() }
             makeLiquid(this)
         }
@@ -243,7 +243,7 @@ class GameFolderBrowserScreen(private val context: Context) {
         setPadding(dp(8), dp(18), dp(8), dp(18))
     }
 
-    private fun makeLiquid(view: View) {
+    private fun makeLiquid(view: View) { if (Theme.isReducedMotion(context)) return
         view.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> v.animate().scaleX(1.04f).scaleY(1.04f).setDuration(100).start()
@@ -254,7 +254,7 @@ class GameFolderBrowserScreen(private val context: Context) {
         }
     }
 
-    private fun animTap(view: View) {
+    private fun animTap(view: View) { if (Theme.isReducedMotion(context)) return
         view.animate().scaleX(0.9f).scaleY(0.9f).setDuration(60).withEndAction {
             view.animate().scaleX(1f).scaleY(1f).setDuration(180).setInterpolator(OvershootInterpolator(1.5f)).start()
         }.start()
@@ -277,7 +277,7 @@ class GameFolderBrowserScreen(private val context: Context) {
         val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
         val TEXT = Color.rgb(232, 229, 220)
         val MUTED = Color.rgb(140, 130, 112)
-        val MUTED_DIM = Color.rgb(100, 95, 85)
+        val MUTED_DIM = Color.rgb(120, 112, 104)
         val ACCENT: Int get() = Theme.active.accent
     }
 }

@@ -12,6 +12,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Bundle
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -22,6 +23,8 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import com.runestone.app.data.LayoutMode
 import com.runestone.app.data.RunnerSettings
 import com.runestone.app.data.UIMode
@@ -93,6 +96,10 @@ class SettingsScreen(private val context: Context) {
             panel.addView(spacer(6))
             panel.addView(switchPanel("Keep Screen On", "Prevent device sleep while playing.", current.keepScreenOn) {
                 upd { copy(keepScreenOn = it) }
+            })
+            panel.addView(spacer(6))
+            panel.addView(switchPanel("Reduce Motion", "Disable UI animations for accessibility.", current.reduceMotion) {
+                upd { copy(reduceMotion = it) }
             })
         }
 
@@ -299,8 +306,8 @@ class SettingsScreen(private val context: Context) {
             })
             panel.addView(spacer(6))
             panel.addView(TextView(context).apply {
-                text = "Ren'Py engine runtime is not yet integrated."
-                setTextColor(Color.rgb(140, 110, 80))
+                text = "Ren'Py runtime is bundled. Some games may still need device testing."
+                setTextColor(Color.rgb(130, 170, 150))
                 textSize = 11f
                 gravity = Gravity.CENTER
                 setPadding(0, dp(8), 0, dp(4))
@@ -423,7 +430,7 @@ class SettingsScreen(private val context: Context) {
         //  10. ESSENTIALS
         // ────────────────────────────────────────────────
         stubAccordion(content, "ESSENTIALS", "Compatibility toggles (not yet implemented).") { panel ->
-            panel.addView(switchPanel("Preserve Files", "Keep extracted/generated runtime files.", current.preserveFiles) {
+            panel.addView(switchPanel("Keep Downloaded ZIPs", "Keep store ZIP files after install instead of deleting them.", current.preserveFiles) {
                 upd { copy(preserveFiles = it) }
             })
             panel.addView(spacerAfter(6))
@@ -667,10 +674,11 @@ Built with SDL2, mkxp-z, Ruby, OpenAL, WebView.
                 TextView(context).apply {
                     text = "Settings"
                     setTextColor(TEXT)
-                    textSize = 16f
-                    letterSpacing = 0.2f
+                    textSize = 18f
+                    letterSpacing = 0.04f
                     gravity = Gravity.CENTER
                     typeface = Typeface.create("serif", Typeface.BOLD)
+                    maxLines = 1
                 },
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
             )
@@ -720,15 +728,15 @@ Built with SDL2, mkxp-z, Ruby, OpenAL, WebView.
             }
             background = selectorCardBackground(selected == mode)
             makeLiquid(this)
-            addView(LayoutPreviewView(context, mode), LinearLayout.LayoutParams(MATCH_PARENT, dp(122)))
+            addView(LayoutPreviewView(context, mode), LinearLayout.LayoutParams(MATCH_PARENT, dp(84)))
             addView(TextView(context).apply {
-                text = title; setTextColor(TEXT); textSize = 15f
+                text = title; setTextColor(TEXT); textSize = 13.5f
                 typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setPadding(0, dp(8), 0, 0)
+                setPadding(0, dp(6), 0, 0)
             })
             addView(TextView(context).apply {
-                text = detail; setTextColor(MUTED); textSize = 11f
-                gravity = Gravity.CENTER; setPadding(dp(2), dp(4), dp(2), 0)
+                text = detail; setTextColor(MUTED); textSize = 10.5f
+                gravity = Gravity.CENTER; setPadding(dp(2), dp(3), dp(2), 0)
             })
         }
 
@@ -763,13 +771,13 @@ Built with SDL2, mkxp-z, Ruby, OpenAL, WebView.
             background = selectorCardBackground(selected == mode)
             makeLiquid(this)
             addView(TextView(context).apply {
-                text = mode.label; setTextColor(TEXT); textSize = 16f
+                text = mode.label; setTextColor(TEXT); textSize = 14f
                 typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setPadding(0, dp(14), 0, 0)
+                setPadding(0, dp(10), 0, 0)
             })
             addView(TextView(context).apply {
-                text = mode.description; setTextColor(MUTED); textSize = 12f
-                gravity = Gravity.CENTER; setPadding(dp(4), dp(4), dp(4), dp(14))
+                text = mode.description; setTextColor(MUTED); textSize = 10.5f
+                gravity = Gravity.CENTER; setPadding(dp(4), dp(3), dp(4), dp(10))
             })
         }
 
@@ -814,8 +822,8 @@ Built with SDL2, mkxp-z, Ruby, OpenAL, WebView.
     private fun settingsPanel(build: LinearLayout.() -> Unit): LinearLayout =
         LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(13), dp(13), dp(13), dp(13))
-            background = glassBg(16, alpha = 200)
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = glassBg(14, alpha = 190)
             makeLiquid(this)
             build()
         }
@@ -841,7 +849,9 @@ Built with SDL2, mkxp-z, Ruby, OpenAL, WebView.
                 addView(label)
             }
             addView(row)
-            addView(sliderFactory(label))
+            val slider = sliderFactory(label)
+            slider.contentDescription = "$title — ${label.text}"
+            addView(slider)
         }
 
     private fun switchPanel(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit): LinearLayout =
@@ -1024,7 +1034,7 @@ Built with SDL2, mkxp-z, Ruby, OpenAL, WebView.
     private fun dp(value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
 
-    private fun makeLiquid(view: View) {
+    private fun makeLiquid(view: View) { if (Theme.isReducedMotion(context)) return
         view.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_MOVE -> {
@@ -1043,7 +1053,7 @@ Built with SDL2, mkxp-z, Ruby, OpenAL, WebView.
         }
     }
 
-    private fun animTap(v: View) {
+    private fun animTap(v: View) { if (Theme.isReducedMotion(context)) return
         v.animate().scaleX(0.88f).scaleY(0.88f).setDuration(60)
             .withEndAction {
                 v.animate().scaleX(1f).scaleY(1f).setDuration(180)
@@ -1073,6 +1083,7 @@ Built with SDL2, mkxp-z, Ruby, OpenAL, WebView.
     // ============================================================
 
     private class LayoutPreviewView(context: Context, private val mode: LayoutMode) : View(context) {
+        init { importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
         private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.rgb(207, 174, 126); style = Paint.Style.STROKE; strokeWidth = 3f
         }
@@ -1170,7 +1181,33 @@ Built with SDL2, mkxp-z, Ruby, OpenAL, WebView.
         private val trackH = dp(6)
         private val thumbR = dp(12)
 
-        init { minimumHeight = dp(40) }
+        init {
+            minimumHeight = dp(40)
+            isClickable = true
+            isFocusable = true
+        }
+
+        override fun onInitializeAccessibilityNodeInfo(info: android.view.accessibility.AccessibilityNodeInfo) {
+            super.onInitializeAccessibilityNodeInfo(info)
+            info.className = android.widget.SeekBar::class.java.name
+            info.contentDescription = contentDescription ?: "Slider — ${currentProgress} of $maxVal"
+            info.rangeInfo = android.view.accessibility.AccessibilityNodeInfo.RangeInfo.obtain(
+                android.view.accessibility.AccessibilityNodeInfo.RangeInfo.RANGE_TYPE_INT, 0f, maxVal.toFloat(), currentProgress.toFloat()
+            )
+            info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS)
+        }
+
+        override fun performAccessibilityAction(action: Int, args: Bundle?): Boolean {
+            if (action == android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id) {
+                val value = args?.getFloat(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, currentProgress.toFloat())
+                    ?: return false
+                currentProgress = value.toInt().coerceIn(0, maxVal)
+                onChanged(currentProgress)
+                invalidate()
+                return true
+            }
+            return super.performAccessibilityAction(action, args)
+        }
 
         override fun onDraw(canvas: Canvas) {
             val w = width.toFloat(); val h = height.toFloat()

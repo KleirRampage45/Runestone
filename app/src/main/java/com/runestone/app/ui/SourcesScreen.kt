@@ -297,7 +297,7 @@ class SourcesScreen(private val context: Context) {
                 if (accent) 180 else 100, if (accent) 140 else 90, if (accent) 100 else 80))
         }
 
-    private fun makeLiquid(view: View) {
+    private fun makeLiquid(view: View) { if (Theme.isReducedMotion(context)) return
         view.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -318,7 +318,7 @@ class SourcesScreen(private val context: Context) {
         }
     }
 
-    private fun animTap(v: View) {
+    private fun animTap(v: View) { if (Theme.isReducedMotion(context)) return
         v.animate().scaleX(0.88f).scaleY(0.88f).setDuration(60)
             .withEndAction {
                 v.animate().scaleX(1f).scaleY(1f).setDuration(180)
@@ -336,7 +336,7 @@ class SourcesScreen(private val context: Context) {
         const val DEFAULT_CATALOGUE_URL = "https://kleirrampage45.github.io/runestone-catalogue/games.json"
         val TEXT = Color.rgb(232, 229, 220)
         val MUTED = Color.rgb(140, 130, 112)
-        val MUTED_DIM = Color.rgb(100, 95, 85)
+        val MUTED_DIM = Color.rgb(120, 112, 104)
         val ACCENT: Int get() = Theme.active.accent
     }
 }

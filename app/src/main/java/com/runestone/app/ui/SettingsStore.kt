@@ -100,6 +100,7 @@ class SettingsStore(context: Context) {
             inputOverrides = prefs.getBoolean("inputOverrides", defaults.inputOverrides),
             timersTiedToInput = prefs.getBoolean("timersTiedToInput", defaults.timersTiedToInput),
             rawgApiKey = prefs.getString("rawgApiKey", defaults.rawgApiKey) ?: defaults.rawgApiKey,
+            reduceMotion = prefs.getBoolean("reduceMotion", defaults.reduceMotion),
         )
 
     fun save(settings: RunnerSettings) {
@@ -178,6 +179,8 @@ class SettingsStore(context: Context) {
             .putBoolean("preserveFiles", settings.preserveFiles)
             .putBoolean("inputOverrides", settings.inputOverrides)
             .putBoolean("timersTiedToInput", settings.timersTiedToInput)
+            .putString("rawgApiKey", settings.rawgApiKey)
+            .putBoolean("reduceMotion", settings.reduceMotion)
             .apply()
     }
 }
