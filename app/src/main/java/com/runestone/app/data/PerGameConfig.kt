@@ -13,7 +13,7 @@ import org.json.JSONObject
 import java.io.File
 
 data class PerGameConfig(
-    val version: Int = 1,
+    val version: Int = 2,
     val game: GameSection = GameSection(),
     val input: InputSection = InputSection(),
     val video: VideoSection = VideoSection(),
@@ -22,6 +22,7 @@ data class PerGameConfig(
     val cheats: CheatSection = CheatSection(),
     val fonts: FontSection = FontSection(),
     val metadata: MetadataSection = MetadataSection(),
+    val patches: PatchesSection = PatchesSection(),
 ) {
     companion object {
         fun load(file: File): PerGameConfig {
@@ -45,6 +46,7 @@ data class PerGameConfig(
                 cheats = CheatSection.fromJson(json.optJSONObject("cheats")),
                 fonts = FontSection.fromJson(json.optJSONObject("fonts")),
                 metadata = MetadataSection.fromJson(json.optJSONObject("metadata")),
+                patches = PatchesSection.fromJson(json.optJSONObject("patches")),
             )
         }
     }
@@ -59,6 +61,7 @@ data class PerGameConfig(
         put("cheats", cheats.toJson())
         put("fonts", fonts.toJson())
         put("metadata", metadata.toJson())
+        put("patches", patches.toJson())
     }
 }
 
