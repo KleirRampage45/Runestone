@@ -95,6 +95,8 @@ class MainActivity : Activity() {
     private var pendingImportStorage: String? = null
     private var pendingCoverStorage: String? = null
     private var pendingCoverCallback: ((String) -> Unit)? = null
+    private var pendingPatchStorage: String? = null
+    private var pendingPatchCallback: ((String) -> Unit)? = null
     private val importBrowserStack = mutableListOf<SafStorageBrowser.Folder>()
     private var downloadProgressMap = mutableMapOf<String, DownloadManager.DownloadProgress>()
     private var installProgressMap = mutableMapOf<String, InstallProgress>()
@@ -116,6 +118,7 @@ class MainActivity : Activity() {
     companion object {
         private const val REQUEST_IMPORT_FOLDER = 9001
         private const val REQUEST_COVER_IMAGE = 9002
+        private const val REQUEST_PATCH_ZIP = 9003
         private const val TAG = "Runestone"
         private const val NOTIFICATION_CHANNEL = "runestone_downloads"
         private const val NOTIFICATION_ID_DOWNLOAD = 2001
@@ -1024,6 +1027,7 @@ class MainActivity : Activity() {
             PerGameSettingsScreen(this).create(
                 gameTitle = game.displayName,
                 config = config,
+                storageName = storageName,
                 onConfigChanged = { newConfig ->
                     configService.savePerGame(storageName, newConfig)
                 },
@@ -1059,6 +1063,16 @@ class MainActivity : Activity() {
                             resultCallback(false)
                         }
                     }
+                },
+                onInstallPatch = { zipCallback ->
+                    pendingPatchStorage = storageName
+                    pendingPatchCallback = zipCallback
+                    val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(android.content.Intent.CATEGORY_OPENABLE)
+                        type = "application/zip"
+                        putExtra(android.content.Intent.EXTRA_ALLOW_MULTIPLE, false)
+                    }
+                    startActivityForResult(intent, REQUEST_PATCH_ZIP)
                 },
             ),
         )
@@ -1473,6 +1487,35 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun handlePatchZipResult(resultCode: Int, data: Intent?) {
+        val callback = pendingPatchCallback
+        pendingPatchCallback = null
+        val storageName = pendingPatchStorage
+        pendingPatchStorage = null
+
+        if (resultCode != Activity.RESULT_OK || data?.data == null || storageName == null) return
+
+        val uri = data.data!!
+        val patchDir = File(cacheDir, "patch_zips").apply { mkdirs() }
+        val destFile = File(patchDir, "${storageName}_patch_${System.currentTimeMillis()}.zip")
+        try {
+            val inputStream = contentResolver.openInputStream(uri)
+                ?: throw IllegalStateException("Unable to open ZIP file")
+            inputStream.use { input ->
+                destFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            callback?.invoke(destFile.absolutePath)
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "Failed to copy patch ZIP", e)
+            callback?.invoke("")
+            runOnUiThread {
+                android.widget.Toast.makeText(this, "Failed to read patch file", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     private fun formatBytes(bytes: Long): String {
         val gb = 1024.0 * 1024.0 * 1024.0; val mb = 1024.0 * 1024.0
         return if (bytes >= gb) String.format("%.2f GB", bytes / gb) else String.format("%.1f MB", bytes / mb)
@@ -1488,6 +1531,8 @@ class MainActivity : Activity() {
         if (requestCode != REQUEST_IMPORT_FOLDER) {
             if (requestCode == REQUEST_COVER_IMAGE) {
                 handleCoverImageResult(resultCode, data)
+            } else if (requestCode == REQUEST_PATCH_ZIP) {
+                handlePatchZipResult(resultCode, data)
             }
             return
         }

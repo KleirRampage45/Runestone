@@ -24,6 +24,7 @@ import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
 import com.runestone.app.data.*
+import com.runestone.app.workspace.PatchManager
 import java.io.File
 
 class PerGameSettingsScreen(private val context: Context) {
@@ -31,10 +32,12 @@ class PerGameSettingsScreen(private val context: Context) {
     fun create(
         gameTitle: String,
         config: PerGameConfig,
+        storageName: String = "",
         onConfigChanged: (PerGameConfig) -> Unit,
         onBack: () -> Unit,
         onPickCover: ((pathCallback: (String) -> Unit) -> Unit) = {},
         onFetchMetadata: ((Boolean) -> Unit) -> Unit = {},
+        onInstallPatch: ((zipCallback: (String) -> Unit) -> Unit) = {},
     ): LinearLayout {
         var current = config
 
@@ -380,6 +383,227 @@ class PerGameSettingsScreen(private val context: Context) {
                 onConfigChanged(current)
             }
         })
+
+        // ── Patches & Mods Section ──
+        content.addView(sectionTitle("Patches & Mods", "Translations, +18 patches, mods, and extra content"))
+        val patchManager = PatchManager(context, com.runestone.app.workspace.WorkspaceManager(context))
+
+        // Install button
+        content.addView(settingsPanel {
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            row.addView(TextView(context).apply {
+                text = "Install ZIP Patch"
+                setTextColor(TEXT); textSize = 15f; typeface = Typeface.DEFAULT_BOLD
+            }, LinearLayout.LayoutParams(0, WRAP, 1f))
+            val installBtn = TextView(context).apply {
+                text = "BROWSE"
+                setTextColor(ACCENT); textSize = 12f; typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER; setPadding(dp(12), dp(6), dp(12), dp(6))
+                background = GradientDrawable().apply {
+                    setColor(Color.argb(40, Color.red(ACCENT), Color.green(ACCENT), Color.blue(ACCENT)))
+                    cornerRadius = dp(8).toFloat()
+                    setStroke(dp(1), Color.argb(60, Color.red(ACCENT), Color.green(ACCENT), Color.blue(ACCENT)))
+                }
+                makeLiquid(this)
+                setOnClickListener {
+                    onInstallPatch { zipPath ->
+                        if (zipPath.isNotEmpty() && storageName.isNotEmpty()) {
+                            val zipFile = File(zipPath)
+                            val patchName = zipFile.nameWithoutExtension
+                            val result = patchManager.installPatch(
+                                storageName = storageName,
+                                zipFile = zipFile,
+                                patchName = patchName,
+                                description = "",
+                                isTranslation = false,
+                            )
+                            (context as? android.app.Activity)?.runOnUiThread {
+                                android.widget.Toast.makeText(context, result.message, android.widget.Toast.LENGTH_LONG).show()
+                                if (result.success) {
+                                    // Reload config to reflect new patch state
+                                    val fresh = com.runestone.app.data.GameConfigService(
+                                        context, com.runestone.app.workspace.WorkspaceManager(context)
+                                    ).loadPerGame(storageName)
+                                    current = current.copy(patches = fresh.patches)
+                                    onConfigChanged(current)
+                                    // Force UI refresh by rebuilding patches list
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            row.addView(installBtn)
+            addView(row)
+        })
+        content.addView(spacer(10))
+
+        // Patch list — rebuild on each update
+        fun buildPatchList() {
+            // Remove old list views
+            val existingTags = mutableListOf<View>()
+            for (i in 0 until content.childCount) {
+                val v = content.getChildAt(i)
+                if (v.tag == "patch_list_item" || v.tag == "patch_list_header" || v.tag == "patch_all_btn") {
+                    existingTags.add(v)
+                }
+            }
+            existingTags.forEach { content.removeView(it) }
+
+            val patches = current.patches.installedPatches
+                .sortedByDescending { it.installedAtMillis }
+            if (patches.isEmpty()) {
+                val emptyLabel = TextView(context).apply {
+                    tag = "patch_list_header"
+                    text = "No patches installed"
+                    setTextColor(MUTED); textSize = 12f
+                    setPadding(dp(4), dp(4), 0, dp(8))
+                }
+                content.addView(emptyLabel, content.childCount - 1)
+                return
+            }
+
+            val activePatches = patches.filter { it.isActive }
+            val inactivePatches = patches.filter { !it.isActive }
+
+            // Active patches
+            if (activePatches.isNotEmpty()) {
+                val activeHeader = TextView(context).apply {
+                    tag = "patch_list_header"
+                    text = "Active (${activePatches.size})"
+                    setTextColor(TEXT); textSize = 12f; typeface = Typeface.DEFAULT_BOLD
+                    setPadding(dp(4), dp(8), 0, dp(4))
+                }
+                content.addView(activeHeader, content.childCount - 1)
+            }
+
+            for (p in patches) {
+                val card = settingsPanel {
+                    tag = "patch_list_item"
+
+                    val titleRow = LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                    }
+
+                    val infoCol = LinearLayout(context).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f)
+                    }
+
+                    infoCol.addView(TextView(context).apply {
+                        text = p.name
+                        setTextColor(TEXT); textSize = 14f; typeface = Typeface.DEFAULT_BOLD
+                    })
+
+                    infoCol.addView(TextView(context).apply {
+                        val desc = buildString {
+                            if (p.isTranslation) append("Translation / ")
+                            if (p.isActive) append("Active") else append("Reverted")
+                            if (p.overwrittenCount > 0) append(" · ${p.overwrittenCount} overwritten")
+                            if (p.addedCount > 0) append(" · ${p.addedCount} added")
+                        }
+                        text = desc
+                        setTextColor(MUTED); textSize = 11f
+                        setPadding(0, dp(2), 0, 0)
+                    })
+
+                    val dateText = TextView(context).apply {
+                        val sdf = java.text.SimpleDateFormat("MMM dd, HH:mm", java.util.Locale.getDefault())
+                        text = sdf.format(java.util.Date(p.installedAtMillis))
+                        setTextColor(MUTED); textSize = 10f
+                        setPadding(0, dp(1), 0, 0)
+                    }
+                    infoCol.addView(dateText)
+
+                    titleRow.addView(infoCol)
+
+                    if (p.isActive) {
+                        // Revert button — only show if this is the most recent active patch
+                        val activeList = patches.filter { it.isActive }
+                        val isNewest = (activeList.maxByOrNull { it.installedAtMillis }?.patchId == p.patchId)
+                        if (isNewest && storageName.isNotEmpty()) {
+                            val revertBtn = TextView(context).apply {
+                                text = "REVERT"
+                                setTextColor(Color.rgb(200, 120, 120)); textSize = 10f
+                                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                                setPadding(dp(8), dp(4), dp(8), dp(4))
+                                background = GradientDrawable().apply {
+                                    setColor(Color.argb(40, 200, 80, 80))
+                                    cornerRadius = dp(6).toFloat()
+                                    setStroke(dp(1), Color.argb(60, 200, 80, 80))
+                                }
+                                makeLiquid(this)
+                                setOnClickListener {
+                                    val result = patchManager.revertPatch(storageName, p.patchId)
+                                    (context as? android.app.Activity)?.runOnUiThread {
+                                        android.widget.Toast.makeText(context, result.message, android.widget.Toast.LENGTH_LONG).show()
+                                        if (result.success) {
+                                            val fresh = com.runestone.app.data.GameConfigService(
+                                                context, com.runestone.app.workspace.WorkspaceManager(context)
+                                            ).loadPerGame(storageName)
+                                            current = current.copy(patches = fresh.patches)
+                                            onConfigChanged(current)
+                                        }
+                                    }
+                                }
+                            }
+                            titleRow.addView(revertBtn)
+                        }
+                    } else {
+                        val badge = TextView(context).apply {
+                            text = "REVERTED"
+                            setTextColor(MUTED); textSize = 10f; typeface = Typeface.DEFAULT_BOLD
+                            gravity = Gravity.CENTER
+                            setPadding(dp(8), dp(4), dp(8), dp(4))
+                            background = GradientDrawable().apply {
+                                setColor(Color.argb(30, 140, 130, 112))
+                                cornerRadius = dp(6).toFloat()
+                            }
+                        }
+                        titleRow.addView(badge)
+                    }
+
+                    addView(titleRow)
+                }
+                content.addView(card, content.childCount - 1)
+            }
+
+            // Revert All button (if any patches active)
+            if (activePatches.isNotEmpty() && storageName.isNotEmpty()) {
+                val revertAllBtn = TextView(context).apply {
+                    tag = "patch_all_btn"
+                    text = "REVERT ALL (${activePatches.size} active)"
+                    setTextColor(Color.rgb(200, 120, 120)); textSize = 12f; typeface = Typeface.DEFAULT_BOLD
+                    gravity = Gravity.CENTER; setPadding(dp(12), dp(10), dp(12), dp(10))
+                    background = GradientDrawable().apply {
+                        setColor(Color.argb(30, 200, 80, 80))
+                        cornerRadius = dp(10).toFloat()
+                        setStroke(dp(1), Color.argb(40, 200, 80, 80))
+                    }
+                    makeLiquid(this)
+                    setOnClickListener {
+                        val result = patchManager.revertAll(storageName)
+                        (context as? android.app.Activity)?.runOnUiThread {
+                            android.widget.Toast.makeText(context, result.message, android.widget.Toast.LENGTH_LONG).show()
+                            if (result.success) {
+                                val fresh = com.runestone.app.data.GameConfigService(
+                                    context, com.runestone.app.workspace.WorkspaceManager(context)
+                                ).loadPerGame(storageName)
+                                current = current.copy(patches = fresh.patches)
+                                onConfigChanged(current)
+                            }
+                        }
+                    }
+                }
+                content.addView(revertAllBtn, content.childCount - 1)
+            }
+        }
+        buildPatchList()
+        content.addView(spacer(h = 14))
 
         content.animate().alpha(1f).setDuration(300).setInterpolator(OvershootInterpolator(1.1f)).start()
         return root
