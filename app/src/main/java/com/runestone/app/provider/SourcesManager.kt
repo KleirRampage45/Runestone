@@ -26,6 +26,7 @@ class SourcesManager(private val context: Context) {
     companion object {
         private const val TAG = "SourcesManager"
         private const val KEY_SOURCES = "sources_json"
+        private const val BUNDLED_CATALOGUE = "runestone-catalogue.json"
         private const val MAX_CATALOGUE_CHARS = 4 * 1024 * 1024
         private const val MAX_GAMES_PER_SOURCE = 10_000
         private const val MAX_DOWNLOAD_OPTIONS_PER_GAME = 20
@@ -78,14 +79,10 @@ class SourcesManager(private val context: Context) {
 
     fun fetchGamesFromSources(onResult: (List<AvailableGame>, String?) -> Unit) {
         val sources = getSources()
-        if (sources.isEmpty()) {
-            onResult(emptyList(), "Add a source URL to browse available games")
-            return
-        }
 
         Thread {
             try {
-                val allGames = mutableListOf<AvailableGame>()
+                val allGames = loadBundledCatalogue().toMutableList()
                 var lastError: String? = null
 
                 for (source in sources) {
@@ -102,6 +99,8 @@ class SourcesManager(private val context: Context) {
 
                 if (allGames.isEmpty() && lastError != null) {
                     onResult(emptyList(), lastError)
+                } else if (allGames.isEmpty()) {
+                    onResult(emptyList(), "Add a source URL to browse available games")
                 } else {
                     onResult(allGames.distinctBy { it.id }, null)
                 }
@@ -110,6 +109,24 @@ class SourcesManager(private val context: Context) {
                 onResult(emptyList(), e.message ?: "Network error")
             }
         }.start()
+    }
+
+    private fun loadBundledCatalogue(): List<AvailableGame> {
+        return try {
+            val body = context.assets.open(BUNDLED_CATALOGUE)
+                .bufferedReader()
+                .use { it.readText() }
+            val source = ProviderSource(
+                id = "runestone-bundled",
+                name = "Runestone Picks",
+                url = "https://kleirrampage45.github.io/runestone-catalogue/games.json",
+                status = SourceStatus.ACTIVE,
+            )
+            parseCatalogueFormat(source, JSONObject(body))
+        } catch (e: Exception) {
+            Log.w(TAG, "Bundled catalogue unavailable", e)
+            emptyList()
+        }
     }
 
     private fun fetchGamesFromCatalogue(source: ProviderSource): List<AvailableGame> {
@@ -153,14 +170,14 @@ class SourcesManager(private val context: Context) {
                     DownloadOption(
                         name = optObj.optString("name", "Download"),
                         host = optObj.optString("host", source.name),
-                        url = validateHttpsUrl(optObj.optString("url", "")),
+                        url = validateDownloadUrl(optObj.optString("url", "")),
                         fileSize = optObj.optLong("fileSize", -1).let { if (it < 0) null else it },
                     )
                 }
             } else {
                 val legacyUrl = obj.optString("downloadUrl", "").ifEmpty { null }
                 if (legacyUrl != null) {
-                    listOf(DownloadOption(name = "Download", host = "Direct", url = validateHttpsUrl(legacyUrl)))
+                    listOf(DownloadOption(name = "Download", host = "Direct", url = validateDownloadUrl(legacyUrl)))
                 } else emptyList()
             }
             val remoteId = obj.optString("id", "").ifBlank { i.toString() }
@@ -172,6 +189,14 @@ class SourcesManager(private val context: Context) {
                 downloadOptions = options,
                 sourceName = source.name,
                 coverUrl = obj.optString("coverUrl", "").ifEmpty { null }?.let(::validateHttpsUrl),
+                pageUrl = obj.optString("pageUrl", "").ifEmpty { null }?.let(::validateHttpsUrl),
+                description = obj.optString("description", "").ifEmpty { null },
+                tags = obj.optJSONArray("tags")?.let { arr ->
+                    (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotBlank() }
+                } ?: emptyList(),
+                language = obj.optString("language", "").ifEmpty { null },
+                license = obj.optString("license", "").ifEmpty { null },
+                rawgQuery = obj.optString("rawgQuery", "").ifEmpty { null },
             )
         }
     }
@@ -205,6 +230,14 @@ class SourcesManager(private val context: Context) {
         require(url.host.isNotBlank()) { "URL must include a host" }
         require(url.userInfo == null) { "URLs with embedded credentials are not supported" }
         return url.toString()
+    }
+
+    private fun validateDownloadUrl(rawUrl: String): String {
+        val trimmed = rawUrl.trim()
+        if (trimmed.startsWith("itch://", ignoreCase = true)) {
+            return trimmed
+        }
+        return validateHttpsUrl(trimmed)
     }
 
     private fun extractNameFromUrl(url: String): String {

@@ -2,6 +2,9 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".RunestoneApplication"
@@ -13,16 +16,21 @@
         android:hardwareAccelerated="true"
         android:usesCleartextTraffic="true">
 
+        <service
+            android:name=".services.StoreDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <activity
             android:name=".GameActivity"
-            android:screenOrientation="sensor"
+            android:screenOrientation="portrait"
             android:exported="false"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize" />
 
         <!-- mkxp-z native engine (RPG Maker XP/VX/VX Ace) -->
         <activity
             android:name="com.hatkid.mkxpz.MainActivity"
-            android:screenOrientation="sensor"
+            android:screenOrientation="sensorLandscape"
             android:exported="false"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
@@ -30,7 +38,7 @@
         <!-- EasyRPG Player (RPG Maker 2000/2003) — GPLv3, bundled native -->
         <activity
             android:name="org.easyrpg.player.player.EasyRpgPlayerActivity"
-            android:screenOrientation="sensor"
+            android:screenOrientation="sensorLandscape"
             android:exported="false"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
@@ -38,7 +46,7 @@
         <!-- ONScripter (NScripter) — GPLv2+, bundled native -->
         <activity
             android:name="com.runestone.app.engine.onscripter.OnscripterActivity"
-            android:screenOrientation="sensor"
+            android:screenOrientation="sensorLandscape"
             android:exported="false"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
@@ -46,7 +54,7 @@
         <!-- Ren'Py - MIT, bundled native librenpython.so -->
         <activity
             android:name="org.renpy.android.PythonSDLActivity"
-            android:screenOrientation="sensor"
+            android:screenOrientation="landscape"
             android:exported="false"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
@@ -54,7 +62,8 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:screenOrientation="sensor">
+            android:screenOrientation="portrait"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

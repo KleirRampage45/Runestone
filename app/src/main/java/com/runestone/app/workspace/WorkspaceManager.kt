@@ -13,6 +13,7 @@ package com.runestone.app.workspace
 import android.content.Context
 import com.runestone.app.data.EngineType
 import com.runestone.app.engine.EngineDetector
+import org.json.JSONObject
 import java.io.File
 
 /**
@@ -51,6 +52,7 @@ class WorkspaceManager(private val context: Context) {
         return dir.listFiles()
             ?.filter { it.isDirectory }
             ?.mapNotNull { gameDir ->
+                repairInterruptedInstall(gameDir)
                 val originalDir = File(gameDir, "original")
                 if (!originalDir.isDirectory) return@mapNotNull null
 
@@ -100,7 +102,71 @@ class WorkspaceManager(private val context: Context) {
                     }.getOrNull()?.takeIf { it.isNotBlank() }
                 } else null
             }
+            EngineType.RENPY -> {
+                listOf(
+                    File(originalDir, "game/options.rpy"),
+                    File(originalDir, "game/script.rpy"),
+                ).firstNotNullOfOrNull { file ->
+                    if (!file.isFile) return@firstNotNullOfOrNull null
+                    runCatching {
+                        Regex("""define\s+config\.name\s*=\s*["'](.+?)["']""")
+                            .find(file.readText())
+                            ?.groupValues
+                            ?.getOrNull(1)
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() }
+                    }.getOrNull()
+                }
+            }
             else -> null
+        }
+    }
+
+    private fun repairInterruptedInstall(gameDir: File) {
+        val originalDir = File(gameDir, "original")
+        if (originalDir.isDirectory) return
+
+        val children = gameDir.listFiles()?.toList().orEmpty()
+        if (children.isEmpty()) return
+
+        val ignoredNames = setOf("active", "saves", "incoming", "manifest.json", "install_state.json")
+        val gamePayload = children.filter { it.name !in ignoredNames }
+        if (gamePayload.isEmpty()) return
+
+        val engineType = EngineDetector.detect(gameDir)
+        if (engineType == EngineType.UNKNOWN) return
+
+        val repairDir = File(gameDir, "original_repair")
+        if (repairDir.exists()) repairDir.deleteRecursively()
+        require(repairDir.mkdirs()) { "Could not create repair workspace for ${gameDir.name}" }
+
+        try {
+            gamePayload.forEach { file ->
+                require(file.renameTo(File(repairDir, file.name))) {
+                    "Could not move ${file.name} into repaired install"
+                }
+            }
+            require(repairDir.renameTo(originalDir)) {
+                "Could not finalize repaired install for ${gameDir.name}"
+            }
+            ensureWorkspace(gameDir.name)
+            rebuildActiveWorkspace(gameDir.name)
+
+            val fileCount = originalDir.walkTopDown().count { it.isFile }
+            File(gameDir, "manifest.json").writeText(JSONObject().apply {
+                put("storageName", gameDir.name)
+                put("engineType", engineType.name)
+                put("engineLabel", engineType.label)
+                put("fileCount", fileCount)
+                put("importedAt", System.currentTimeMillis())
+                put("repaired", true)
+            }.toString(2))
+        } catch (e: Exception) {
+            repairDir.listFiles()?.forEach { file ->
+                file.renameTo(File(gameDir, file.name))
+            }
+            repairDir.deleteRecursively()
+            throw e
         }
     }
 

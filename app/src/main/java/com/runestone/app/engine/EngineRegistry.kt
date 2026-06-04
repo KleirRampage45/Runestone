@@ -85,6 +85,10 @@ object EngineRegistry {
         // Native engines (bundled — GPL/MIT)
         register(MkxpZEngine())       // XP/VX/VX Ace — mkxp-z GPLv2+
         register(EasyRpgEngine())     // 2000/2003 — EasyRPG GPLv3
+        register(WolfRpgEngine())     // Wolf RPG Editor — detect-only
+        register(KirikiriEngine())    // KiriKiri / KAG — detect-only
+        register(AgsEngine())         // Adventure Game Studio — detect-only
+        register(GameMakerEngine())   // GameMaker — detect-only
 
         // WebView engines (bundled — system WebView)
         register(WebViewMzEngine())   // MZ
@@ -102,12 +106,12 @@ object EngineRegistry {
 
         // Native libraries bundled, wrappers implemented
         register(NScripterEngine())   // NScripter / ONScripter GPLv2+ — WORKING
-
-        // Coming soon (no activity wrapper yet)
         register(RenpyEngine())       // Ren'Py MIT
 
         // Optional engines (disabled by default, enable in Settings > Addons)
         if (isOptionalEnabled(context, "godot")) register(GodotEngine())   // Godot MIT
+        register(UnityEngine())       // Unity desktop exports — detect-only
+        register(UnrealEngine())      // Unreal desktop exports — detect-only
         register(ElectronEngine())    // Electron (desktop only)
     }
 

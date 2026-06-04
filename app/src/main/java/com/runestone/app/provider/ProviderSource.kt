@@ -76,9 +76,14 @@ data class AvailableGame(
     val downloadOptions: List<DownloadOption>,
     val sourceName: String,
     val coverUrl: String?,
+    val pageUrl: String?,
+    val description: String? = null,
+    val tags: List<String> = emptyList(),
+    val language: String? = null,
+    val license: String? = null,
+    val rawgQuery: String? = null,
 ) {
     val downloadUrl: String? get() = downloadOptions.firstOrNull()?.url
-    val pageUrl: String? get() = null
 
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -87,6 +92,12 @@ data class AvailableGame(
         put("fileSize", fileSize ?: -1)
         put("sourceName", sourceName)
         put("coverUrl", coverUrl ?: "")
+        put("pageUrl", pageUrl ?: "")
+        put("description", description ?: "")
+        put("language", language ?: "")
+        put("license", license ?: "")
+        put("rawgQuery", rawgQuery ?: "")
+        put("tags", JSONArray(tags))
         val optsArr = JSONArray()
         downloadOptions.forEach { optsArr.put(it.toJson()) }
         put("downloadOptions", optsArr)
@@ -111,6 +122,12 @@ data class AvailableGame(
                 downloadOptions = options,
                 sourceName = obj.optString("sourceName", ""),
                 coverUrl = obj.optString("coverUrl", "").ifEmpty { null },
+                pageUrl = obj.optString("pageUrl", "").ifEmpty { null },
+                description = obj.optString("description", "").ifEmpty { null },
+                tags = obj.optJSONArray("tags")?.let { arr -> (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotBlank() } } ?: emptyList(),
+                language = obj.optString("language", "").ifEmpty { null },
+                license = obj.optString("license", "").ifEmpty { null },
+                rawgQuery = obj.optString("rawgQuery", "").ifEmpty { null },
             )
         }
 
@@ -132,6 +149,12 @@ data class AvailableGame(
                 downloadOptions = options,
                 sourceName = obj.optString("sourceName", "Catalogue"),
                 coverUrl = obj.optString("coverUrl", "").ifEmpty { null },
+                pageUrl = obj.optString("pageUrl", "").ifEmpty { null },
+                description = obj.optString("description", "").ifEmpty { null },
+                tags = obj.optJSONArray("tags")?.let { arr -> (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotBlank() } } ?: emptyList(),
+                language = obj.optString("language", "").ifEmpty { null },
+                license = obj.optString("license", "").ifEmpty { null },
+                rawgQuery = obj.optString("rawgQuery", "").ifEmpty { null },
             )
         }
     }

@@ -30,6 +30,16 @@ class SafStorageBrowser(private val contentResolver: ContentResolver) {
         val gameHint: String?,
     )
 
+    data class BrowserEntry(
+        val uri: Uri,
+        val name: String,
+        val isDirectory: Boolean,
+        val childFolderCount: Int = 0,
+        val fileCount: Int = 0,
+        val gameHint: String? = null,
+        val mimeType: String = "",
+    )
+
     fun listRoots(): List<StorageRoot> =
         contentResolver.persistedUriPermissions
             .filter { it.isReadPermission }
@@ -65,6 +75,31 @@ class SafStorageBrowser(private val contentResolver: ContentResolver) {
                 compareByDescending<Folder> { it.gameHint != null }
                     .thenBy { it.name.lowercase() },
             )
+    }
+
+    fun listEntries(parentUri: Uri): List<BrowserEntry> {
+        val children = queryChildren(parentUri)
+        return children.map { child ->
+            if (child.isDirectory) {
+                BrowserEntry(
+                    uri = child.uri,
+                    name = child.name,
+                    isDirectory = true,
+                    mimeType = child.mimeType,
+                )
+            } else {
+                BrowserEntry(
+                    uri = child.uri,
+                    name = child.name,
+                    isDirectory = false,
+                    mimeType = child.mimeType,
+                )
+            }
+        }.sortedWith(
+            compareByDescending<BrowserEntry> { it.isDirectory && it.gameHint != null }
+                .thenByDescending { it.isDirectory }
+                .thenBy { it.name.lowercase() },
+        )
     }
 
     fun describeFolder(folderUri: Uri): Folder {
@@ -137,6 +172,8 @@ class SafStorageBrowser(private val contentResolver: ContentResolver) {
             "index.html" in names && "www" in names -> "RPG MAKER MV/MZ"
             "index.html" in names -> "HTML GAME"
             entries.any { it.name.endsWith(".nsa", ignoreCase = true) } -> "NSCRIPTER"
+            "data.wolf" in names -> "WOLF RPG EDITOR"
+            entries.any { it.name.endsWith(".xp3", ignoreCase = true) } -> "KIRIKIRI"
             else -> null
         }
     }

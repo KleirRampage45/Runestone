@@ -63,7 +63,12 @@ class DownloadManager(private val context: Context) {
 
     fun getState(gameId: String): DownloadState {
         val name = prefs.getString("state_$gameId", DownloadState.IDLE.name)
-        return try { DownloadState.valueOf(name!!) } catch (_: Exception) { DownloadState.IDLE }
+        val state = try { DownloadState.valueOf(name!!) } catch (_: Exception) { DownloadState.IDLE }
+        return if (state == DownloadState.DOWNLOADING && !activeDownloads.containsKey(gameId)) {
+            DownloadState.PAUSED
+        } else {
+            state
+        }
     }
 
     fun getDownloadedBytes(gameId: String): Long {
@@ -82,6 +87,7 @@ class DownloadManager(private val context: Context) {
 
         cancelFlags[gameId] = false
         setState(gameId, DownloadState.DOWNLOADING)
+        File(getDownloadDir(), fileName).takeIf { it.exists() }?.delete()
 
         val thread = Thread {
             val resolvedUrl = try {
@@ -178,6 +184,10 @@ class DownloadManager(private val context: Context) {
             if (responseCode != 200 && responseCode != 206) {
                 throw RuntimeException("HTTP $responseCode")
             }
+            val contentType = conn.contentType.orEmpty().lowercase()
+            if (contentType.contains("text/html")) {
+                throw RuntimeException("Host returned a web page instead of a download")
+            }
 
             val isResume = existingBytes > 0 && responseCode == 206
             val totalBytes = if (isResume) {
@@ -232,6 +242,9 @@ class DownloadManager(private val context: Context) {
 
             if (cancelFlags[gameId] != true) {
                 output.flush()
+                output.close()
+                output = null
+                validateDownloadedFile(outputFile, gameId)
                 setState(gameId, DownloadState.COMPLETED)
                 prefs.edit().putLong("bytes_$gameId", bytesDownloaded).apply()
                 Log.i(TAG, "Download complete: $gameId -> ${outputFile.absolutePath}")
@@ -240,6 +253,9 @@ class DownloadManager(private val context: Context) {
 
         } catch (e: Exception) {
             Log.e(TAG, "Download failed for $gameId: ${e.message}", e)
+            if (cancelFlags[gameId] != true) {
+                outputFile.delete()
+            }
             setState(gameId, DownloadState.FAILED)
             callback?.onError(gameId, e.message ?: "Download failed")
         } finally {
@@ -264,6 +280,18 @@ class DownloadManager(private val context: Context) {
         require(url.host.isNotBlank()) { "Download URL must include a host" }
         require(url.userInfo == null) { "Download URLs with embedded credentials are not supported" }
         return url.toString()
+    }
+
+    private fun validateDownloadedFile(file: File, gameId: String) {
+        require(file.length() >= 1024L * 16L) { "Downloaded file is too small to be a game archive" }
+        val header = ByteArray(4)
+        file.inputStream().use { input ->
+            val count = input.read(header)
+            require(count == 4) { "Downloaded file is empty" }
+        }
+        val isZip = header[0] == 0x50.toByte() && header[1] == 0x4B.toByte()
+        require(isZip) { "Downloaded file is not a ZIP archive" }
+        Log.i(TAG, "Validated archive for $gameId size=${file.length()}")
     }
 
     private fun getFileName(gameId: String): String {

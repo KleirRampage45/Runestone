@@ -76,4 +76,29 @@
 
 ---
 
+## FUTURE — Posible, Modular
+
+### 🪟 Windows (Wine) Support — *exploratorio*
+- **Prioridad:** Baja (post-v1.0, post-Ren'Py wrapper)
+- **Enfoque:** Modular — APK se queda ligero (~82MB). El runtime (Wine + Box86/Box64 + DXVK) se descarga de GitHub Releases en el primer uso, igual que el patrón de Godot en optional-libs/
+- **Stack:** Wine (LGPL) + Box86/Box64 (MIT) + DXVK (LGPL)
+- **Activación:** Engine opcional en Settings > Addons → "Windows Runtime" → download button
+- **Alcance:** No es competir con Winlator. Es para los pocos VNs/RPGs nativos de Windows que no tienen port a Android ni engine open-source equivalente (ej: juegos de RPG Maker que usan DLLs custom, o VNs en engines propietarios donde no hay runtime libre)
+- **Nota:** La ingeniería es significativa — portear Wine a ARM64 Android, contenedores por juego, GPU passthrough, input mapping, y mantenimiento continuo. No se aborda hasta tener los gaps reales cerrados.
+- **Referencia:** Winlator (brunodev85/winlator) como prueba de concepto de que es posible
+
+### 🔌 Plugin APK System (v2.0)
+- Dividir core (launcher UI, ~15MB) de engines (descargables por separado)
+- Esto beneficia TANTO a Wine como a Godot, Ren'Py y cualquier engine pesado
+- El core siempre es liviano. El usuario descarga solo lo que necesita.
+
+### Wolf RPG Editor Native Interpreter (post-v1.0 research)
+- **Prioridad:** Baja hasta cerrar Ren'Py, store/install reliability, controles, y plugin APKs.
+- **Objetivo:** Ejecutar juegos Wolf RPG Editor directamente desde `Data.wolf`/archivos del juego, sin Winlator/GameHub/Wine.
+- **Alcance tecnico:** Implementar o portar un runtime real: parser de datos Wolf, sistema de eventos, render de mapas, sprites, texto, audio, input, saves, locale/encoding, archivos empaquetados, y compatibilidad con juegos existentes como Mad Father.
+- **Riesgo:** No hay un runtime Android open-source maduro equivalente a EasyRPG/mkxp-z. JoiPlay tampoco soporta Wolf nativamente; las rutas funcionales actuales en Android suelen usar capas Windows como Winlator/GameHub.
+- **No confundir con:** Integracion externa "Open with Windows runner". Eso puede existir antes, pero no cuenta como soporte nativo Wolf.
+
+---
+
 *Built with Kotlin. No XML. GPLv2+. 82MB APK. Runs on your phone, not some cloud server.*

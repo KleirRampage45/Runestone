@@ -98,6 +98,7 @@ class MainActivity : Activity() {
     private var pendingPatchStorage: String? = null
     private var pendingPatchCallback: ((String) -> Unit)? = null
     private val importBrowserStack = mutableListOf<SafStorageBrowser.Folder>()
+    private var importBrowserShowLocations = false
     private var downloadProgressMap = mutableMapOf<String, DownloadManager.DownloadProgress>()
     private var installProgressMap = mutableMapOf<String, InstallProgress>()
     private val lastStoreProgressRenderAt = mutableMapOf<String, Long>()
@@ -696,10 +697,19 @@ class MainActivity : Activity() {
     private fun showOverlay(panel: View, dismissOnBgClick: Boolean = true) {
         // Remove any existing overlay
         activeOverlay?.let { rootContainer.removeView(it); activeOverlay = null }
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            homeContentView?.setRenderEffect(
+                android.graphics.RenderEffect.createBlurEffect(
+                    10f,
+                    10f,
+                    android.graphics.Shader.TileMode.CLAMP,
+                ),
+            )
+        }
 
         val wrapper = FrameLayout(this).apply {
             // Semi-transparent black dims the home screen underneath
-            setBackgroundColor(Color.argb(200, 0, 0, 0))
+            setBackgroundColor(Color.argb(218, 0, 0, 0))
 
             // Start below final position so it slides up while fading in
             alpha = 0f
@@ -738,6 +748,9 @@ class MainActivity : Activity() {
             overlay.animate().alpha(0f).translationY(resources.displayMetrics.heightPixels * 0.08f).setDuration(200).withEndAction {
                 rootContainer.removeView(overlay)
                 activeOverlay = null
+                if (android.os.Build.VERSION.SDK_INT >= 31) {
+                    homeContentView?.setRenderEffect(null)
+                }
                 onDismissed()
             }.start()
         }
@@ -1284,6 +1297,7 @@ class MainActivity : Activity() {
         importMessage = null
         pendingImportStorage = requestedName
         importBrowserStack.clear()
+        importBrowserShowLocations = false
         showGameFolderBrowser()
     }
 
@@ -1299,7 +1313,7 @@ class MainActivity : Activity() {
     private fun showGameFolderBrowser() {
         val browser = SafStorageBrowser(contentResolver)
         val roots = browser.listRoots()
-        if (importBrowserStack.isEmpty() && roots.isNotEmpty()) {
+        if (!importBrowserShowLocations && importBrowserStack.isEmpty() && roots.isNotEmpty()) {
             val preferred = roots.firstOrNull { it.name.equals(settings.defaultGameFolder, ignoreCase = true) }
                 ?: roots.first()
             importBrowserStack += browser.describeFolder(preferred.documentUri)
@@ -1311,23 +1325,33 @@ class MainActivity : Activity() {
                 roots = roots,
                 currentFolder = current,
                 entries = entries,
+                pathSegments = importBrowserStack.map { it.name },
                 canNavigateUp = importBrowserStack.size > 1,
                 onBack = {
-                    if (importBrowserStack.size > 1) {
+                    if (current == null) {
+                        importBrowserShowLocations = false
+                        dismissOverlay()
+                    } else if (importBrowserStack.size > 1) {
                         importBrowserStack.removeAt(importBrowserStack.lastIndex)
                         showGameFolderBrowser()
                     } else {
+                        importBrowserShowLocations = true
                         importBrowserStack.clear()
-                        dismissOverlay()
+                        showGameFolderBrowser()
                     }
                 },
                 onUp = {
                     if (importBrowserStack.size > 1) {
                         importBrowserStack.removeAt(importBrowserStack.lastIndex)
                         showGameFolderBrowser()
+                    } else {
+                        importBrowserShowLocations = true
+                        importBrowserStack.clear()
+                        showGameFolderBrowser()
                     }
                 },
                 onOpenRoot = { storageRoot ->
+                    importBrowserShowLocations = false
                     importBrowserStack.clear()
                     importBrowserStack += browser.describeFolder(storageRoot.documentUri)
                     showGameFolderBrowser()

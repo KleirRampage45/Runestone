@@ -15,6 +15,8 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -22,6 +24,7 @@ import android.view.ViewGroup
 import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.EditText
 import android.widget.TextView
 import com.runestone.app.data.EngineType
 import com.runestone.app.workspace.WorkspaceStorage
@@ -83,20 +86,46 @@ class ManageFilesScreen(private val context: Context) {
         content.addView(summaryPanel(storageByGame.values.toList(), isStorageRefreshing))
         content.addView(spacer(14))
 
-        games.forEach { game ->
-            content.addView(
-                gamePanel(
-                    game = game,
-                    storage = storageByGame[game.storageName],
-                    onImport = onImport,
-                    onDelete = onDelete,
-                    onViewSaves = onViewSaves,
-                    onChangeEngine = onChangeEngine,
-                    onPerGameSettings = onPerGameSettings,
-                ),
-            )
-            content.addView(spacer(10))
+        val search = searchBox()
+        content.addView(search)
+        content.addView(spacer(10))
+
+        val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(list)
+
+        fun render(query: String) {
+            list.removeAllViews()
+            val filtered = games.filter {
+                query.isBlank() ||
+                    it.displayName.contains(query, ignoreCase = true) ||
+                    it.storageName.contains(query, ignoreCase = true) ||
+                    it.engineType.label.contains(query, ignoreCase = true)
+            }
+            if (filtered.isEmpty()) {
+                list.addView(emptyNote("No games match this search."))
+                return
+            }
+            filtered.forEach { game ->
+                list.addView(
+                    gamePanel(
+                        game = game,
+                        storage = storageByGame[game.storageName],
+                        onImport = onImport,
+                        onDelete = onDelete,
+                        onViewSaves = onViewSaves,
+                        onChangeEngine = onChangeEngine,
+                        onPerGameSettings = onPerGameSettings,
+                    ),
+                )
+                list.addView(spacer(8))
+            }
         }
+        search.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = render(s?.toString().orEmpty())
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
+        render("")
 
         content.addView(footerNote())
         return root
@@ -111,7 +140,7 @@ class ManageFilesScreen(private val context: Context) {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(12), dp(10), dp(12), dp(10))
-            setBackgroundColor(Color.rgb(15, 14, 18))
+            setBackgroundColor(Color.argb(230, 8, 8, 10))
 
             addView(TextView(context).apply {
                 text = "Back"
@@ -183,19 +212,17 @@ class ManageFilesScreen(private val context: Context) {
         onPerGameSettings: (String) -> Unit,
     ): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(14), dp(12), dp(14), dp(12))
+        setPadding(dp(12), dp(10), dp(12), dp(10))
         background = GradientDrawable().apply {
-            setColor(Color.argb(190, 12, 11, 16))
-            cornerRadius = dp(14).toFloat()
-            setStroke(dp(1), Color.argb(60, 160, 140, 110))
+            setColor(Color.argb(178, 12, 11, 16))
+            cornerRadius = dp(12).toFloat()
+            setStroke(dp(1), Color.argb(50, 160, 140, 110))
         }
-        alpha = 0f
-        animate().alpha(1f).setDuration(300).setInterpolator(OvershootInterpolator(1.05f)).start()
 
         addView(gameHeader(game))
+        addView(spacer(7))
+        addView(compactStorageLine(storage, game.fileCount))
         addView(spacer(8))
-        addView(storageBlock(storage))
-        addView(spacer(10))
         addView(actionBlock(game, onImport, onDelete, onViewSaves, onChangeEngine, onPerGameSettings))
     }
 
@@ -211,12 +238,31 @@ class ManageFilesScreen(private val context: Context) {
             maxLines = 2
         }, LinearLayout.LayoutParams(0, WRAP, 1f))
         addView(TextView(context).apply {
-            text = game.engineType.label.uppercase()
+            text = game.engineType.label.uppercase().take(18)
             setTextColor(ACCENT); textSize = 10f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setPadding(dp(10), dp(6), dp(10), dp(6))
             background = glassBg(dp(10), alpha = 50)
         })
     }
+
+    private fun compactStorageLine(storage: WorkspaceStorage?, fileCount: Int): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            val total = storage?.totalBytes ?: 0L
+            val saves = storage?.savesBytes ?: 0L
+            addView(TextView(context).apply {
+                text = "${formatBytes(total)}  |  $fileCount files"
+                setTextColor(MUTED)
+                textSize = 12f
+            }, LinearLayout.LayoutParams(0, WRAP, 1f))
+            addView(TextView(context).apply {
+                text = if (saves > 0L) "${formatBytes(saves)} saves" else "no saves"
+                setTextColor(if (saves > 0L) Color.rgb(190, 224, 176) else MUTED_DIM)
+                textSize = 12f
+                typeface = Typeface.DEFAULT_BOLD
+            })
+        }
 
     // ============================================================
     //  Storage block — workspace data breakdown
@@ -269,16 +315,17 @@ class ManageFilesScreen(private val context: Context) {
     ): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
 
-        addView(glassBigButton("PER-GAME SETTINGS", "Customize this game", Color.argb(58, 180, 140, 100)) { onPerGameSettings(game.storageName) })
-        addView(spacer(7))
-        addView(glassBigButton("REIMPORT GAME", "Replace files, keep saves", Color.argb(64, 132, 36, 42)) { onImport(game.storageName) })
-        addView(spacer(7))
         addView(twoButtonRow(
-            glassBigButton("VIEW SAVES", "Browse or restore save files", Color.argb(58, 130, 170, 200)) { onViewSaves(game.storageName) },
-            glassBigButton("CHANGE ENGINE", "Force engine type if detection fails", Color.argb(58, 200, 170, 130)) { onChangeEngine(game.storageName) },
+            glassBigButton("SETTINGS", "Per-game", Color.argb(58, 180, 140, 100)) { onPerGameSettings(game.storageName) },
+            glassBigButton("SAVES", "Browse", Color.argb(58, 130, 170, 200)) { onViewSaves(game.storageName) },
         ))
-        addView(spacer(7))
-        addView(glassBigButton("REMOVE DATA", "Delete game, keep saves", Color.argb(54, 145, 31, 43)) { onDelete(game.storageName) })
+        addView(spacer(6))
+        addView(twoButtonRow(
+            glassBigButton("ENGINE", "Override", Color.argb(58, 200, 170, 130)) { onChangeEngine(game.storageName) },
+            glassBigButton("REIMPORT", "Keep saves", Color.argb(64, 132, 36, 42)) { onImport(game.storageName) },
+        ))
+        addView(spacer(6))
+        addView(glassBigButton("REMOVE DATA", "Delete game files, keep saves", Color.argb(54, 145, 31, 43)) { onDelete(game.storageName) })
     }
 
     private fun twoButtonRow(left: TextView, right: TextView): LinearLayout = LinearLayout(context).apply {
@@ -291,9 +338,9 @@ class ManageFilesScreen(private val context: Context) {
     private fun glassBigButton(label: String, detail: String, tint: Int, onClick: () -> Unit): TextView =
         TextView(context).apply {
             text = "$label\n$detail"
-            setTextColor(TEXT); textSize = 12f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            includeFontPadding = true; minHeight = dp(48)
-            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setTextColor(TEXT); textSize = 11f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            includeFontPadding = true; minHeight = dp(42)
+            setPadding(dp(7), dp(6), dp(7), dp(6))
             background = GradientDrawable().apply {
                 setColor(tint)
                 cornerRadius = dp(14).toFloat()
@@ -332,6 +379,24 @@ class ManageFilesScreen(private val context: Context) {
         text = "Game files are stored once. Saves live outside the game for safekeeping."
         setTextColor(Color.argb(130, 170, 164, 154)); textSize = 12f; gravity = Gravity.CENTER
         setPadding(dp(8), dp(2), dp(8), 0)
+    }
+
+    private fun searchBox(): EditText = EditText(context).apply {
+        hint = "Search games or engines"
+        setHintTextColor(MUTED_DIM)
+        setTextColor(TEXT)
+        textSize = 14f
+        isSingleLine = true
+        setPadding(dp(12), dp(9), dp(12), dp(9))
+        background = glassBg(dp(12), alpha = 145)
+    }
+
+    private fun emptyNote(message: String): TextView = TextView(context).apply {
+        text = message
+        setTextColor(MUTED)
+        textSize = 13f
+        gravity = Gravity.CENTER
+        setPadding(dp(8), dp(18), dp(8), dp(18))
     }
 
     // ============================================================

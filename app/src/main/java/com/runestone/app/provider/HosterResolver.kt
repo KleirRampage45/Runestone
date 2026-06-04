@@ -13,7 +13,9 @@ package com.runestone.app.provider
 import android.util.Log
 import org.json.JSONObject
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
+import java.net.URLEncoder
 
 /**
  * Resolves hoster-specific URLs to direct download links that Android can download.
@@ -56,6 +58,8 @@ object HosterResolver {
                 HostStatus(true, "Rootz")
             lower.contains("vikingfile.com") || lower.contains("vik1ngfile.site") ->
                 HostStatus(true, "VikingFile")
+            lower.startsWith("itch://") ->
+                HostStatus(true, "itch.io")
             // Direct HTTPS links — assume supported
             lower.startsWith("https://") ->
                 HostStatus(true, "Direct")
@@ -78,6 +82,7 @@ object HosterResolver {
 
         val lower = rawUrl.lowercase()
         return when {
+            lower.startsWith("itch://") -> resolveItch(rawUrl)
             lower.contains("pixeldrain.com") -> resolvePixeldrain(rawUrl)
             lower.contains("gofile.io") -> resolveGofile(rawUrl)
             // Direct HTTPS or other supported hosters — pass through
@@ -86,8 +91,117 @@ object HosterResolver {
     }
 
     private fun resolvePixeldrain(url: String): String {
-        // Pixeldrain: append ?download to get direct file download
-        return if (url.contains("?")) "$url&download" else "$url?download"
+        val uri = URI(url)
+        val parts = uri.path.orEmpty().trim('/').split('/').filter { it.isNotBlank() }
+        val fileId = when {
+            parts.size >= 2 && parts[0].equals("u", ignoreCase = true) -> parts[1]
+            parts.size >= 2 && parts[0].equals("file", ignoreCase = true) -> parts[1]
+            parts.size >= 3 && parts[0].equals("api", ignoreCase = true) && parts[1].equals("file", ignoreCase = true) -> parts[2]
+            else -> ""
+        }
+        require(fileId.isNotBlank()) { "Invalid Pixeldrain URL" }
+        return "https://pixeldrain.com/api/file/$fileId?download"
+    }
+
+    private fun resolveItch(url: String): String {
+        val uri = URI(url)
+        val projectUrl = uri.getQueryParameter("url")
+            ?: throw RuntimeException("itch.io entry is missing project URL")
+        val uploadId = uri.getQueryParameter("upload_id")
+            ?: throw RuntimeException("itch.io entry is missing upload ID")
+
+        val pageConn = (URL(projectUrl).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 10_000
+            readTimeout = 10_000
+            setRequestProperty("User-Agent", "Runestone/1.0")
+        }
+        val cookies = mutableListOf<String>()
+        val pageHtml = try {
+            pageConn.headerFields["Set-Cookie"]?.mapTo(cookies) { it.substringBefore(";") }
+            pageConn.inputStream.bufferedReader().readText()
+        } finally {
+            pageConn.disconnect()
+        }
+
+        val csrf = extractCsrf(pageHtml)
+        val downloadEndpoint = extractGenerateDownloadUrl(pageHtml)
+            ?: "${projectUrl.trimEnd('/')}/download_url"
+        val downloadPageJson = postItch(downloadEndpoint, projectUrl, csrf, cookies)
+        val downloadPageUrl = JSONObject(downloadPageJson).optString("url", "")
+        if (downloadPageUrl.isBlank()) {
+            throw RuntimeException("itch.io did not return a download page")
+        }
+
+        val downloadPageConn = (URL(downloadPageUrl).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 10_000
+            readTimeout = 10_000
+            setRequestProperty("User-Agent", "Runestone/1.0")
+            setRequestProperty("Cookie", cookies.joinToString("; "))
+        }
+        val downloadPageHtml = try {
+            downloadPageConn.headerFields["Set-Cookie"]?.mapTo(cookies) { it.substringBefore(";") }
+            downloadPageConn.inputStream.bufferedReader().readText()
+        } finally {
+            downloadPageConn.disconnect()
+        }
+
+        val downloadCsrf = extractCsrf(downloadPageHtml)
+        val fileEndpoint = "${projectUrl.trimEnd('/')}/file/$uploadId?source=game_download"
+        val fileJson = postItch(fileEndpoint, downloadPageUrl, downloadCsrf, cookies)
+        val fileUrl = JSONObject(fileJson).optString("url", "")
+        if (fileUrl.isBlank()) {
+            throw RuntimeException("itch.io did not return a file URL")
+        }
+        return fileUrl
+    }
+
+    private fun extractCsrf(html: String): String {
+        val match = Regex("""<meta\s+name=["']csrf_token["']\s+value=["']([^"']+)["']""").find(html)
+        return match?.groupValues?.get(1)
+            ?: throw RuntimeException("itch.io CSRF token not found")
+    }
+
+    private fun extractGenerateDownloadUrl(html: String): String? {
+        val match = Regex(""""generate_download_url"\s*:\s*"([^"]+)"""").find(html)
+            ?: return null
+        return match.groupValues[1]
+            .replace("\\/", "/")
+            .replace("\\u0026", "&")
+    }
+
+    private fun postItch(url: String, referer: String, csrf: String, cookies: List<String>): String {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 10_000
+            readTimeout = 10_000
+            doOutput = true
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("User-Agent", "Runestone/1.0")
+            setRequestProperty("Referer", referer)
+            setRequestProperty("X-CSRF-Token", csrf)
+            setRequestProperty("Cookie", cookies.joinToString("; "))
+        }
+        return try {
+            conn.outputStream.use { output ->
+                val body = "csrf_token=${URLEncoder.encode(csrf, Charsets.UTF_8.name())}"
+                output.write(body.toByteArray())
+            }
+            if (conn.responseCode != 200) {
+                throw RuntimeException("itch.io returned HTTP ${conn.responseCode}")
+            }
+            conn.inputStream.bufferedReader().readText()
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun URI.getQueryParameter(name: String): String? {
+        return rawQuery
+            ?.split("&")
+            ?.firstOrNull { it.substringBefore("=") == name }
+            ?.substringAfter("=", "")
+            ?.let { java.net.URLDecoder.decode(it, Charsets.UTF_8.name()) }
+            ?.takeIf { it.isNotBlank() }
     }
 
     private fun resolveGofile(url: String): String {

@@ -48,6 +48,12 @@ enum class EngineType(
     GODOT3("Godot 3.x", EngineTier.BUNDLED),
     GODOT4("Godot 4.x", EngineTier.BUNDLED),
     NSCRIPTER("NScripter / ONScripter", EngineTier.BUNDLED),
+    WOLF("Wolf RPG Editor", EngineTier.LEGACY),
+    KIRIKIRI("KiriKiri / KAG", EngineTier.LEGACY),
+    UNITY("Unity", EngineTier.LEGACY),
+    UNREAL("Unreal Engine", EngineTier.LEGACY),
+    GAMEMAKER("GameMaker", EngineTier.LEGACY),
+    AGS("Adventure Game Studio", EngineTier.LEGACY),
     ELECTRON("Electron", EngineTier.DOWNLOAD),
 
     // ══ Legacy (detect only — no open-source runtime exists) ══
@@ -58,23 +64,32 @@ enum class EngineType(
     UNKNOWN("Unknown Engine", EngineTier.LEGACY);
 
     companion object {
-        fun fromEngineId(id: String): EngineType = when (id) {
-            "mkxp-z" -> RGSS_VX_ACE
-            "easyrpg" -> EASYRPG
-            "renpy" -> RENPY
+        fun fromEngineId(id: String): EngineType = when (id.trim().lowercase().replace("-", "_")) {
+            "mkxp_z", "rgss", "rpgmaker", "rpg_maker" -> RGSS_VX_ACE
+            "rgss_xp", "xp", "rpgmaker_xp", "rpg_maker_xp" -> RGSS_XP
+            "rgss_vx", "vx", "rpgmaker_vx", "rpg_maker_vx" -> RGSS_VX
+            "rgss_vx_ace", "vxace", "vx_ace", "rgss3", "rpgmaker_vx_ace", "rpg_maker_vx_ace" -> RGSS_VX_ACE
+            "easyrpg", "rpg_rt", "rpgmaker_2000", "rpgmaker_2003", "2k", "2k3" -> EASYRPG
+            "renpy", "ren_py" -> RENPY
             "godot", "godot3" -> GODOT3
             "godot4" -> GODOT4
-            "webview-mv" -> MV
-            "webview-mz" -> MZ
-            "tyrano" -> TYRANO
-            "construct" -> CONSTRUCT
-            "html" -> HTML
+            "webview_mv", "mv", "rpgmaker_mv", "rpg_maker_mv" -> MV
+            "webview_mz", "mz", "rpgmaker_mz", "rpg_maker_mz" -> MZ
+            "tyrano", "tyranobuilder" -> TYRANO
+            "construct", "construct2", "construct3" -> CONSTRUCT
+            "html", "html5" -> HTML
             "twine" -> TWINE
-            "vnmaker" -> VNMAKER
-            "ruffle" -> RUFFLE
-            "nscripter" -> NSCRIPTER
+            "vnmaker", "vn_maker" -> VNMAKER
+            "ruffle", "flash", "swf" -> RUFFLE
+            "nscripter", "onscripter" -> NSCRIPTER
+            "wolf", "wolfrpg", "wolf_rpg", "wolf_rpg_editor" -> WOLF
+            "kirikiri", "kirikiri2", "kirikiri_z", "kag", "xp3" -> KIRIKIRI
+            "unity", "unity3d" -> UNITY
+            "unreal", "ue4", "ue5", "unreal_engine" -> UNREAL
+            "gamemaker", "game_maker", "gms", "gms2" -> GAMEMAKER
+            "ags", "adventure_game_studio" -> AGS
             "electron" -> ELECTRON
-            "rm95" -> RM95
+            "rm95", "rpgmaker_95" -> RM95
             "dante98" -> DANTE98
             else -> UNKNOWN
         }

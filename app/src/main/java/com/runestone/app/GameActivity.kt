@@ -133,7 +133,11 @@ class GameActivity : Activity() {
         )
 
         // Force orientation based on layout mode
-        if (settings.layoutMode == LayoutMode.LANDSCAPE || settings.layoutMode == LayoutMode.GAMEPAD) {
+        if (
+            engineType == EngineType.RENPY ||
+            settings.layoutMode == LayoutMode.LANDSCAPE ||
+            settings.layoutMode == LayoutMode.GAMEPAD
+        ) {
             requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         } else {
             requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
@@ -147,6 +151,10 @@ class GameActivity : Activity() {
             try { EngineType.valueOf(typeStr) } catch (e: Exception) { EngineDetector.detect(gameDir) }
         } else {
             EngineDetector.detect(gameDir)
+        }
+
+        if (engineType == EngineType.RENPY) {
+            requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         }
 
         when (engineType) {
@@ -166,7 +174,9 @@ class GameActivity : Activity() {
             EngineType.NSCRIPTER -> launchNScripterGame(gameDir)
 
             // Legacy / unsupported
-            EngineType.RM95, EngineType.DANTE98 -> showLegacyDialog(engineType)
+            EngineType.RM95, EngineType.DANTE98,
+            EngineType.WOLF, EngineType.KIRIKIRI, EngineType.UNITY,
+            EngineType.UNREAL, EngineType.GAMEMAKER, EngineType.AGS -> showLegacyDialog(engineType)
             EngineType.ELECTRON -> showElectronDialog()
             EngineType.UNKNOWN -> {
                 Toast.makeText(this, "Unknown engine, trying WebView", Toast.LENGTH_SHORT).show()
@@ -296,13 +306,7 @@ class GameActivity : Activity() {
             }
             setPadding(dp(12), dp(6), dp(12), dp(6))
             setOnClickListener {
-                // Save paused state and go home
-                getSharedPreferences("runestone", MODE_PRIVATE).edit()
-                    .putString("paused_game", gamePath).apply()
-                val intent = Intent(this@GameActivity, MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                }
-                startActivity(intent)
+                goHomePaused()
             }
             val ph = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             ph.gravity = Gravity.BOTTOM or Gravity.START
@@ -346,7 +350,15 @@ class GameActivity : Activity() {
             diagonalMovement = settings.diagonalMovement
             controlsOnly = (settings.layoutMode == LayoutMode.PORTRAIT_CONSOLE)
 
-            onInput = { zone, pressed ->
+            onInput = inputHandler@{ zone, pressed ->
+                if (zone == TouchOverlayView.Zone.SETTINGS && pressed) {
+                    openSettings()
+                    return@inputHandler
+                }
+                if (zone == TouchOverlayView.Zone.HOME && pressed) {
+                    goHomePaused()
+                    return@inputHandler
+                }
                 val keyCode = zoneToKeyCode(zone)
                 val action = if (pressed) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP
                 engine.dispatchKeyEvent(KeyEvent(action, keyCode))
@@ -369,9 +381,6 @@ class GameActivity : Activity() {
                 if (js.isNotEmpty()) {
                     engine.evaluateJavascript("(function(){try{$js}catch(e){}})();", null)
                 }
-                if (zone == TouchOverlayView.Zone.SETTINGS && pressed) {
-                    openSettings()
-                }
             }
         }
         this@GameActivity.overlayView = overlay
@@ -381,13 +390,21 @@ class GameActivity : Activity() {
     private fun openSettings() {
         val overlay = overlayView
         if (overlay != null) {
-            Toast.makeText(this,
-                "Layout: ${settings.layoutMode.displayName} | Vib: ${if (overlay.hapticsEnabled) "ON" else "OFF"}" +
-                " | KB btn: KBD top-right",
-                Toast.LENGTH_LONG).show()
+            overlay.toggleQuickSettings()
         } else {
             Toast.makeText(this, "Gamepad mode — no touch controls", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun goHomePaused() {
+        getSharedPreferences("runestone", MODE_PRIVATE).edit()
+            .putBoolean("game_minimized", true)
+            .putString("paused_game", gamePath)
+            .apply()
+        val intent = Intent(this@GameActivity, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        startActivity(intent)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -492,6 +509,7 @@ class GameActivity : Activity() {
             putExtra("com.grimmobile.runner.extra.HAPTIC_INTENSITY", settings.hapticIntensity)
         }
         startActivity(intent)
+        finish()
     }
 
     // ── EasyRPG (GPLv3 — bundled native, no download needed) ─────
@@ -522,6 +540,7 @@ class GameActivity : Activity() {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         startActivity(intent)
+        finish()
     }
 
     // ── Godot (MIT — native wrapper not integrated) ──────────────
@@ -531,24 +550,59 @@ class GameActivity : Activity() {
         UnavailableEngine.show(this, "Godot")
     }
 
-    // ── NScripter / ONScripter (GPLv2+ — wrapper not integrated) ─
+    // ── NScripter / ONScripter (GPLv2+ — bundled native wrapper) ─
 
     private fun launchNScripterGame(gameDir: File) {
-        Log.i(TAG, "ONScripter unavailable: ${gameDir.name}")
-        UnavailableEngine.show(this, "ONScripter")
+        Log.i(TAG, "ONScripter bundled: launching ${gameDir.name}")
+        val saveDir = File(gameDir, "saves").apply { mkdirs() }
+        val intent = Intent(this, com.runestone.app.engine.onscripter.OnscripterActivity::class.java).apply {
+            putExtra("game_path", gameDir.absolutePath)
+            putExtra("save_path", saveDir.absolutePath)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(intent)
+        finish()
     }
 
-    // ── Ren'Py (MIT — native wrapper not integrated) ─────────────
+    // ── Ren'Py (MIT — bundled native wrapper) ────────────────────
 
     private fun launchRenpyGame(gameDir: File) {
-        Log.i(TAG, "Ren'Py unavailable: ${gameDir.name}")
-        UnavailableEngine.show(this, "Ren'Py")
+        Log.i(TAG, "Ren'Py bundled: launching ${gameDir.name}")
+        val saveDir = File(gameDir, "saves").apply { mkdirs() }
+        val intent = Intent(this, org.renpy.android.PythonSDLActivity::class.java).apply {
+            putExtra("game_path", gameDir.absolutePath)
+            putExtra("save_path", saveDir.absolutePath)
+            putExtra("engine_version", "8.3.4")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(intent)
+        finish()
     }
 
     private fun showLegacyDialog(type: EngineType) {
+        val title: String
+        val message: String
+        when (type) {
+            EngineType.WOLF -> {
+                title = "Unsupported Engine — ${type.label}"
+                message = "This game uses Wolf RPG Editor.\n\nRunestone can detect these games, but it does not bundle a Wolf RPG runtime yet. The game files are installed correctly, but this engine cannot be played here yet."
+            }
+            EngineType.KIRIKIRI -> {
+                title = "Unsupported Engine — ${type.label}"
+                message = "This game uses KiriKiri/KAG.\n\nRunestone can detect these games, but it does not bundle a KiriKiri runtime. The game files are installed correctly, but this engine cannot be played here yet."
+            }
+            EngineType.UNITY, EngineType.UNREAL, EngineType.GAMEMAKER, EngineType.AGS -> {
+                title = "Unsupported Engine — ${type.label}"
+                message = "Runestone can identify this engine, but it does not bundle a compatible Android runtime for it. The game files are installed correctly, but this engine cannot be played here yet."
+            }
+            else -> {
+                title = "Legacy Engine — ${type.label}"
+                message = "This is a legacy engine from ${if (type == EngineType.DANTE98) "1992" else "1997"}.\n\nNo open-source runtime exists. These games require the original PC software."
+            }
+        }
         AlertDialog.Builder(this)
-            .setTitle("Legacy Engine — ${type.label}")
-            .setMessage("This is a legacy engine from ${if (type == EngineType.DANTE98) "1992" else "1997"}.\n\nNo open-source runtime exists. These games require the original PC software.")
+            .setTitle(title)
+            .setMessage(message)
             .setPositiveButton("OK") { _, _ -> finish() }
             .setCancelable(false)
             .show()

@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -58,6 +59,7 @@ class TouchOverlayView(context: Context) : View(context) {
     private val menuRect = RectF()
     private val imageRect = RectF()
     private val editButtonRect = RectF()
+    private val quickSettingsRect = RectF()
     private val doneRect = RectF()
     private val revertRect = RectF()
     private val presetRect = RectF()
@@ -65,6 +67,7 @@ class TouchOverlayView(context: Context) : View(context) {
     private val layout = mutableMapOf<Control, ControlPlacement>()
     private var defaultLayout = emptyMap<Control, ControlPlacement>()
     private var loadedLayout = false
+    private var quickSettingsOpen = false
 
     // L1/R1 shoulder button positions (fixed, not part of layout editor)
     private val l1Rect = RectF()
@@ -208,6 +211,8 @@ class TouchOverlayView(context: Context) : View(context) {
         }
 
         editButtonRect.set(w - 76f * s, h - 76f * s, w - 8f * s, h - 8f * s)
+        val quickW = minOf(w - 32f * s, 420f * s)
+        quickSettingsRect.set(w * 0.5f - quickW / 2f, 14f * s, w * 0.5f + quickW / 2f, 62f * s)
         doneRect.set(12f * s, 12f * s, 128f * s, 62f * s)
         revertRect.set(140f * s, 12f * s, 268f * s, 62f * s)
         presetRect.set(280f * s, 12f * s, 398f * s, 62f * s)
@@ -257,7 +262,68 @@ class TouchOverlayView(context: Context) : View(context) {
         drawShoulderButton(canvas, r1Rect, "R1", a, Zone.R1)
 
         drawEditButton(canvas, a)
+        if (quickSettingsOpen) drawQuickSettings(canvas, a)
         if (editing) drawEditorChrome(canvas)
+    }
+
+    fun toggleQuickSettings() {
+        quickSettingsOpen = !quickSettingsOpen
+        invalidate()
+    }
+
+    private fun drawQuickSettings(canvas: Canvas, a: Float) {
+        editorPaint.alpha = (185 * a).toInt().coerceIn(0, 255)
+        canvas.drawRoundRect(quickSettingsRect, 14f * scale, 14f * scale, editorPaint)
+        btnStroke.alpha = (105 * a).toInt().coerceIn(0, 255)
+        canvas.drawRoundRect(quickSettingsRect, 14f * scale, 14f * scale, btnStroke)
+
+        val cellW = quickSettingsRect.width() / 7f
+        for (i in 0 until 7) {
+            val cx = quickSettingsRect.left + cellW * i + cellW / 2f
+            val cy = quickSettingsRect.centerY()
+            drawQuickIcon(canvas, i, cx, cy, minOf(cellW, quickSettingsRect.height()) * 0.28f, a)
+        }
+    }
+
+    private fun drawQuickIcon(canvas: Canvas, index: Int, cx: Float, cy: Float, s: Float, a: Float) {
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            strokeWidth = 2.4f * scale
+            color = Color.argb((220 * a).toInt().coerceIn(0, 255), 235, 232, 220)
+            textAlign = Paint.Align.CENTER
+            textSize = 12f * scale
+            isFakeBoldText = true
+        }
+        val path = Path()
+        when (index) {
+            0 -> {
+                path.moveTo(cx - s, cy); path.lineTo(cx, cy - s); path.lineTo(cx + s, cy)
+                canvas.drawPath(path, paint)
+                canvas.drawLine(cx - s * 0.6f, cy, cx - s * 0.6f, cy + s, paint)
+                canvas.drawLine(cx + s * 0.6f, cy, cx + s * 0.6f, cy + s, paint)
+                canvas.drawLine(cx - s * 0.6f, cy + s, cx + s * 0.6f, cy + s, paint)
+            }
+            1, 2 -> {
+                canvas.drawCircle(cx, cy, s, paint)
+                canvas.drawLine(cx - s * 0.45f, cy, cx + s * 0.45f, cy, paint)
+                if (index == 2) canvas.drawLine(cx, cy - s * 0.45f, cx, cy + s * 0.45f, paint)
+            }
+            3, 4 -> {
+                canvas.drawRoundRect(RectF(cx - s, cy - s * 0.65f, cx + s, cy + s * 0.65f), s * 0.25f, s * 0.25f, paint)
+                canvas.drawText(if (index == 3) "O" else "S", cx, cy + s * 0.35f, paint)
+            }
+            5 -> {
+                canvas.drawLine(cx - s, cy, cx + s, cy, paint)
+                canvas.drawLine(cx, cy - s, cx, cy + s, paint)
+                canvas.drawCircle(cx, cy, s * 0.25f, paint)
+            }
+            6 -> {
+                canvas.drawCircle(cx, cy, s, paint)
+                canvas.drawLine(cx, cy, cx + s * 0.75f, cy - s * 0.75f, paint)
+            }
+        }
     }
 
     private fun drawDPad(canvas: Canvas, a: Float) {
@@ -280,30 +346,47 @@ class TouchOverlayView(context: Context) : View(context) {
             canvas.drawCircle(cx, cy, outer, paint)
         }
 
-        // Direction indicators (simple arrows)
-        val arrowLen = inner * 0.5f
-        val arrowPaint = Paint(labelPaint).apply { alpha = (210 * a).toInt(); textSize = 38f * scale }
-
-        // Up
-        val upPressed = Zone.DPAD_UP in activeZones
-        arrowPaint.color = if (upPressed) Color.rgb(200, 170, 130) else Color.argb((200 * a).toInt(), 255, 255, 255)
-        canvas.drawText("▲", cx, cy - arrowLen, arrowPaint)
-
-        // Down
-        val downPressed = Zone.DPAD_DOWN in activeZones
-        arrowPaint.color = if (downPressed) Color.rgb(200, 170, 130) else Color.argb((200 * a).toInt(), 255, 255, 255)
-        canvas.drawText("▼", cx, cy + arrowLen + 10f, arrowPaint)
-
-        // Left
-        val leftPressed = Zone.DPAD_LEFT in activeZones
-        arrowPaint.color = if (leftPressed) Color.rgb(200, 170, 130) else Color.argb((200 * a).toInt(), 255, 255, 255)
-        canvas.drawText("◀", cx - arrowLen, cy + 10f, arrowPaint)
-
-        // Right
-        val rightPressed = Zone.DPAD_RIGHT in activeZones
-        arrowPaint.color = if (rightPressed) Color.rgb(200, 170, 130) else Color.argb((200 * a).toInt(), 255, 255, 255)
-        canvas.drawText("▶", cx + arrowLen, cy + 10f, arrowPaint)
+        drawDpadChevron(canvas, cx, cy - inner * 0.72f, outer * 0.18f, Direction.UP, Zone.DPAD_UP, a)
+        drawDpadChevron(canvas, cx, cy + inner * 0.72f, outer * 0.18f, Direction.DOWN, Zone.DPAD_DOWN, a)
+        drawDpadChevron(canvas, cx - inner * 0.72f, cy, outer * 0.18f, Direction.LEFT, Zone.DPAD_LEFT, a)
+        drawDpadChevron(canvas, cx + inner * 0.72f, cy, outer * 0.18f, Direction.RIGHT, Zone.DPAD_RIGHT, a)
         drawSelection(canvas, Control.DPAD)
+    }
+
+    private enum class Direction { UP, DOWN, LEFT, RIGHT }
+
+    private fun drawDpadChevron(canvas: Canvas, x: Float, y: Float, size: Float, direction: Direction, zone: Zone, a: Float) {
+        val pressed = zone in activeZones
+        val path = Path()
+        when (direction) {
+            Direction.UP -> {
+                path.moveTo(x, y - size)
+                path.lineTo(x - size, y + size * 0.7f)
+                path.lineTo(x + size, y + size * 0.7f)
+            }
+            Direction.DOWN -> {
+                path.moveTo(x, y + size)
+                path.lineTo(x - size, y - size * 0.7f)
+                path.lineTo(x + size, y - size * 0.7f)
+            }
+            Direction.LEFT -> {
+                path.moveTo(x - size, y)
+                path.lineTo(x + size * 0.7f, y - size)
+                path.lineTo(x + size * 0.7f, y + size)
+            }
+            Direction.RIGHT -> {
+                path.moveTo(x + size, y)
+                path.lineTo(x - size * 0.7f, y - size)
+                path.lineTo(x - size * 0.7f, y + size)
+            }
+        }
+        path.close()
+
+        val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = if (pressed) Color.rgb(200, 170, 130) else Color.argb((210 * a).toInt(), 255, 255, 255)
+        }
+        canvas.drawPath(path, arrowPaint)
     }
 
     private fun drawButton(canvas: Canvas, x: Float, y: Float, r: Float, label: String, a: Float, zone: Zone) {
@@ -375,6 +458,7 @@ class TouchOverlayView(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (handleQuickSettingsTouch(event)) return true
         if (handleEditorTouch(event)) return true
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN,
@@ -430,6 +514,35 @@ class TouchOverlayView(context: Context) : View(context) {
             }
         }
         return false
+    }
+
+    private fun handleQuickSettingsTouch(event: MotionEvent): Boolean {
+        if (!quickSettingsOpen) return false
+        val action = event.actionMasked
+        val x = event.getX(event.actionIndex)
+        val y = event.getY(event.actionIndex)
+        if (!quickSettingsRect.contains(x, y)) {
+            if (action == MotionEvent.ACTION_DOWN && y < quickSettingsRect.bottom + 24f * scale) {
+                quickSettingsOpen = false
+                invalidate()
+                return true
+            }
+            return false
+        }
+        if (action != MotionEvent.ACTION_UP) return true
+        val index = ((x - quickSettingsRect.left) / (quickSettingsRect.width() / 7f)).toInt().coerceIn(0, 6)
+        when (index) {
+            0 -> onInput?.invoke(Zone.HOME, true)
+            1 -> opacity = (opacity - 0.12f).coerceAtLeast(0.18f)
+            2 -> opacity = (opacity + 0.12f).coerceAtMost(1f)
+            3 -> scale = (scale - 0.10f).coerceAtLeast(0.55f)
+            4 -> scale = (scale + 0.10f).coerceAtMost(1.75f)
+            5 -> startEditing()
+            6 -> showExtraButtons = !showExtraButtons
+        }
+        requestLayout()
+        invalidate()
+        return true
     }
 
     private fun hitTestMulti(x: Float, y: Float): Set<Zone> {

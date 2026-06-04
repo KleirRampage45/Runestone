@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "name": "Runestone Picks",
+  "games": [
+    {
+      "id": "zato-i-love-the-world",
+      "title": "Z. A. T. O. // I Love the World and Everything In It",
+      "engine": "renpy",
+      "fileSize": 344981504,
+      "pageUrl": "https://nopanamaman.itch.io/z-a-t-o-i-love-the-world-and-everything-in-it",
+      "downloadOptions": [
+        {
+          "name": "Z.A.T.O. PC build",
+          "host": "itch.io",
+          "url": "itch://download?url=https%3A%2F%2Fnopanamaman.itch.io%2Fz-a-t-o-i-love-the-world-and-everything-in-it&upload_id=15384715",
+          "fileSize": 344981504
+        }
+      ]
+    },
+    {
+      "id": "aopii",
+      "title": "AOPII",
+      "engine": "renpy",
+      "pageUrl": "https://crystalgameworks.itch.io/aopii",
+      "description": "Free Ren'Py visual novel.",
+      "tags": ["visual novel", "renpy", "freeware"],
+      "language": "English",
+      "license": "freeware"
+    },
+    {
+      "id": "surkea",
+      "title": "Surkea",
+      "engine": "renpy",
+      "pageUrl": "https://somnova-studios.itch.io/surkea",
+      "description": "Free Ren'Py visual novel.",
+      "tags": ["visual novel", "renpy", "freeware"],
+      "language": "English",
+      "license": "freeware"
+    },
+    {
+      "id": "escaped-chasm",
+      "title": "Escaped Chasm",
+      "engine": "rpgmaker",
+      "pageUrl": "https://tuyoki.itch.io/escaped-chasm",
+      "description": "Free short RPG Maker game by Temmie Chang.",
+      "tags": ["rpg maker", "adventure", "freeware", "story"],
+      "language": "English",
+      "license": "freeware",
+      "rawgQuery": "Escaped Chasm"
+    },
+    {
+      "id": "dwellers-empty-path",
+      "title": "Dweller's Empty Path",
+      "engine": "rpgmaker",
+      "pageUrl": "https://tuyoki.itch.io/dwellers-empty-path",
+      "description": "Free RPG Maker adventure by Temmie Chang.",
+      "tags": ["rpg maker", "adventure", "freeware", "story"],
+      "language": "English",
+      "license": "freeware",
+      "rawgQuery": "Dweller's Empty Path"
+    },
+    {
+      "id": "requital-free-rpg",
+      "title": "Requital",
+      "engine": "rpgmaker",
+      "pageUrl": "https://oberonrpgs.itch.io/requital-free-rpg-game",
+      "description": "Free RPG Maker fantasy RPG.",
+      "tags": ["rpg maker", "rpg", "fantasy", "freeware"],
+      "language": "English",
+      "license": "freeware",
+      "rawgQuery": "Requital"
+    },
+    {
+      "id": "grimms-hollow",
+      "title": "Grimm's Hollow",
+      "engine": "easyrpg",
+      "pageUrl": "https://store.steampowered.com/app/1170880/Grimms_Hollow/",
+      "description": "Free RPG Maker 2003 game released as freeware.",
+      "tags": ["rpg maker 2003", "rpg", "horror", "freeware"],
+      "language": "English",
+      "license": "freeware",
+      "rawgQuery": "Grimm's Hollow"
+    }
+  ]
+}

@@ -67,6 +67,7 @@ class ExtractionManager(private val context: Context) {
 
     private fun doExtract(zipFile: File, outputDir: File, callback: ExtractionCallback) {
         val entries = countEntries(zipFile)
+        require(entries > 0) { "Archive contains no files" }
         var extracted = 0
         var extractedBytes = 0L
 
@@ -118,6 +119,7 @@ class ExtractionManager(private val context: Context) {
                 entry = zis.nextEntry
             }
         }
+        require(extracted > 0) { "Archive did not extract any files" }
 
         val gameRoot = detectGameRoot(outputDir)
         Log.i(TAG, "Extraction complete: $extracted files, gameRoot=${gameRoot.absolutePath}")
@@ -169,25 +171,42 @@ class ExtractionManager(private val context: Context) {
     }
 
     private fun detectGameRoot(dir: File): File {
-        val directChildren = dir.listFiles() ?: return dir
-
-        if (directChildren.size == 1 && directChildren[0].isDirectory) {
-            val inner = directChildren[0]
-            val hasGameData = inner.listFiles()?.any { child ->
-                val name = child.name.lowercase()
-                name == "www" || name == "data" || name == "game.ini" ||
-                    name.endsWith(".exe") || name == "rpg_rt.ldb"
-            } == true
-            if (hasGameData) return inner
-        }
-
-        val hasGameData = directChildren.any { child ->
-            val name = child.name.lowercase()
-            name == "www" || name == "data" || name == "game.ini" ||
-                name.endsWith(".exe") || name == "rpg_rt.ldb"
-        }
-        if (hasGameData) return dir
-
+        findGameRoot(dir, maxDepth = 4)?.let { return it }
         return dir
+    }
+
+    private fun findGameRoot(dir: File, maxDepth: Int): File? {
+        val directChildren = dir.listFiles() ?: return null
+
+        if (hasGameData(directChildren)) {
+            return dir
+        }
+
+        if (maxDepth <= 0) return null
+
+        directChildren
+            .filter { it.isDirectory }
+            .sortedBy { it.name.length }
+            .forEach { child ->
+                findGameRoot(child, maxDepth - 1)?.let { return it }
+            }
+
+        return null
+    }
+
+    private fun hasGameData(children: Array<File>): Boolean {
+        return children.any { child ->
+            val name = child.name.lowercase()
+            name == "www" ||
+                name == "data" ||
+                name == "game" ||
+                name == "game.ini" ||
+                name == "game.exe" ||
+                name.endsWith(".exe") ||
+                name == "rpg_rt.ldb" ||
+                name == "rpg_rt.ini" ||
+                name == "index.html" ||
+                name == "project.json"
+        }
     }
 }
