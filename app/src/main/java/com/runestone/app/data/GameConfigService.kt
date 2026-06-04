@@ -51,6 +51,7 @@ class GameConfigService(
                 performance = mergePerf(result.performance, layer.performance),
                 cheats = mergeCheats(result.cheats, layer.cheats),
                 fonts = mergeFonts(result.fonts, layer.fonts),
+                patches = layer.patches,  // patches are per-game only
             )
         }
         return result
