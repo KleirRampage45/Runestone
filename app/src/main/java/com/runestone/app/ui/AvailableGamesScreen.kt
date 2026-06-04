@@ -274,7 +274,7 @@ class AvailableGamesScreen(private val context: Context) {
             }
         }
         val searchInput = EditText(context).apply {
-            hint = "Search games..."; setHintTextColor(Color.argb(80, 200, 180, 130))
+            hint = "Search games..."; setHintTextColor(Color.argb(120, 200, 180, 130))
             setTextColor(TEXT); textSize = 13f
             inputType = InputType.TYPE_CLASS_TEXT; maxLines = 1; background = null
             setPadding(0, dp(6), 0, dp(6))
@@ -416,6 +416,7 @@ class AvailableGamesScreen(private val context: Context) {
                     setColor(Color.argb(60, 255, 255, 255))
                     cornerRadius = dp(12).toFloat()
                 }
+                contentDescription = game.title
             }
             card.addView(cover, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,

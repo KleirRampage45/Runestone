@@ -10,9 +10,13 @@
 
 package com.runestone.app
 
+import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.graphics.Color
 import android.graphics.Typeface
@@ -28,6 +32,8 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.runestone.app.data.EngineType
 import com.runestone.app.data.RunnerSettings
 import com.runestone.app.data.UIMode
@@ -51,6 +57,7 @@ import com.runestone.app.ui.SettingsStore
 import com.runestone.app.ui.Theme
 import com.runestone.app.ui.SourcesScreen
 import com.runestone.app.services.GameMetadataService
+import com.runestone.app.services.StoreDownloadService
 import com.runestone.app.provider.AvailableGame
 import com.runestone.app.provider.DownloadManager
 import com.runestone.app.provider.ExtractionManager
@@ -65,6 +72,7 @@ import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.zip.ZipFile
 
 class MainActivity : Activity() {
 
@@ -89,6 +97,15 @@ class MainActivity : Activity() {
     private var pendingCoverCallback: ((String) -> Unit)? = null
     private val importBrowserStack = mutableListOf<SafStorageBrowser.Folder>()
     private var downloadProgressMap = mutableMapOf<String, DownloadManager.DownloadProgress>()
+    private var installProgressMap = mutableMapOf<String, InstallProgress>()
+    private val lastStoreProgressRenderAt = mutableMapOf<String, Long>()
+    private val lastStoreProgressPercent = mutableMapOf<String, Int>()
+
+    data class InstallProgress(
+        val filesExtracted: Int,
+        val totalFiles: Int,
+        val currentFile: String,
+    )
 
     // Overlay navigation - root container set once, overlays added on top
     private lateinit var rootContainer: FrameLayout
@@ -111,8 +128,37 @@ class MainActivity : Activity() {
     private var searchQuery: String = ""
     private var homeCardLayout = HomeCardLayout.GRID_2
     private var availableGames: List<AvailableGame> = emptyList()
+    private val storeMetadataInFlight = mutableSetOf<String>()
+    private var storeMetadataLoading = false
+    private var storeMetadataRenderScheduled = false
+    private var availableGamesScrollY = 0
     private var isLoadingGames = false
     private var gamesErrorMessage: String? = null
+    private var downloadReceiverRegistered = false
+
+    private val downloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val gameId = intent.getStringExtra(StoreDownloadService.EXTRA_GAME_ID) ?: return
+            val stateName = intent.getStringExtra(StoreDownloadService.EXTRA_STATE) ?: DownloadManager.DownloadState.IDLE.name
+            val state = runCatching { DownloadManager.DownloadState.valueOf(stateName) }.getOrDefault(DownloadManager.DownloadState.IDLE)
+            val progress = DownloadManager.DownloadProgress(
+                bytesDownloaded = intent.getLongExtra(StoreDownloadService.EXTRA_BYTES, downloadManager.getDownloadedBytes(gameId)),
+                totalBytes = intent.getLongExtra(StoreDownloadService.EXTRA_TOTAL, downloadManager.getTotalBytes(gameId)),
+                speed = intent.getFloatExtra(StoreDownloadService.EXTRA_SPEED, 0f),
+                state = state,
+                error = intent.getStringExtra(StoreDownloadService.EXTRA_ERROR),
+            )
+            downloadProgressMap[gameId] = progress
+            when (intent.action) {
+                StoreDownloadService.ACTION_COMPLETE -> {
+                    val path = intent.getStringExtra(StoreDownloadService.EXTRA_FILE_PATH)
+                    if (path != null) startExtraction(gameId, path)
+                }
+                StoreDownloadService.ACTION_ERROR -> showErrorNotification(gameId, progress.error ?: "Download failed")
+            }
+            renderAvailableGamesProgress("download:$gameId", progressPercent(progress.bytesDownloaded, progress.totalBytes), force = state != DownloadManager.DownloadState.DOWNLOADING)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -121,9 +167,14 @@ class MainActivity : Activity() {
         // then clear immediately since the game activity is dead after fresh onCreate
         pausedGamePath = getSharedPreferences("runestone", MODE_PRIVATE)
             .getString("paused_game", null)
-        getSharedPreferences("runestone", MODE_PRIVATE).edit()
-            .remove("paused_game").apply()
-        pausedGamePath = null // game process died with the app
+        if (getSharedPreferences("runestone", MODE_PRIVATE).getBoolean("game_minimized", false)) {
+            Log.i(TAG, "onCreate preserving minimized game path=$pausedGamePath")
+        } else {
+            finalizeActivePlaySession(reason = "fresh_on_create")
+            getSharedPreferences("runestone", MODE_PRIVATE).edit()
+                .remove("paused_game").apply()
+            pausedGamePath = null // game process died with the app
+        }
         settingsStore = SettingsStore(this)
         workspaceManager = WorkspaceManager(this)
         installStateStore = InstallStateStore(workspaceManager)
@@ -143,6 +194,8 @@ class MainActivity : Activity() {
         }.getOrDefault(HomeCardLayout.GRID_2)
         refreshGames()
         createNotificationChannel()
+        requestNotificationPermissionIfNeeded()
+        registerDownloadReceiver()
         setupDownloadCallbacks()
 
         // Create permanent root frame - setContentView ONCE
@@ -152,6 +205,11 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setBackgroundColor(Color.rgb(3, 3, 4))
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(rootContainer) { v, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+            insets
         }
         setContentView(rootContainer)
         showSplash()
@@ -168,9 +226,76 @@ class MainActivity : Activity() {
         })
     }
 
+    private fun registerDownloadReceiver() {
+        if (downloadReceiverRegistered) return
+        val filter = IntentFilter().apply {
+            addAction(StoreDownloadService.ACTION_PROGRESS)
+            addAction(StoreDownloadService.ACTION_COMPLETE)
+            addAction(StoreDownloadService.ACTION_ERROR)
+        }
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(downloadReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(downloadReceiver, filter)
+        }
+        downloadReceiverRegistered = true
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 9104)
+        }
+    }
+
     private fun refreshGames() {
         games = workspaceManager.scanInstalledGames()
         Log.i(TAG, "refreshGames: found ${games.size} games")
+    }
+
+    private fun startPlaySession(storageName: String, gamePath: String) {
+        val now = System.currentTimeMillis()
+        getSharedPreferences("runestone", MODE_PRIVATE).edit()
+            .putString("active_game_storage", storageName)
+            .putString("active_game_path", gamePath)
+            .putLong("active_game_started_at", now)
+            .putLong("active_game_last_seen_at", now)
+            .putString("paused_game", gamePath)
+            .apply()
+
+        getSharedPreferences("play_stats", MODE_PRIVATE).edit()
+            .putLong("session_start_${storageName}", now)
+            .apply()
+    }
+
+    private fun finalizeActivePlaySession(reason: String) {
+        val runestonePrefs = getSharedPreferences("runestone", MODE_PRIVATE)
+        val storageName = runestonePrefs.getString("active_game_storage", null) ?: return
+        val startedAt = runestonePrefs.getLong("active_game_started_at", 0L)
+        if (startedAt <= 0L) return
+
+        val now = System.currentTimeMillis()
+        val elapsedSeconds = ((now - startedAt) / 1000L).coerceAtLeast(0L)
+        if (elapsedSeconds > 0L) {
+            val playStats = getSharedPreferences("play_stats", MODE_PRIVATE)
+            val total = playStats.getLong("total_${storageName}", 0L)
+            playStats.edit()
+                .putLong("total_${storageName}", total + elapsedSeconds)
+                .putLong("last_played_${storageName}", now)
+                .remove("session_start_${storageName}")
+                .apply()
+            Log.i(TAG, "Play session finalized: $storageName +${elapsedSeconds}s ($reason)")
+        }
+
+        runestonePrefs.edit()
+            .remove("active_game_storage")
+            .remove("active_game_path")
+            .remove("active_game_started_at")
+            .remove("active_game_last_seen_at")
+            .remove("paused_game")
+            .apply()
+        pausedGamePath = null
     }
 
     private fun createNotificationChannel() {
@@ -193,7 +318,10 @@ class MainActivity : Activity() {
                 runOnUiThread {
                     downloadProgressMap[gameId] = progress
                     showDownloadNotification(gameId, progress)
-                    if (activeOverlay != null) renderAvailableGamesScreen()
+                    renderAvailableGamesProgress(
+                        key = "download:$gameId",
+                        percent = progressPercent(progress.bytesDownloaded, progress.totalBytes),
+                    )
                 }
             }
 
@@ -203,6 +331,7 @@ class MainActivity : Activity() {
                         bytesDownloaded = 0, totalBytes = 0, speed = 0f,
                         state = DownloadManager.DownloadState.COMPLETED
                     )
+                    renderAvailableGamesProgress("download:$gameId", 100, force = true)
                     showInstallNotification(gameId)
                     startExtraction(gameId, filePath)
                 }
@@ -215,7 +344,7 @@ class MainActivity : Activity() {
                         state = DownloadManager.DownloadState.FAILED, error = message
                     )
                     showErrorNotification(gameId, message)
-                    if (activeOverlay != null) renderAvailableGamesScreen()
+                    renderAvailableGamesProgress("download:$gameId", 0, force = true)
                 }
             }
         })
@@ -273,32 +402,52 @@ class MainActivity : Activity() {
     private fun startExtraction(gameId: String, zipPath: String) {
         val game = availableGames.find { it.id == gameId } ?: return
         val outputDir = workspaceManager.allocateGameDir(game.title)
+        installProgressMap[gameId] = InstallProgress(0, 0, "Preparing archive")
+        renderAvailableGamesProgress("install:$gameId", 0, force = true)
 
         extractionManager.extract(zipPath, outputDir, object : ExtractionManager.ExtractionCallback {
             override fun onProgress(progress: ExtractionManager.ExtractionProgress) {
                 Log.d(TAG, "Extracting: ${progress.currentFile} (${progress.filesExtracted}/${progress.totalFiles})")
-                val notification = Notification.Builder(this@MainActivity, NOTIFICATION_CHANNEL)
-                    .setSmallIcon(android.R.drawable.stat_sys_download)
-                    .setContentTitle("Extracting game files")
-                    .setContentText("${progress.currentFile} (${progress.filesExtracted}/${progress.totalFiles})")
-                    .setOngoing(true)
-                    .build()
-                val nm = getSystemService(NotificationManager::class.java)
-                nm.notify(NOTIFICATION_ID_DOWNLOAD, notification)
+                runOnUiThread {
+                    installProgressMap[gameId] = InstallProgress(
+                        filesExtracted = progress.filesExtracted,
+                        totalFiles = progress.totalFiles,
+                        currentFile = progress.currentFile,
+                    )
+                    renderAvailableGamesProgress(
+                        key = "install:$gameId",
+                        percent = progressPercent(progress.filesExtracted.toLong(), progress.totalFiles.toLong()),
+                    )
+                    val notification = Notification.Builder(this@MainActivity, NOTIFICATION_CHANNEL)
+                        .setSmallIcon(android.R.drawable.stat_sys_download)
+                        .setContentTitle("Extracting ${game.title}")
+                        .setContentText("${progress.filesExtracted}/${progress.totalFiles} files")
+                        .setOngoing(true)
+                        .build()
+                    val nm = getSystemService(NotificationManager::class.java)
+                    nm.notify(NOTIFICATION_ID_DOWNLOAD, notification)
+                }
             }
 
             override fun onComplete(result: ExtractionManager.ExtractionResult) {
                 runOnUiThread {
                     try {
-                        val gameDir = finalizeDownloadedGame(result)
-                        File(zipPath).delete()
-                        Log.i(TAG, "Deleted ZIP: $zipPath")
+                        val gameDir = finalizeDownloadedGame(result, game)
+                        val zipFile = File(zipPath)
+                        if (settings.preserveFiles) {
+                            Log.i(TAG, "Preserved ZIP: $zipPath")
+                        } else if (zipFile.delete()) {
+                            Log.i(TAG, "Deleted ZIP: $zipPath")
+                        }
 
                         downloadManager.cleanup(gameId)
                         downloadProgressMap.remove(gameId)
+                        installProgressMap.remove(gameId)
+                        clearStoreProgress(gameId)
                         refreshGames()
-                        dismissOverlay()
-                        Toast.makeText(this@MainActivity, "${gameDir.name} installed!", Toast.LENGTH_SHORT).show()
+                        dismissOverlay { showHome() }
+                        val zipStatus = if (settings.preserveFiles) "ZIP kept" else "ZIP deleted"
+                        Toast.makeText(this@MainActivity, "${gameDir.name} installed. $zipStatus.", Toast.LENGTH_SHORT).show()
                     } catch (e: Exception) {
                         Log.e(TAG, "Installation failed", e)
                         discardFailedInstall(gameId, zipPath, result.outputDir, e.message ?: "Installation failed")
@@ -315,12 +464,17 @@ class MainActivity : Activity() {
         })
     }
 
-    private fun finalizeDownloadedGame(result: ExtractionManager.ExtractionResult): File {
+    private fun finalizeDownloadedGame(result: ExtractionManager.ExtractionResult, sourceGame: AvailableGame): File {
         val engine = EngineRegistry.detect(result.gameRoot)
-        requireNotNull(engine) { "Could not detect a supported game engine" }
-        val engineType = EngineType.fromEngineId(engine.id)
+        val detectedType = engine?.let { EngineType.fromEngineId(it.id) } ?: EngineType.UNKNOWN
+        val declaredType = sourceGame.engine?.let { EngineType.fromEngineId(it) } ?: EngineType.UNKNOWN
+        val engineType = when {
+            detectedType != EngineType.UNKNOWN -> detectedType
+            declaredType != EngineType.UNKNOWN -> declaredType
+            else -> EngineType.UNKNOWN
+        }
         require(engineType != EngineType.UNKNOWN) { "Could not detect a supported game engine" }
-        Log.i(TAG, "Detected engine: $engineType for ${result.gameRoot.name}")
+        Log.i(TAG, "Install engine: $engineType for ${result.gameRoot.name} detected=${engine?.id} declared=${sourceGame.engine}")
 
         val gameDir = result.outputDir
         val originalDir = File(gameDir, "original")
@@ -340,10 +494,12 @@ class MainActivity : Activity() {
             }
         }
 
+        val fileCount = originalDir.walkTopDown().count { it.isFile }
+        require(fileCount > 0) { "Archive did not contain game files" }
+
         workspaceManager.ensureWorkspace(gameDir.name)
         workspaceManager.rebuildActiveWorkspace(gameDir.name)
 
-        val fileCount = originalDir.walkTopDown().count { it.isFile }
         File(gameDir, "manifest.json").writeText(JSONObject().apply {
             put("storageName", gameDir.name)
             put("engineType", engineType.name)
@@ -358,12 +514,14 @@ class MainActivity : Activity() {
     private fun discardFailedInstall(gameId: String, zipPath: String, outputDir: File, message: String) {
         outputDir.deleteRecursively()
         File(zipPath).delete()
+        installProgressMap.remove(gameId)
+        clearStoreProgress(gameId)
         downloadManager.cleanup(gameId)
         downloadProgressMap[gameId] = DownloadManager.DownloadProgress(
             bytesDownloaded = 0, totalBytes = 0, speed = 0f,
             state = DownloadManager.DownloadState.FAILED, error = message,
         )
-        if (activeOverlay != null) renderAvailableGamesScreen()
+        renderAvailableGamesProgress("download:$gameId", 0, force = true)
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
@@ -371,16 +529,69 @@ class MainActivity : Activity() {
         val url = game.downloadUrl ?: return
         val fileName = "${sha256(game.id).take(32)}.zip"
         downloadManager.setFileName(game.id, fileName)
-        if (downloadManager.getState(game.id) == DownloadManager.DownloadState.PAUSED) {
-            downloadManager.resumeDownload(game.id, url, fileName)
-        } else {
-            downloadManager.startDownload(game.id, url, fileName)
+        val cachedFile = File(downloadManager.getDownloadDir(), fileName)
+        if (isReadableZip(cachedFile)) {
+            downloadProgressMap[game.id] = DownloadManager.DownloadProgress(
+                bytesDownloaded = cachedFile.length(),
+                totalBytes = cachedFile.length(),
+                speed = 0f,
+                state = DownloadManager.DownloadState.COMPLETED,
+            )
+            startExtraction(game.id, cachedFile.absolutePath)
+            renderAvailableGamesProgress("download:${game.id}", 100, force = true)
+            return
         }
+        val state = downloadManager.getState(game.id)
+        val action = if (state == DownloadManager.DownloadState.PAUSED) {
+            StoreDownloadService.ACTION_RESUME
+        } else {
+            StoreDownloadService.ACTION_START
+        }
+        startForegroundService(Intent(this, StoreDownloadService::class.java).apply {
+            this.action = action
+            putExtra(StoreDownloadService.EXTRA_GAME_ID, game.id)
+            putExtra(StoreDownloadService.EXTRA_TITLE, game.title)
+            putExtra(StoreDownloadService.EXTRA_URL, url)
+            putExtra(StoreDownloadService.EXTRA_FILE_NAME, fileName)
+        })
         downloadProgressMap[game.id] = DownloadManager.DownloadProgress(
-            bytesDownloaded = 0, totalBytes = 0, speed = 0f,
+            bytesDownloaded = downloadManager.getDownloadedBytes(game.id),
+            totalBytes = downloadManager.getTotalBytes(game.id),
+            speed = 0f,
             state = DownloadManager.DownloadState.DOWNLOADING
         )
+        renderAvailableGamesProgress("download:${game.id}", 0, force = true)
+    }
+
+    private fun progressPercent(done: Long, total: Long): Int {
+        if (total <= 0L) return 0
+        return ((done * 100L) / total).coerceIn(0L, 100L).toInt()
+    }
+
+    private fun renderAvailableGamesProgress(key: String, percent: Int, force: Boolean = false) {
+        if (activeOverlay == null) return
+
+        val now = System.currentTimeMillis()
+        val lastAt = lastStoreProgressRenderAt[key] ?: 0L
+        val lastPercent = lastStoreProgressPercent[key]
+        val shouldRender = force ||
+            lastPercent == null ||
+            percent >= 100 ||
+            percent != lastPercent ||
+            now - lastAt >= 10_000L
+
+        if (!shouldRender) return
+
+        lastStoreProgressRenderAt[key] = now
+        lastStoreProgressPercent[key] = percent
         renderAvailableGamesScreen()
+    }
+
+    private fun clearStoreProgress(gameId: String) {
+        listOf("download:$gameId", "install:$gameId").forEach { key ->
+            lastStoreProgressRenderAt.remove(key)
+            lastStoreProgressPercent.remove(key)
+        }
     }
 
     private fun sha256(value: String): String =
@@ -388,8 +599,19 @@ class MainActivity : Activity() {
             .digest(value.toByteArray())
             .joinToString("") { "%02x".format(it) }
 
+    private fun isReadableZip(file: File): Boolean {
+        if (!file.isFile || file.length() < 16L * 1024L) return false
+        return runCatching {
+            ZipFile(file).use { zip -> zip.entries().hasMoreElements() }
+        }.getOrDefault(false)
+    }
+
     private fun handlePauseDownload(gameId: String) {
-        downloadManager.pauseDownload(gameId)
+        startService(Intent(this, StoreDownloadService::class.java).apply {
+            action = StoreDownloadService.ACTION_PAUSE
+            putExtra(StoreDownloadService.EXTRA_GAME_ID, gameId)
+            putExtra(StoreDownloadService.EXTRA_TITLE, availableGames.find { it.id == gameId }?.title ?: gameId)
+        })
         downloadProgressMap[gameId] = DownloadManager.DownloadProgress(
             bytesDownloaded = downloadManager.getDownloadedBytes(gameId),
             totalBytes = downloadManager.getTotalBytes(gameId),
@@ -403,13 +625,16 @@ class MainActivity : Activity() {
         val perGame = runCatching {
             com.runestone.app.data.GameConfigService(this, workspaceManager).loadPerGame(g.storageName)
         }.getOrNull()
+        val metadata = perGame?.metadata?.takeIf {
+            it.gameTitle.isBlank() || metadataTitleMatches(g.displayName, it.gameTitle)
+        }
 
         // Priority: custom cover > metadata local cover > nothing (will be filled by pipeline)
         val customCoverPath = perGame?.game?.customCoverPath?.let { path ->
             if (File(path).exists()) return@let "local:$path"
             null
         }
-        val metadataCoverPath = perGame?.metadata?.localCoverPath?.takeIf { it.isNotEmpty() }?.let { path ->
+        val metadataCoverPath = metadata?.localCoverPath?.takeIf { it.isNotEmpty() }?.let { path ->
             if (File(path).exists()) return@let "local:$path"
             null
         }
@@ -417,7 +642,7 @@ class MainActivity : Activity() {
 
         return GameCardInfo(
             storageName = g.storageName,
-            displayName = perGame?.metadata?.gameTitle?.takeIf { it.isNotEmpty() } ?: g.displayName,
+            displayName = metadata?.gameTitle?.takeIf { it.isNotEmpty() } ?: g.displayName,
             engineType = g.engineType,
             fileCount = g.fileCount,
             fileSize = runCatching {
@@ -429,11 +654,32 @@ class MainActivity : Activity() {
             isReady = true,
             isPaused = pausedGamePath == g.originalPath,
             coverUrl = coverUrl,
-            metadataDeveloper = perGame?.metadata?.developer ?: "",
-            metadataGenres = perGame?.metadata?.genres ?: "",
-            metadataYear = perGame?.metadata?.releaseYear ?: "",
+            metadataDeveloper = metadata?.developer ?: "",
+            metadataGenres = metadata?.genres ?: "",
+            metadataYear = metadata?.releaseYear ?: "",
         )
     }
+
+    private fun metadataTitleMatches(installedTitle: String, metadataTitle: String): Boolean {
+        val installed = normalizedTitle(installedTitle)
+        val metadata = normalizedTitle(metadataTitle)
+        if (installed.isBlank() || metadata.isBlank()) return false
+        if (installed == metadata) return true
+        if (installed.length >= 6 && (installed.contains(metadata) || metadata.contains(installed))) return true
+        val installedTokens = installed.split(" ").filter { it.length > 1 }.toSet()
+        val metadataTokens = metadata.split(" ").filter { it.length > 1 }.toSet()
+        if (installedTokens.isEmpty()) return false
+        return installedTokens.intersect(metadataTokens).size >= minOf(2, installedTokens.size)
+    }
+
+    private fun normalizedTitle(value: String): String =
+        value.lowercase()
+            .replace("&", " and ")
+            .replace(Regex("\\[[^]]*]"), " ")
+            .replace(Regex("\\([^)]*\\)"), " ")
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .trim()
+            .replace(Regex("\\s+"), " ")
 
     // ═══════════════════════════════════════════════════════
     //  Overlay system — dimmed panels over home screen
@@ -484,7 +730,7 @@ class MainActivity : Activity() {
      * Fades out the active overlay, removes it, then runs [onDismissed].
      * Default callback refreshes the home screen.
      */
-    private fun dismissOverlay(onDismissed: () -> Unit = { showHome() }) {
+    private fun dismissOverlay(onDismissed: () -> Unit = {}) {
         activeOverlay?.let { overlay ->
             overlay.animate().alpha(0f).translationY(resources.displayMetrics.heightPixels * 0.08f).setDuration(200).withEndAction {
                 rootContainer.removeView(overlay)
@@ -585,14 +831,29 @@ class MainActivity : Activity() {
             card.copy(coverUrl = coverUrl)
         }
         
-        // Fetch metadata for games that don't have cover URLs yet
+        // Fetch missing metadata into per-game config so hero cards are warm on next launch.
+        val configService = com.runestone.app.data.GameConfigService(this, workspaceManager)
         cards.filter { it.coverUrl == null }.forEach { card ->
             if (!gameMetadataCache.containsKey(card.displayName)) {
-                metadataService.fetchMetadataAsync(card.displayName) { metadata ->
-                    metadata?.let {
-                        gameMetadataCache[card.displayName] = it
-                        // Refresh the home screen to show the new metadata
-                        runOnUiThread { showHome() }
+                metadataService.fetchAndApplyMetadata(
+                    gameTitle = card.displayName,
+                    storageName = card.storageName,
+                    configService = configService,
+                ) { section ->
+                    section?.let {
+                        gameMetadataCache[card.displayName] = GameMetadataService.GameMetadata(
+                            title = it.gameTitle,
+                            description = it.description,
+                            coverUrl = it.coverUrl,
+                            localCoverPath = it.localCoverPath,
+                            screenshots = emptyList(),
+                            releaseDate = it.releaseYear,
+                            developer = it.developer,
+                            publisher = it.publisher,
+                            genres = it.genres.split(",").map { genre -> genre.trim() }.filter { genre -> genre.isNotEmpty() },
+                            rating = null,
+                            source = it.metadataSource,
+                        )
                     }
                 }
             }
@@ -788,9 +1049,11 @@ class MainActivity : Activity() {
                         if (section != null && !fetched.getAndSet(true)) {
                             resultCallback(true)
                             runOnUiThread {
-                                dismissOverlay()
-                                // Reopen with fresh data
-                                showPerGameSettings(storageName)
+                                gameMetadataCache.remove(game.displayName)
+                                dismissOverlay {
+                                    refreshGames()
+                                    showPerGameSettings(storageName)
+                                }
                             }
                         } else if (!fetched.getAndSet(true)) {
                             resultCallback(false)
@@ -803,30 +1066,111 @@ class MainActivity : Activity() {
 
     private fun showAvailableGames() {
         manageFilesVisible = false
+        availableGamesScrollY = 0
         isLoadingGames = true
         gamesErrorMessage = null
-        val installedTitles = games.map { it.displayName }.toSet()
+        val installedTitles = installedStoreKeys()
         renderAvailableGamesScreen(installedGameTitles = installedTitles)
 
         sourcesManager.fetchGamesFromSources { games, error ->
             runOnUiThread {
                 availableGames = games
+                hydrateStoreDownloadStates()
                 isLoadingGames = false
                 gamesErrorMessage = error
-                val installedTitles = this.games.map { it.displayName }.toSet()
+                val installedTitles = installedStoreKeys()
                 renderAvailableGamesScreen(installedGameTitles = installedTitles)
+                enrichStoreMetadata()
             }
         }
     }
 
-    private fun renderAvailableGamesScreen(installedGameTitles: Set<String> = emptySet()) {
+    private fun enrichStoreMetadata() {
+        val targets = availableGames
+            .filter { it.coverUrl == null && it.title.isNotBlank() && it.id !in storeMetadataInFlight }
+            .take(6)
+        if (targets.isEmpty()) {
+            storeMetadataLoading = false
+            return
+        }
+        storeMetadataLoading = true
+        renderAvailableGamesScreen()
+        targets.forEach { game ->
+                storeMetadataInFlight.add(game.id)
+                metadataService.fetchMetadataAsync(game.rawgQuery ?: game.title, game.engine) { metadata ->
+                    runOnUiThread {
+                        storeMetadataInFlight.remove(game.id)
+                        if (storeMetadataInFlight.isEmpty()) {
+                            storeMetadataLoading = false
+                            scheduleStoreMetadataRender()
+                        }
+                    }
+                    if (metadata == null) return@fetchMetadataAsync
+                    val cover = metadata.localCoverPath?.let { "local:$it" } ?: metadata.coverUrl
+                    if (cover.isNullOrBlank()) return@fetchMetadataAsync
+                    runOnUiThread {
+                        availableGames = availableGames.map {
+                            if (it.id == game.id) it.copy(
+                                coverUrl = cover,
+                                description = it.description ?: metadata.description,
+                                tags = if (it.tags.isNotEmpty()) it.tags else metadata.genres,
+                            ) else it
+                        }
+                        scheduleStoreMetadataRender()
+                    }
+                }
+        }
+    }
+
+    private fun hydrateStoreDownloadStates() {
+        availableGames.forEach { game ->
+            val state = downloadManager.getState(game.id)
+            when (state) {
+                DownloadManager.DownloadState.IDLE -> Unit
+                DownloadManager.DownloadState.COMPLETED -> {
+                    val outputFile = downloadManager.getOutputFile(game.id)
+                    if (outputFile.isFile && game.id !in installProgressMap) {
+                        downloadProgressMap[game.id] = DownloadManager.DownloadProgress(
+                            bytesDownloaded = outputFile.length(),
+                            totalBytes = outputFile.length(),
+                            speed = 0f,
+                            state = state,
+                        )
+                        startExtraction(game.id, outputFile.absolutePath)
+                    }
+                }
+                else -> downloadProgressMap[game.id] = DownloadManager.DownloadProgress(
+                    bytesDownloaded = downloadManager.getDownloadedBytes(game.id),
+                    totalBytes = downloadManager.getTotalBytes(game.id),
+                    speed = 0f,
+                    state = state,
+                )
+            }
+        }
+    }
+
+    private fun scheduleStoreMetadataRender() {
+        if (storeMetadataRenderScheduled) return
+        storeMetadataRenderScheduled = true
+        rootContainer.postDelayed({
+            storeMetadataRenderScheduled = false
+            if (activeOverlay != null) renderAvailableGamesScreen()
+        }, 250L)
+    }
+
+    private fun renderAvailableGamesScreen(installedGameTitles: Set<String>? = null) {
+        val titles = installedGameTitles ?: installedStoreKeys()
         showOverlay(
             AvailableGamesScreen(this).create(
                 games = availableGames,
                 isLoading = isLoadingGames,
+                isMetadataLoading = storeMetadataLoading || storeMetadataInFlight.isNotEmpty(),
                 errorMessage = gamesErrorMessage,
                 downloadStates = downloadProgressMap,
-                installedGameTitles = installedGameTitles,
+                installStates = installProgressMap,
+                installedGameTitles = titles,
+                initialScrollY = availableGamesScrollY,
+                onScrollYChanged = { availableGamesScrollY = it },
                 onRefresh = { showAvailableGames() },
                 onManageSources = { showSources() },
                 onProviderSettings = { showProviderSettings() },
@@ -835,6 +1179,12 @@ class MainActivity : Activity() {
                 onBack = { dismissOverlay() },
             ),
         )
+    }
+
+    private fun installedStoreKeys(): Set<String> {
+        return games.flatMap { game ->
+            listOf(game.displayName, game.storageName)
+        }.toSet()
     }
 
     private fun showSources() {
@@ -888,7 +1238,10 @@ class MainActivity : Activity() {
         if (pausedGamePath != null && pausedGamePath == game.originalPath) {
             Log.i(TAG, "RESUME: $storageName")
             pausedGamePath = null
-            getSharedPreferences("runestone", MODE_PRIVATE).edit().remove("paused_game").apply()
+            getSharedPreferences("runestone", MODE_PRIVATE).edit()
+                .remove("paused_game")
+                .remove("game_minimized")
+                .apply()
             // Just finish this activity to bring GameActivity back to front
             finish()
             return
@@ -896,11 +1249,7 @@ class MainActivity : Activity() {
 
         Log.i(TAG, "playGame: $storageName path=${game.originalPath}")
         pausedGamePath = game.originalPath
-        getSharedPreferences("runestone", MODE_PRIVATE).edit()
-            .putString("paused_game", game.originalPath).apply()
-        // Track play session start
-        val playStats = getSharedPreferences("play_stats", MODE_PRIVATE)
-        playStats.edit().putLong("session_start_${storageName}", System.currentTimeMillis()).apply()
+        startPlaySession(storageName, game.originalPath)
 
         val intent = Intent(this, GameActivity::class.java).apply {
             putExtra("game_path", game.originalPath)
@@ -935,25 +1284,34 @@ class MainActivity : Activity() {
 
     private fun showGameFolderBrowser() {
         val browser = SafStorageBrowser(contentResolver)
+        val roots = browser.listRoots()
+        if (importBrowserStack.isEmpty() && roots.isNotEmpty()) {
+            val preferred = roots.firstOrNull { it.name.equals(settings.defaultGameFolder, ignoreCase = true) }
+                ?: roots.first()
+            importBrowserStack += browser.describeFolder(preferred.documentUri)
+        }
         val current = importBrowserStack.lastOrNull()
-        val folders = current?.let { runCatching { browser.listFolders(it.uri) }.getOrDefault(emptyList()) } ?: emptyList()
+        val entries = current?.let { runCatching { browser.listEntries(it.uri) }.getOrDefault(emptyList()) } ?: emptyList()
         showOverlay(
             GameFolderBrowserScreen(this).create(
-                roots = browser.listRoots(),
+                roots = roots,
                 currentFolder = current,
-                folders = folders,
-                canNavigateUp = importBrowserStack.isNotEmpty(),
+                entries = entries,
+                canNavigateUp = importBrowserStack.size > 1,
                 onBack = {
-                    if (importBrowserStack.isNotEmpty()) {
-                        importBrowserStack.clear()
+                    if (importBrowserStack.size > 1) {
+                        importBrowserStack.removeAt(importBrowserStack.lastIndex)
                         showGameFolderBrowser()
                     } else {
+                        importBrowserStack.clear()
                         dismissOverlay()
                     }
                 },
                 onUp = {
-                    if (importBrowserStack.isNotEmpty()) importBrowserStack.removeAt(importBrowserStack.lastIndex)
-                    showGameFolderBrowser()
+                    if (importBrowserStack.size > 1) {
+                        importBrowserStack.removeAt(importBrowserStack.lastIndex)
+                        showGameFolderBrowser()
+                    }
                 },
                 onOpenRoot = { storageRoot ->
                     importBrowserStack.clear()
@@ -1011,7 +1369,7 @@ class MainActivity : Activity() {
                         saveManager.restoreToActive(result.storageName)
                         activeImportProgressView = null
                         refreshGames()
-                        dismissOverlay()
+                        dismissOverlay { showHome() }
                     }
                     is SafImportResult.Failure -> {
                         Log.e(TAG, "Import FAILED: ${result.reason}")
@@ -1165,8 +1523,18 @@ class MainActivity : Activity() {
             return
         }
         if (activeOverlay != null) return
-        pausedGamePath = getSharedPreferences("runestone", MODE_PRIVATE)
-            .getString("paused_game", null)
+        val runestonePrefs = getSharedPreferences("runestone", MODE_PRIVATE)
+        if (runestonePrefs.getBoolean("game_minimized", false)) {
+            pausedGamePath = runestonePrefs.getString("paused_game", null)
+            refreshGames()
+            showHome()
+            return
+        }
+        if (!runestonePrefs.contains("active_game_storage")) {
+            return
+        }
+        finalizeActivePlaySession(reason = "hub_resumed")
+        pausedGamePath = null
         refreshGames()
         showHome()
     }
@@ -1182,5 +1550,13 @@ class MainActivity : Activity() {
         } else {
             super.onBackPressed()
         }
+    }
+
+    override fun onDestroy() {
+        if (downloadReceiverRegistered) {
+            unregisterReceiver(downloadReceiver)
+            downloadReceiverRegistered = false
+        }
+        super.onDestroy()
     }
 }

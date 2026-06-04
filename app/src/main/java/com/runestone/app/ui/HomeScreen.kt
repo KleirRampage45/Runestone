@@ -744,7 +744,7 @@ class HomeScreen(private val context: Context) {
             }
         }
         val searchInput = EditText(context).apply {
-            hint = "Search games..."; setHintTextColor(Color.argb(80, 200, 180, 130))
+            hint = "Search games..."; setHintTextColor(Color.argb(120, 200, 180, 130))
             setTextColor(TEXT); textSize = 13f
             inputType = InputType.TYPE_CLASS_TEXT; imeOptions = EditorInfo.IME_ACTION_SEARCH
             maxLines = 1; background = null
@@ -1020,6 +1020,7 @@ class HomeScreen(private val context: Context) {
             layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
             scaleType = ImageView.ScaleType.CENTER_CROP
             visibility = View.GONE
+            contentDescription = game.displayName
         }
         cardFrame.addView(coverImage)
 
@@ -1606,6 +1607,7 @@ class HomeScreen(private val context: Context) {
                 layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 visibility = View.GONE
+                contentDescription = game.displayName
             }
             addView(coverImage)
 

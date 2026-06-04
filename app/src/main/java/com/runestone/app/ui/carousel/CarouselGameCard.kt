@@ -35,7 +35,10 @@ class CarouselGameCard(context: Context) : FrameLayout(context) {
     private val settingsButton: TextView
 
     init {
-        layoutParams = RecyclerView.LayoutParams(dp(260), dp(360)).apply {
+        layoutParams = RecyclerView.LayoutParams(
+            (context.resources.displayMetrics.widthPixels * 0.72f).toInt(),
+            ((context.resources.displayMetrics.widthPixels * 0.72f) * 1.38f).toInt()
+        ).apply {
             setMargins(dp(16), 0, dp(16), 0)
         }
         clipToOutline = true
@@ -55,6 +58,7 @@ class CarouselGameCard(context: Context) : FrameLayout(context) {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
             )
+            contentDescription = ""
         }
         addView(coverImage)
 
@@ -123,6 +127,7 @@ class CarouselGameCard(context: Context) : FrameLayout(context) {
         onPlay: (GameCardInfo) -> Unit,
         onSettings: (GameCardInfo) -> Unit,
     ) {
+        coverImage.contentDescription = game.displayName
         engineBadge.text = game.engineType.label
         actionOverlay.visibility = if (showActions) View.VISIBLE else View.GONE
         playButton.setOnClickListener { onPlay(game) }
