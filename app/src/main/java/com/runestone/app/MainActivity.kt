@@ -98,6 +98,7 @@ class MainActivity : Activity() {
     private var pendingPatchStorage: String? = null
     private var pendingPatchCallback: ((String) -> Unit)? = null
     private var pendingSaveExportStorage: String? = null
+    private var pendingSaveImportStorage: String? = null
     private val importBrowserStack = mutableListOf<SafStorageBrowser.Folder>()
     private var importBrowserShowLocations = false
     private var downloadProgressMap = mutableMapOf<String, DownloadManager.DownloadProgress>()
@@ -122,6 +123,7 @@ class MainActivity : Activity() {
         private const val REQUEST_COVER_IMAGE = 9002
         private const val REQUEST_PATCH_ZIP = 9003
         private const val REQUEST_SAVE_EXPORT_ZIP = 9004
+        private const val REQUEST_SAVE_IMPORT_ZIP = 9005
         private const val TAG = "Runestone"
         private const val NOTIFICATION_CHANNEL = "runestone_downloads"
         private const val NOTIFICATION_ID_DOWNLOAD = 2001
@@ -1446,33 +1448,55 @@ class MainActivity : Activity() {
     private fun viewSaves(storageName: String) {
         val saves = saveManager.listSaves(storageName)
         val gameTitle = games.find { it.storageName == storageName }?.displayName ?: storageName
-        if (saves.isEmpty()) {
-            AlertDialog.Builder(this)
-                .setTitle("Save Files — $gameTitle")
-                .setMessage("No save files were detected yet.")
-                .setNeutralButton("Sync now") { _, _ ->
-                    val count = saveManager.syncFromActive(storageName)
-                    Toast.makeText(this, "Synced $count save files", Toast.LENGTH_SHORT).show()
-                }
-                .setPositiveButton("OK", null)
-                .show()
+        val message = if (saves.isEmpty()) {
+            "No save files were detected yet."
         } else {
-            val names = saves.joinToString("\n") { "${it.name} (${formatBytes(it.length())})" }
-            AlertDialog.Builder(this)
-                .setTitle("Save Files — $gameTitle")
-                .setMessage(names)
-                .setNeutralButton("Sync") { _, _ ->
-                    val count = saveManager.syncFromActive(storageName)
-                    Toast.makeText(this, "Synced $count save files into protected storage", Toast.LENGTH_SHORT).show()
-                }
-                .setNegativeButton("Restore") { _, _ ->
-                    confirmRestoreSaves(storageName, gameTitle)
-                }
-                .setPositiveButton("Export ZIP") { _, _ ->
-                    showSaveExportPicker(storageName)
-                }
-                .show()
+            saves.joinToString("\n") { "${it.name} (${formatBytes(it.length())})" }
         }
+        AlertDialog.Builder(this)
+            .setTitle("Save Files - $gameTitle")
+            .setMessage(message)
+            .setNegativeButton("Close", null)
+            .setPositiveButton("Actions") { _, _ ->
+                showSaveActions(storageName, gameTitle)
+            }
+            .show()
+    }
+
+    private fun showSaveActions(storageName: String, gameTitle: String) {
+        val actions = arrayOf(
+            "Sync protected copy",
+            "Backup now",
+            "Restore protected saves",
+            "Export ZIP",
+            "Import ZIP",
+            "View backups",
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Save Actions - $gameTitle")
+            .setItems(actions) { _, which ->
+                when (which) {
+                    0 -> {
+                        val count = saveManager.syncFromActive(storageName)
+                        Toast.makeText(this, "Synced $count save files into protected storage", Toast.LENGTH_SHORT).show()
+                    }
+                    1 -> {
+                        val result = saveManager.backupSaves(storageName, "manual")
+                        val message = if (result.count > 0) {
+                            "Backed up ${result.count} save files"
+                        } else {
+                            "No save files detected"
+                        }
+                        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                    }
+                    2 -> confirmRestoreSaves(storageName, gameTitle)
+                    3 -> showSaveExportPicker(storageName)
+                    4 -> showSaveImportPicker(storageName)
+                    5 -> showSaveBackups(storageName, gameTitle)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun confirmRestoreSaves(storageName: String, gameTitle: String) {
@@ -1498,6 +1522,32 @@ class MainActivity : Activity() {
             putExtra(Intent.EXTRA_TITLE, filename)
         }
         startActivityForResult(intent, REQUEST_SAVE_EXPORT_ZIP)
+    }
+
+    private fun showSaveImportPicker(storageName: String) {
+        pendingSaveImportStorage = storageName
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/zip"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+        }
+        startActivityForResult(intent, REQUEST_SAVE_IMPORT_ZIP)
+    }
+
+    private fun showSaveBackups(storageName: String, gameTitle: String) {
+        val backups = saveManager.listSaveBackups(storageName)
+        val message = if (backups.isEmpty()) {
+            "No save backups have been created yet."
+        } else {
+            backups.joinToString("\n") {
+                "${it.name}: ${it.fileCount} files (${formatBytes(it.bytes)})"
+            }
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Save Backups - $gameTitle")
+            .setMessage(message)
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     private fun showEnginePicker(storageName: String) {
@@ -1605,6 +1655,33 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun handleSaveImportResult(resultCode: Int, data: Intent?) {
+        val storageName = pendingSaveImportStorage
+        pendingSaveImportStorage = null
+
+        if (resultCode != Activity.RESULT_OK || data?.data == null || storageName == null) return
+
+        val uri = data.data!!
+        val importDir = File(cacheDir, "save_import_zips").apply { mkdirs() }
+        val destFile = File(importDir, "${storageName}_saves_${System.currentTimeMillis()}.zip")
+        try {
+            val inputStream = contentResolver.openInputStream(uri)
+                ?: throw IllegalStateException("Unable to open selected save ZIP")
+            inputStream.use { input ->
+                destFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            val count = saveManager.importSavesZip(storageName, destFile)
+            Toast.makeText(this, "Imported $count save files", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to import saves", e)
+            Toast.makeText(this, "Failed to import saves", Toast.LENGTH_SHORT).show()
+        } finally {
+            destFile.delete()
+        }
+    }
+
     private fun formatBytes(bytes: Long): String {
         val gb = 1024.0 * 1024.0 * 1024.0
         val mb = 1024.0 * 1024.0
@@ -1631,6 +1708,8 @@ class MainActivity : Activity() {
                 handlePatchZipResult(resultCode, data)
             } else if (requestCode == REQUEST_SAVE_EXPORT_ZIP) {
                 handleSaveExportResult(resultCode, data)
+            } else if (requestCode == REQUEST_SAVE_IMPORT_ZIP) {
+                handleSaveImportResult(resultCode, data)
             }
             return
         }

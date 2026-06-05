@@ -12,14 +12,24 @@ package com.runestone.app.workspace
 
 import java.io.File
 import java.io.FileFilter
+import java.io.FileInputStream
 import java.io.OutputStream
 import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 class SaveManager(private val workspaceManager: WorkspaceManager) {
     data class SaveBackupResult(
         val count: Int,
         val directory: File?,
+    )
+
+    data class SaveBackupInfo(
+        val name: String,
+        val fileCount: Int,
+        val bytes: Long,
+        val modifiedAtMillis: Long,
+        val directory: File,
     )
 
     /** Backup saves from the game's active save locations into the protected saves/ dir. */
@@ -99,11 +109,11 @@ class SaveManager(private val workspaceManager: WorkspaceManager) {
 
     companion object {
         private val SAVE_FILTER = FileFilter { file ->
-            file.isFile && file.name.matches(Regex("""(?i)(save|file|game|global)\d*\.(rvdata2|rvdata|rxdata|dat|json|lsd|lmu|lmt)"""))
+            file.isFile && file.name.isRpgMakerSaveName()
         }
 
         /** Known save extensions for cross-platform detection. */
-        val PC_SAVE_EXTENSIONS = setOf("rvdata2", "rvdata", "rxdata", "lsd", "save", "json", "dat")
+        val PC_SAVE_EXTENSIONS = setOf("rvdata2", "rvdata", "rxdata", "lsd", "save", "json", "dat", "rpgsave", "rpy-save")
     }
 
     // ── Import / Export ──────────────────────────────────────────
@@ -235,6 +245,63 @@ class SaveManager(private val workspaceManager: WorkspaceManager) {
         return SaveBackupResult(count, backupDir)
     }
 
+    fun listSaveBackups(storageName: String): List<SaveBackupInfo> {
+        val backupsDir = workspaceManager.saveBackupsDir(storageName)
+        if (!backupsDir.isDirectory) return emptyList()
+
+        return backupsDir.listFiles()
+            ?.filter { it.isDirectory }
+            ?.map { dir ->
+                val files = dir.walkTopDown()
+                    .filter { it.isFile && it.name != ".nomedia" }
+                    .toList()
+                SaveBackupInfo(
+                    name = dir.name,
+                    fileCount = files.size,
+                    bytes = files.sumOf { it.length() },
+                    modifiedAtMillis = dir.lastModified(),
+                    directory = dir,
+                )
+            }
+            ?.sortedByDescending { it.modifiedAtMillis }
+            ?: emptyList()
+    }
+
+    fun importSavesZip(storageName: String, zipFile: File): Int {
+        val gameDir = workspaceManager.originalDir(storageName)
+        if (!gameDir.isDirectory || !zipFile.isFile) return 0
+
+        backupSaves(storageName, "before_save_import")
+
+        val protectedSavesDir = workspaceManager.savesDir(storageName)
+        protectedSavesDir.mkdirs()
+        File(protectedSavesDir, ".nomedia").writeText("")
+
+        var imported = 0
+        ZipInputStream(FileInputStream(zipFile)).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                try {
+                    if (entry.isDirectory) continue
+                    val relPath = entry.name.safeSaveZipPath() ?: continue
+                    if (!File(relPath).name.isRpgMakerSaveName()) continue
+
+                    val target = File(protectedSavesDir, relPath)
+                    target.parentFile?.mkdirs()
+                    target.outputStream().use { output -> zip.copyTo(output) }
+                    imported++
+                } finally {
+                    zip.closeEntry()
+                }
+            }
+        }
+
+        if (imported > 0) {
+            restoreToActive(storageName)
+        }
+        return imported
+    }
+
     /**
      * Scan a directory for PC-compatible save files.
      * Useful for users who copied saves from their PC.
@@ -267,6 +334,19 @@ class SaveManager(private val workspaceManager: WorkspaceManager) {
 
     private fun String.normalizeZipPath(): String =
         replace(File.separatorChar, '/').trimStart('/')
+
+    private fun String.safeSaveZipPath(): String? {
+        val normalized = replace('\\', '/').trimStart('/')
+        if (normalized.isBlank()) return null
+        val parts = normalized.split('/').filter { it.isNotBlank() }
+        if (parts.isEmpty() || parts.any { it == "." || it == ".." }) return null
+        val stripped = when (parts.first().lowercase()) {
+            "protected", "live", "workspace", "saves" -> parts.drop(1)
+            else -> parts
+        }
+        if (stripped.isEmpty()) return null
+        return stripped.joinToString("/")
+    }
 }
 
 internal fun String.isRpgMakerSaveName(): Boolean =
