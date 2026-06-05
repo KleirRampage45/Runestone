@@ -47,6 +47,8 @@ data class InstalledPatch(
     val isActive: Boolean = true,
     val overwrittenCount: Int = 0,
     val addedCount: Int = 0,
+    val overwrittenFiles: List<String> = emptyList(),
+    val addedFiles: List<String> = emptyList(),
 ) {
     companion object {
         fun fromJson(j: JSONObject): InstalledPatch = InstalledPatch(
@@ -59,6 +61,8 @@ data class InstalledPatch(
             isActive = j.optBoolean("isActive", true),
             overwrittenCount = j.optInt("overwrittenCount", 0),
             addedCount = j.optInt("addedCount", 0),
+            overwrittenFiles = j.optJSONArray("overwrittenFiles").toStringList(),
+            addedFiles = j.optJSONArray("addedFiles").toStringList(),
         )
     }
 
@@ -72,5 +76,16 @@ data class InstalledPatch(
         put("isActive", isActive)
         put("overwrittenCount", overwrittenCount)
         put("addedCount", addedCount)
+        put("overwrittenFiles", JSONArray().apply { overwrittenFiles.forEach { put(it) } })
+        put("addedFiles", JSONArray().apply { addedFiles.forEach { put(it) } })
     }
+}
+
+private fun JSONArray?.toStringList(): List<String> {
+    if (this == null) return emptyList()
+    val values = mutableListOf<String>()
+    for (i in 0 until length()) {
+        optString(i, "").takeIf { it.isNotBlank() }?.let { values.add(it) }
+    }
+    return values
 }

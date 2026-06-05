@@ -31,6 +31,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -47,6 +48,10 @@ class PatchManager(
         val overwrittenFiles: List<String> = emptyList(),
         val addedFiles: List<String> = emptyList(),
         val patchId: String? = null,
+    )
+
+    private data class PatchEntry(
+        val relPath: String,
     )
 
     // ── Public API ──────────────────────────────────────────────────
@@ -94,7 +99,12 @@ class PatchManager(
             return PatchResult(false, "File is not a valid ZIP (bad magic bytes)")
         }
 
+        val preflight = validateZipEntries(zipFile, originalDir)
+        if (!preflight.success) return PatchResult(false, preflight.message)
+        val entries = preflight.entries
+
         val patchId = UUID.randomUUID().toString().take(12)
+        val installedAt = System.currentTimeMillis()
         val patchDir = patchBaseDir(gameDir, patchId).also { it.mkdirs() }
         val backupDir = backupDir(gameDir, patchId).also { it.mkdirs() }
         val manifestFile = manifestFile(gameDir, patchId)
@@ -102,14 +112,18 @@ class PatchManager(
 
         val overwritten = mutableListOf<String>()
         val added = mutableListOf<String>()
+        val originalHashes = JSONObject()
+        val patchedHashes = JSONObject()
 
         // --- Extract and install ---
         val result = runCatching {
+            val expectedPaths = entries.map { it.relPath }.toSet()
             ZipInputStream(FileInputStream(zipFile)).use { zis ->
                 var entry: ZipEntry? = zis.nextEntry
                 while (entry != null) {
                     if (!entry.isDirectory) {
-                        val relPath = entry.name
+                        val relPath = normalizeZipPath(entry.name) ?: error("Unsafe path after validation: ${entry.name}")
+                        if (relPath !in expectedPaths) error("Unexpected ZIP entry after validation: ${entry.name}")
                         val targetFile = File(originalDir, relPath)
                         val targetParent = targetFile.parentFile
                         if (targetParent != null) targetParent.mkdirs()
@@ -120,6 +134,7 @@ class PatchManager(
                             backupFile.parentFile?.mkdirs()
                             targetFile.copyTo(backupFile, overwrite = true)
                             overwritten.add(relPath)
+                            originalHashes.put(relPath, sha256(targetFile))
                         } else {
                             // NEW FILE: just track it
                             added.add(relPath)
@@ -129,6 +144,7 @@ class PatchManager(
                         FileOutputStream(targetFile).use { out ->
                             zis.copyTo(out)
                         }
+                        patchedHashes.put(relPath, sha256(targetFile))
                     }
                     entry = zis.nextEntry
                 }
@@ -139,7 +155,17 @@ class PatchManager(
 
             // Write manifest
             manifestFile.writeText(JSONObject().apply {
+                put("formatVersion", 2)
+                put("patchId", patchId)
+                put("name", patchName)
+                put("description", description)
+                put("sourceFileName", zipFile.name)
+                put("isTranslation", isTranslation)
+                put("installedAtMillis", installedAt)
                 put("addedFiles", JSONArray(added))
+                put("overwrittenFiles", JSONArray(overwritten))
+                put("originalHashes", originalHashes)
+                put("patchedHashes", patchedHashes)
             }.toString(2))
 
             // Save config entry
@@ -147,12 +173,14 @@ class PatchManager(
                 patchId = patchId,
                 name = patchName,
                 description = description,
-                installedAtMillis = System.currentTimeMillis(),
+                installedAtMillis = installedAt,
                 sourceFileName = zipFile.name,
                 isTranslation = isTranslation,
                 isActive = true,
                 overwrittenCount = overwritten.size,
                 addedCount = added.size,
+                overwrittenFiles = overwritten,
+                addedFiles = added,
             ))
 
             PatchResult(
@@ -364,5 +392,83 @@ class PatchManager(
         if (dir.isDirectory && dir.listFiles()?.isEmpty() == true) {
             dir.delete()
         }
+    }
+
+    private data class PreflightResult(
+        val success: Boolean,
+        val message: String,
+        val entries: List<PatchEntry> = emptyList(),
+    )
+
+    private fun validateZipEntries(zipFile: File, originalDir: File): PreflightResult {
+        val seen = mutableSetOf<String>()
+        val entries = mutableListOf<PatchEntry>()
+        val root = originalDir.canonicalFile
+
+        ZipInputStream(FileInputStream(zipFile)).use { zis ->
+            var entry: ZipEntry? = zis.nextEntry
+            while (entry != null) {
+                val zipEntry = entry
+                if (!zipEntry.isDirectory) {
+                    val relPath = normalizeZipPath(zipEntry.name)
+                        ?: return PreflightResult(false, "Unsafe path in ZIP: ${zipEntry.name}")
+                    if (!seen.add(relPath)) {
+                        return PreflightResult(false, "Duplicate file in ZIP: $relPath")
+                    }
+                    if (relPath.isSaveFilePath()) {
+                        return PreflightResult(false, "Patch tries to modify a save file: $relPath")
+                    }
+                    val target = File(root, relPath).canonicalFile
+                    if (!target.path.startsWith(root.path + File.separator)) {
+                        return PreflightResult(false, "Path escapes game folder: ${zipEntry.name}")
+                    }
+                    entries.add(PatchEntry(relPath))
+                }
+                entry = zis.nextEntry
+            }
+        }
+
+        if (entries.isEmpty()) {
+            return PreflightResult(false, "ZIP does not contain patch files")
+        }
+        return PreflightResult(true, "OK", entries)
+    }
+
+    private fun normalizeZipPath(path: String): String? {
+        val normalized = path.replace('\\', '/').trim()
+        if (normalized.isBlank()) return null
+        if (normalized.startsWith("/") || normalized.startsWith("~")) return null
+        if (normalized.contains('\u0000')) return null
+        if (Regex("^[A-Za-z]:").containsMatchIn(normalized)) return null
+
+        val parts = normalized.split('/').filter { it.isNotBlank() }
+        if (parts.isEmpty()) return null
+        if (parts.any { it == "." || it == ".." }) return null
+        return parts.joinToString("/")
+    }
+
+    private fun String.isSaveFilePath(): Boolean {
+        val name = substringAfterLast('/').lowercase()
+        return name.isRpgMakerSaveName() ||
+            name.endsWith(".rpgsave") ||
+            name.endsWith(".save") ||
+            name == "global.rpgsave" ||
+            startsWith("save/", ignoreCase = true) ||
+            contains("/save/", ignoreCase = true) ||
+            startsWith("www/save/", ignoreCase = true) ||
+            contains("/www/save/", ignoreCase = true)
+    }
+
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 }
