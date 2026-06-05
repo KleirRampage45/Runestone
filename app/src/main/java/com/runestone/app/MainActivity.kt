@@ -97,6 +97,7 @@ class MainActivity : Activity() {
     private var pendingCoverCallback: ((String) -> Unit)? = null
     private var pendingPatchStorage: String? = null
     private var pendingPatchCallback: ((String) -> Unit)? = null
+    private var pendingSaveExportStorage: String? = null
     private val importBrowserStack = mutableListOf<SafStorageBrowser.Folder>()
     private var importBrowserShowLocations = false
     private var downloadProgressMap = mutableMapOf<String, DownloadManager.DownloadProgress>()
@@ -120,6 +121,7 @@ class MainActivity : Activity() {
         private const val REQUEST_IMPORT_FOLDER = 9001
         private const val REQUEST_COVER_IMAGE = 9002
         private const val REQUEST_PATCH_ZIP = 9003
+        private const val REQUEST_SAVE_EXPORT_ZIP = 9004
         private const val TAG = "Runestone"
         private const val NOTIFICATION_CHANNEL = "runestone_downloads"
         private const val NOTIFICATION_ID_DOWNLOAD = 2001
@@ -1442,16 +1444,59 @@ class MainActivity : Activity() {
 
     private fun viewSaves(storageName: String) {
         val saves = saveManager.listSaves(storageName)
+        val gameTitle = games.find { it.storageName == storageName }?.displayName ?: storageName
         if (saves.isEmpty()) {
-            Toast.makeText(this, "No save files found for $storageName", Toast.LENGTH_SHORT).show()
-            return
+            AlertDialog.Builder(this)
+                .setTitle("Save Files — $gameTitle")
+                .setMessage("No save files were detected yet.")
+                .setNeutralButton("Sync now") { _, _ ->
+                    val count = saveManager.syncFromActive(storageName)
+                    Toast.makeText(this, "Synced $count save files", Toast.LENGTH_SHORT).show()
+                }
+                .setPositiveButton("OK", null)
+                .show()
+        } else {
+            val names = saves.joinToString("\n") { "${it.name} (${formatBytes(it.length())})" }
+            AlertDialog.Builder(this)
+                .setTitle("Save Files — $gameTitle")
+                .setMessage(names)
+                .setNeutralButton("Sync") { _, _ ->
+                    val count = saveManager.syncFromActive(storageName)
+                    Toast.makeText(this, "Synced $count save files into protected storage", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("Restore") { _, _ ->
+                    confirmRestoreSaves(storageName, gameTitle)
+                }
+                .setPositiveButton("Export ZIP") { _, _ ->
+                    showSaveExportPicker(storageName)
+                }
+                .show()
         }
-        val names = saves.joinToString("\n") { "${it.name} (${formatBytes(it.length())})" }
+    }
+
+    private fun confirmRestoreSaves(storageName: String, gameTitle: String) {
         AlertDialog.Builder(this)
-            .setTitle("Save Files — ${games.find { it.storageName == storageName }?.displayName ?: storageName}")
-            .setMessage(names)
-            .setPositiveButton("OK", null)
+            .setTitle("Restore saves to $gameTitle?")
+            .setMessage("Protected saves will be copied back into the installed game folder and may overwrite matching live save files.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Restore") { _, _ ->
+                val count = saveManager.restoreToActive(storageName)
+                Toast.makeText(this, "Restored $count save files", Toast.LENGTH_SHORT).show()
+            }
             .show()
+    }
+
+    private fun showSaveExportPicker(storageName: String) {
+        pendingSaveExportStorage = storageName
+        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US)
+            .format(java.util.Date())
+        val filename = "${storageName}-saves-$stamp.zip"
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/zip"
+            putExtra(Intent.EXTRA_TITLE, filename)
+        }
+        startActivityForResult(intent, REQUEST_SAVE_EXPORT_ZIP)
     }
 
     private fun showEnginePicker(storageName: String) {
@@ -1539,9 +1584,36 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun handleSaveExportResult(resultCode: Int, data: Intent?) {
+        val storageName = pendingSaveExportStorage
+        pendingSaveExportStorage = null
+
+        if (resultCode != Activity.RESULT_OK || data?.data == null || storageName == null) return
+
+        val uri = data.data!!
+        try {
+            val outputStream = contentResolver.openOutputStream(uri)
+                ?: throw IllegalStateException("Unable to open export destination")
+            val count = outputStream.use { output ->
+                saveManager.exportAllSavesZip(storageName, output)
+            }
+            Toast.makeText(this, "Exported $count save files", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to export saves", e)
+            Toast.makeText(this, "Failed to export saves", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun formatBytes(bytes: Long): String {
-        val gb = 1024.0 * 1024.0 * 1024.0; val mb = 1024.0 * 1024.0
-        return if (bytes >= gb) String.format("%.2f GB", bytes / gb) else String.format("%.1f MB", bytes / mb)
+        val gb = 1024.0 * 1024.0 * 1024.0
+        val mb = 1024.0 * 1024.0
+        val kb = 1024.0
+        return when {
+            bytes >= gb -> String.format("%.2f GB", bytes / gb)
+            bytes >= mb -> String.format("%.1f MB", bytes / mb)
+            bytes >= kb -> String.format("%.1f KB", bytes / kb)
+            else -> "$bytes B"
+        }
     }
 
     // ═══════════════════════════════════════════════════════
@@ -1556,6 +1628,8 @@ class MainActivity : Activity() {
                 handleCoverImageResult(resultCode, data)
             } else if (requestCode == REQUEST_PATCH_ZIP) {
                 handlePatchZipResult(resultCode, data)
+            } else if (requestCode == REQUEST_SAVE_EXPORT_ZIP) {
+                handleSaveExportResult(resultCode, data)
             }
             return
         }

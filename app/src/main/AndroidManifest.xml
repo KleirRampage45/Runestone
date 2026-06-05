@@ -10,8 +10,8 @@
         android:name=".RunestoneApplication"
         android:allowBackup="false"
         android:label="@string/app_name"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher"
+        android:icon="@mipmap/ic_runestone_launcher"
+        android:roundIcon="@mipmap/ic_runestone_launcher"
         android:theme="@style/AppTheme"
         android:hardwareAccelerated="true"
         android:usesCleartextTraffic="true">

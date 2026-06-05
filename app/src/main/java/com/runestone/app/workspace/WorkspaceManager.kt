@@ -221,12 +221,16 @@ class WorkspaceManager(private val context: Context) {
         if (!dir.exists()) return
 
         if (keepSaves) {
-            // Save saves, nuke everything else
             val saves = savesDir(storageName)
+            val preservedSaves = File(context.cacheDir, "preserved_saves_${storageName}_${System.currentTimeMillis()}")
+            if (saves.exists()) {
+                saves.copyRecursively(preservedSaves, overwrite = true)
+            }
             dir.deleteRecursively()
             dir.mkdirs()
-            if (saves.exists()) {
-                saves.copyRecursively(File(dir, "saves"), overwrite = true)
+            if (preservedSaves.exists()) {
+                preservedSaves.copyRecursively(File(dir, "saves"), overwrite = true)
+                preservedSaves.deleteRecursively()
             }
         } else {
             dir.deleteRecursively()

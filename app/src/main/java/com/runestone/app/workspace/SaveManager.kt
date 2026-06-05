@@ -12,11 +12,11 @@ package com.runestone.app.workspace
 
 import java.io.File
 import java.io.FileFilter
+import java.io.OutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class SaveManager(private val workspaceManager: WorkspaceManager) {
-
-    /** Known RPG Maker save file extensions */
-    private val saveExtensions = setOf("rvdata2", "rvdata", "rxdata", "dat", "json", "lsd", "lmu", "lmt")
 
     /** Backup saves from the game's active save locations into the protected saves/ dir. */
     fun syncFromActive(storageName: String): Int {
@@ -28,11 +28,7 @@ class SaveManager(private val workspaceManager: WorkspaceManager) {
 
         var count = 0
         // Look in common save subdirectories for MV/VX Ace
-        val saveDirs = listOf(
-            gameDir,                                    // root (some old RPG Maker)
-            File(gameDir, "www/save"),                  // RPG Maker MV/MZ
-            File(gameDir, "save"),                      // alternative
-        )
+        val saveDirs = saveLocations(gameDir)
         for (dir in saveDirs) {
             if (!dir.isDirectory) continue
             dir.listFiles(SAVE_FILTER)?.forEach { save ->
@@ -122,11 +118,7 @@ class SaveManager(private val workspaceManager: WorkspaceManager) {
         if (!gameDir.isDirectory) return null
 
         // Detect target directory based on existing save locations
-        val saveLocations = listOf(
-            File(gameDir, "www/save"),   // MV/MZ
-            File(gameDir, "save"),       // Alternative
-            gameDir,                     // RGSS root
-        )
+        val saveLocations = saveLocations(gameDir)
 
         val targetDir = saveLocations.firstOrNull { it.isDirectory } ?: saveLocations.first()
         targetDir.mkdirs()
@@ -155,6 +147,48 @@ class SaveManager(private val workspaceManager: WorkspaceManager) {
     }
 
     /**
+     * Export every detected save into a ZIP stream.
+     * The ZIP keeps relative save paths where possible, so MV/MZ and Ren'Py
+     * saves do not flatten into ambiguous filenames.
+     */
+    fun exportAllSavesZip(storageName: String, outputStream: OutputStream): Int {
+        val gameDir = workspaceManager.originalDir(storageName)
+        val savesDir = workspaceManager.savesDir(storageName)
+        val entries = mutableListOf<Pair<String, File>>()
+
+        if (savesDir.exists()) {
+            savesDir.walkTopDown()
+                .filter { it.isFile && it.name.isRpgMakerSaveName() }
+                .forEach { save ->
+                    entries.add(save.toRelativeString(savesDir).normalizeZipPath() to save)
+                }
+        }
+
+        if (gameDir.exists()) {
+            saveLocations(gameDir).forEach { dir ->
+                if (!dir.isDirectory) return@forEach
+                dir.listFiles(SAVE_FILTER)?.forEach { save ->
+                    entries.add(save.relativeTo(gameDir).path.normalizeZipPath() to save)
+                }
+            }
+        }
+
+        val uniqueEntries = entries
+            .filter { it.first.isNotBlank() }
+            .distinctBy { it.first.lowercase() }
+            .sortedBy { it.first.lowercase() }
+
+        ZipOutputStream(outputStream).use { zip ->
+            uniqueEntries.forEach { (path, file) ->
+                zip.putNextEntry(ZipEntry(path))
+                file.inputStream().use { it.copyTo(zip) }
+                zip.closeEntry()
+            }
+        }
+        return uniqueEntries.size
+    }
+
+    /**
      * Scan a directory for PC-compatible save files.
      * Useful for users who copied saves from their PC.
      */
@@ -176,7 +210,17 @@ class SaveManager(private val workspaceManager: WorkspaceManager) {
             importSave(storageName, save, slot)
         }
     }
+
+    private fun saveLocations(gameDir: File): List<File> = listOf(
+        gameDir,                 // RGSS root
+        File(gameDir, "www/save"), // RPG Maker MV/MZ
+        File(gameDir, "save"),   // Ren'Py and some HTML/VN engines
+        File(gameDir, "saves"),  // Ren'Py wrapper path
+    )
+
+    private fun String.normalizeZipPath(): String =
+        replace(File.separatorChar, '/').trimStart('/')
 }
 
 internal fun String.isRpgMakerSaveName(): Boolean =
-    matches(Regex("""(?i)(save|file|game|global)\d*\.(rvdata2|rvdata|rxdata|dat|json|lsd|lmu|lmt)"""))
+    matches(Regex("""(?i)(save|file|game|global|persistent|auto|quick)?\d*[-\w]*\.(rvdata2|rvdata|rxdata|dat|json|lsd|lmu|lmt|rpgsave|save|rpy-save)"""))
