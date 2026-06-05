@@ -408,33 +408,49 @@ class PerGameSettingsScreen(private val context: Context) {
                     setStroke(dp(1), Color.argb(60, Color.red(ACCENT), Color.green(ACCENT), Color.blue(ACCENT)))
                 }
                 makeLiquid(this)
-                setOnClickListener {
-                    onInstallPatch { zipPath ->
-                        if (zipPath.isNotEmpty() && storageName.isNotEmpty()) {
-                            val zipFile = File(zipPath)
-                            val patchName = zipFile.nameWithoutExtension
-                            val result = patchManager.installPatch(
-                                storageName = storageName,
-                                zipFile = zipFile,
-                                patchName = patchName,
-                                description = if (isTranslation) "User-installed translation overlay" else "User-installed patch or mod",
-                                isTranslation = isTranslation,
-                            )
-                            (context as? android.app.Activity)?.runOnUiThread {
-                                android.widget.Toast.makeText(context, result.message, android.widget.Toast.LENGTH_LONG).show()
-                                if (result.success) {
-                                    // Reload config to reflect new patch state
-                                    val fresh = com.runestone.app.data.GameConfigService(
-                                        context, com.runestone.app.workspace.WorkspaceManager(context)
-                                    ).loadPerGame(storageName)
-                                    current = current.copy(patches = fresh.patches)
-                                    onConfigChanged(current)
-                                    refreshPatchList?.invoke()
+	                setOnClickListener {
+	                    onInstallPatch { zipPath ->
+	                        if (zipPath.isNotEmpty() && storageName.isNotEmpty()) {
+	                            val zipFile = File(zipPath)
+	                            val patchName = zipFile.nameWithoutExtension
+                                val preflight = patchManager.preflightPatch(storageName, zipFile)
+                                (context as? android.app.Activity)?.runOnUiThread {
+                                    if (!preflight.success) {
+                                        android.app.AlertDialog.Builder(context)
+                                            .setTitle("Patch blocked")
+                                            .setMessage(preflight.summary())
+                                            .setPositiveButton("OK", null)
+                                            .show()
+                                        return@runOnUiThread
+                                    }
+
+                                    android.app.AlertDialog.Builder(context)
+                                        .setTitle("Install $patchName?")
+                                        .setMessage(preflight.summary())
+                                        .setNegativeButton("Cancel", null)
+                                        .setPositiveButton("Install") { _, _ ->
+                                            val result = patchManager.installPatch(
+                                                storageName = storageName,
+                                                zipFile = zipFile,
+                                                patchName = patchName,
+                                                description = if (isTranslation) "User-installed translation overlay" else "User-installed patch or mod",
+                                                isTranslation = isTranslation,
+                                            )
+                                            android.widget.Toast.makeText(context, result.message, android.widget.Toast.LENGTH_LONG).show()
+                                            if (result.success) {
+                                                val fresh = com.runestone.app.data.GameConfigService(
+                                                    context, com.runestone.app.workspace.WorkspaceManager(context)
+                                                ).loadPerGame(storageName)
+                                                current = current.copy(patches = fresh.patches)
+                                                onConfigChanged(current)
+                                                refreshPatchList?.invoke()
+                                            }
+                                        }
+                                        .show()
                                 }
-                            }
-                        }
-                    }
-                }
+	                        }
+	                    }
+	                }
             }
             row.addView(installBtn)
             addView(row)

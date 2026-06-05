@@ -199,11 +199,12 @@ class WorkspaceManager(private val context: Context) {
     fun originalDir(storageName: String): File = File(gameDir(storageName), "original")
     fun activeDir(storageName: String): File = File(gameDir(storageName), "active")
     fun savesDir(storageName: String): File = File(gameDir(storageName), "saves")
+    fun saveBackupsDir(storageName: String): File = File(gameDir(storageName), "save_backups")
     fun incomingDir(storageName: String): File = File(gameDir(storageName), "incoming")
 
     fun ensureWorkspace(storageName: String): File {
         val dir = gameDir(storageName)
-        listOf(dir, File(dir, "original"), File(dir, "incoming"), File(dir, "saves"), File(dir, "patches")).forEach {
+        listOf(dir, File(dir, "original"), File(dir, "incoming"), File(dir, "saves"), File(dir, "save_backups"), File(dir, "patches")).forEach {
             it.mkdirs()
             ensureNoMedia(it)
         }
@@ -213,7 +214,7 @@ class WorkspaceManager(private val context: Context) {
 
     fun ensureNoMedia(storageName: String) {
         ensureNoMedia(gameDir(storageName))
-        listOf(originalDir(storageName), incomingDir(storageName), savesDir(storageName), File(gameDir(storageName), "patches")).forEach {
+        listOf(originalDir(storageName), incomingDir(storageName), savesDir(storageName), saveBackupsDir(storageName), File(gameDir(storageName), "patches")).forEach {
             ensureNoMedia(it)
         }
     }

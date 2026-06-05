@@ -40,6 +40,7 @@ class PatchManager(
     private val context: Context,
     private val workspaceManager: WorkspaceManager,
     private val configService: GameConfigService = GameConfigService(context, workspaceManager),
+    private val saveManager: SaveManager = SaveManager(workspaceManager),
 ) {
 
     data class PatchResult(
@@ -49,6 +50,28 @@ class PatchManager(
         val addedFiles: List<String> = emptyList(),
         val patchId: String? = null,
     )
+
+    data class PatchPreflight(
+        val success: Boolean,
+        val message: String,
+        val overwrittenFiles: List<String> = emptyList(),
+        val addedFiles: List<String> = emptyList(),
+        val conflicts: List<String> = emptyList(),
+        val fileCount: Int = overwrittenFiles.size + addedFiles.size,
+    ) {
+        fun summary(maxPaths: Int = 8): String {
+            if (!success) return message
+            val lines = mutableListOf<String>()
+            lines += "$fileCount files checked"
+            lines += "${overwrittenFiles.size} overwrite, ${addedFiles.size} add"
+            if (conflicts.isNotEmpty()) lines += "${conflicts.size} conflicts"
+            val preview = (overwrittenFiles.map { "overwrite: $it" } + addedFiles.map { "add: $it" }).take(maxPaths)
+            if (preview.isNotEmpty()) lines += preview.joinToString("\n")
+            val remaining = fileCount - preview.size
+            if (remaining > 0) lines += "...and $remaining more"
+            return lines.joinToString("\n")
+        }
+    }
 
     private data class PatchEntry(
         val relPath: String,
@@ -99,6 +122,15 @@ class PatchManager(
             return PatchResult(false, "File is not a valid ZIP (bad magic bytes)")
         }
 
+        val installPreflight = preflightPatch(storageName, zipFile)
+        if (!installPreflight.success) return PatchResult(false, installPreflight.message)
+        if (installPreflight.conflicts.isNotEmpty()) {
+            return PatchResult(
+                false,
+                "Patch conflicts with active patches: ${installPreflight.conflicts.take(3).joinToString(", ")}"
+            )
+        }
+
         val preflight = validateZipEntries(zipFile, originalDir)
         if (!preflight.success) return PatchResult(false, preflight.message)
         val entries = preflight.entries
@@ -114,6 +146,7 @@ class PatchManager(
         val added = mutableListOf<String>()
         val originalHashes = JSONObject()
         val patchedHashes = JSONObject()
+        val saveBackup = saveManager.backupSaves(storageName, "before_patch_$patchId")
 
         // --- Extract and install ---
         val result = runCatching {
@@ -162,6 +195,8 @@ class PatchManager(
                 put("sourceFileName", zipFile.name)
                 put("isTranslation", isTranslation)
                 put("installedAtMillis", installedAt)
+                put("saveBackupCount", saveBackup.count)
+                put("saveBackupPath", saveBackup.directory?.absolutePath ?: "")
                 put("addedFiles", JSONArray(added))
                 put("overwrittenFiles", JSONArray(overwritten))
                 put("originalHashes", originalHashes)
@@ -185,7 +220,10 @@ class PatchManager(
 
             PatchResult(
                 success = true,
-                message = "Installed '$patchName': ${overwritten.size} files overwritten, ${added.size} new files added",
+                message = buildString {
+                    append("Installed '$patchName': ${overwritten.size} files overwritten, ${added.size} new files added")
+                    if (saveBackup.count > 0) append(". Backed up ${saveBackup.count} save files")
+                },
                 overwrittenFiles = overwritten,
                 addedFiles = added,
                 patchId = patchId,
@@ -227,7 +265,8 @@ class PatchManager(
             )
         }
 
-        return doRevert(gameDir, config, listOf(allPatches[targetIdx]))
+        val saveBackup = saveManager.backupSaves(storageName, "before_revert_${targetPatchId}")
+        return doRevert(gameDir, config, listOf(allPatches[targetIdx]), saveBackup.count)
     }
 
     /**
@@ -245,7 +284,36 @@ class PatchManager(
             return PatchResult(false, "No active patches to revert")
         }
 
-        return doRevert(gameDir, config, activePatches)
+        val saveBackup = saveManager.backupSaves(storageName, "before_revert_all")
+        return doRevert(gameDir, config, activePatches, saveBackup.count)
+    }
+
+    fun preflightPatch(storageName: String, zipFile: File): PatchPreflight {
+        val originalDir = workspaceManager.originalDir(storageName)
+        if (!originalDir.isDirectory) {
+            return PatchPreflight(false, "Game directory not found: $storageName")
+        }
+        if (!zipFile.isFile || !zipFile.name.endsWith(".zip", ignoreCase = true)) {
+            return PatchPreflight(false, "Selected file is not a ZIP archive")
+        }
+
+        val preflight = runCatching { validateZipEntries(zipFile, originalDir) }
+            .getOrElse { return PatchPreflight(false, it.message ?: "Could not read ZIP") }
+        if (!preflight.success) return PatchPreflight(false, preflight.message)
+
+        val overwritten = preflight.entries.map { it.relPath }.filter { File(originalDir, it).exists() }
+        val added = preflight.entries.map { it.relPath }.filterNot { File(originalDir, it).exists() }
+        val activeTouched = listActivePatches(storageName)
+            .flatMap { it.overwrittenFiles + it.addedFiles }
+            .toSet()
+        val conflicts = preflight.entries.map { it.relPath }.filter { it in activeTouched }
+        val success = conflicts.isEmpty()
+        val message = if (success) {
+            "Patch is ready to install"
+        } else {
+            "Patch touches files already changed by active patches"
+        }
+        return PatchPreflight(success, message, overwritten, added, conflicts)
     }
 
     /** List currently active patches for a game, sorted by install time. */
@@ -269,6 +337,7 @@ class PatchManager(
         gameDir: File,
         config: com.runestone.app.data.PerGameConfig,
         patches: List<InstalledPatch>,
+        saveBackupCount: Int = 0,
     ): PatchResult {
         val originalDir = File(gameDir, "original")
         var restoredCount = 0
@@ -360,7 +429,10 @@ class PatchManager(
         val errorMsg = if (errors.isNotEmpty()) " (with ${errors.size} errors)" else ""
         return PatchResult(
             success = errors.isEmpty(),
-            message = "Reverted $names: $restoredCount files restored, $removedCount files removed$errorMsg",
+            message = buildString {
+                append("Reverted $names: $restoredCount files restored, $removedCount files removed$errorMsg")
+                if (saveBackupCount > 0) append(". Backed up $saveBackupCount save files")
+            },
         )
     }
 

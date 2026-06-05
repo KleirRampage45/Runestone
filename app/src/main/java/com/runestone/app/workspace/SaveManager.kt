@@ -17,6 +17,10 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 class SaveManager(private val workspaceManager: WorkspaceManager) {
+    data class SaveBackupResult(
+        val count: Int,
+        val directory: File?,
+    )
 
     /** Backup saves from the game's active save locations into the protected saves/ dir. */
     fun syncFromActive(storageName: String): Int {
@@ -186,6 +190,49 @@ class SaveManager(private val workspaceManager: WorkspaceManager) {
             }
         }
         return uniqueEntries.size
+    }
+
+    /**
+     * Capture detected live/protected saves into a timestamped backup folder.
+     * Used before patch/translation operations that may affect compatibility.
+     */
+    fun backupSaves(storageName: String, reason: String): SaveBackupResult {
+        syncFromActive(storageName)
+        val saves = listSaves(storageName)
+        if (saves.isEmpty()) return SaveBackupResult(0, null)
+
+        val gameDir = workspaceManager.gameDir(storageName)
+        val originalDir = workspaceManager.originalDir(storageName)
+        val protectedSavesDir = workspaceManager.savesDir(storageName)
+        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US)
+            .format(java.util.Date())
+        val safeReason = reason.lowercase()
+            .replace(Regex("[^a-z0-9_-]"), "-")
+            .replace(Regex("-+"), "-")
+            .trim('-')
+            .ifBlank { "backup" }
+        val backupDir = File(workspaceManager.saveBackupsDir(storageName), "${stamp}_$safeReason")
+        backupDir.mkdirs()
+        File(backupDir, ".nomedia").writeText("")
+
+        var count = 0
+        saves.forEach { save ->
+            val relPath = when {
+                save.canonicalPath.startsWith(protectedSavesDir.canonicalPath + File.separator) ->
+                    "protected/${save.toRelativeString(protectedSavesDir)}"
+                save.canonicalPath.startsWith(originalDir.canonicalPath + File.separator) ->
+                    "live/${save.toRelativeString(originalDir)}"
+                save.canonicalPath.startsWith(gameDir.canonicalPath + File.separator) ->
+                    "workspace/${save.toRelativeString(gameDir)}"
+                else -> save.name
+            }.replace(File.separatorChar, '/')
+            val target = File(backupDir, relPath)
+            target.parentFile?.mkdirs()
+            save.copyTo(target, overwrite = true)
+            count++
+        }
+
+        return SaveBackupResult(count, backupDir)
     }
 
     /**
