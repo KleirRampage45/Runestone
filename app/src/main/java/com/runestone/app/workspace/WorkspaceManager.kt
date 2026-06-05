@@ -53,14 +53,17 @@ class WorkspaceManager(private val context: Context) {
 
     fun scanInstalledGames(): List<GameInfo> {
         val dir = gamesBaseDir
+        ensureNoMedia(dir)
         if (!dir.exists()) return emptyList()
 
         return dir.listFiles()
             ?.filter { it.isDirectory }
             ?.mapNotNull { gameDir ->
+                ensureNoMedia(gameDir)
                 repairInterruptedInstall(gameDir)
                 val originalDir = File(gameDir, "original")
                 if (!originalDir.isDirectory) return@mapNotNull null
+                ensureNoMedia(originalDir)
 
                 // Check for manual engine override in install_state.json
                 val override = runCatching {
@@ -156,6 +159,7 @@ class WorkspaceManager(private val context: Context) {
                 "Could not finalize repaired install for ${gameDir.name}"
             }
             ensureWorkspace(gameDir.name)
+            ensureNoMedia(originalDir)
 
             val fileCount = originalDir.walkTopDown().count { it.isFile }
             File(gameDir, "manifest.json").writeText(JSONObject().apply {
@@ -199,8 +203,19 @@ class WorkspaceManager(private val context: Context) {
 
     fun ensureWorkspace(storageName: String): File {
         val dir = gameDir(storageName)
-        listOf(dir, File(dir, "saves")).forEach { it.mkdirs() }
+        listOf(dir, File(dir, "original"), File(dir, "incoming"), File(dir, "saves"), File(dir, "patches")).forEach {
+            it.mkdirs()
+            ensureNoMedia(it)
+        }
+        ensureNoMedia(gamesBaseDir)
         return dir
+    }
+
+    fun ensureNoMedia(storageName: String) {
+        ensureNoMedia(gameDir(storageName))
+        listOf(originalDir(storageName), incomingDir(storageName), savesDir(storageName), File(gameDir(storageName), "patches")).forEach {
+            ensureNoMedia(it)
+        }
     }
 
     @Deprecated(
@@ -254,5 +269,15 @@ class WorkspaceManager(private val context: Context) {
             .trim('-')
             .take(64)
             .ifEmpty { "game" }
+    }
+
+    private fun ensureNoMedia(dir: File) {
+        runCatching {
+            if (!dir.exists()) dir.mkdirs()
+            if (dir.isDirectory) {
+                val marker = File(dir, ".nomedia")
+                if (!marker.exists()) marker.writeText("")
+            }
+        }
     }
 }

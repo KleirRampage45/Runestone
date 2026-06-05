@@ -50,8 +50,10 @@ class SafGameImporter(
         val original = File(gameDir, "original")
 
         onProgress("Preparing workspace...")
+        workspaceManager.ensureWorkspace(gameDir.name)
         incoming.deleteRecursively()
         incoming.mkdirs()
+        workspaceManager.ensureNoMedia(gameDir.name)
 
         return runCatching {
             Log.i(TAG, "importTree: rootDocumentUri=$rootDocumentUri")
@@ -76,6 +78,7 @@ class SafGameImporter(
             onProgress("Installing game files...")
             original.deleteRecursively()
             require(incoming.renameTo(original)) { "Could not move imported files into workspace" }
+            workspaceManager.ensureNoMedia(gameDir.name)
 
             onProgress("Preparing save storage...")
             workspaceManager.ensureWorkspace(gameDir.name)

@@ -54,6 +54,7 @@ class ExtractionManager(private val context: Context) {
         }
 
         if (!outputDir.exists()) outputDir.mkdirs()
+        ensureNoMedia(outputDir)
 
         Thread {
             try {
@@ -66,6 +67,7 @@ class ExtractionManager(private val context: Context) {
     }
 
     private fun doExtract(zipFile: File, outputDir: File, callback: ExtractionCallback) {
+        ensureNoMedia(outputDir)
         val entries = countEntries(zipFile)
         require(entries > 0) { "Archive contains no files" }
         var extracted = 0
@@ -207,6 +209,16 @@ class ExtractionManager(private val context: Context) {
                 name == "rpg_rt.ini" ||
                 name == "index.html" ||
                 name == "project.json"
+        }
+    }
+
+    private fun ensureNoMedia(dir: File) {
+        runCatching {
+            if (!dir.exists()) dir.mkdirs()
+            if (dir.isDirectory) {
+                val marker = File(dir, ".nomedia")
+                if (!marker.exists()) marker.writeText("")
+            }
         }
     }
 }

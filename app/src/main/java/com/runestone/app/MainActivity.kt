@@ -504,6 +504,7 @@ class MainActivity : Activity() {
         require(fileCount > 0) { "Archive did not contain game files" }
 
         workspaceManager.ensureWorkspace(gameDir.name)
+        workspaceManager.ensureNoMedia(gameDir.name)
 
         File(gameDir, "manifest.json").writeText(JSONObject().apply {
             put("storageName", gameDir.name)

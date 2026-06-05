@@ -58,7 +58,18 @@ class DownloadManager(private val context: Context) {
     fun getDownloadDir(): File {
         val dir = File(context.getExternalFilesDir(null), "downloads")
         if (!dir.exists()) dir.mkdirs()
+        ensureNoMedia(dir)
         return dir
+    }
+
+    private fun ensureNoMedia(dir: File) {
+        runCatching {
+            if (!dir.exists()) dir.mkdirs()
+            if (dir.isDirectory) {
+                val marker = File(dir, ".nomedia")
+                if (!marker.exists()) marker.writeText("")
+            }
+        }
     }
 
     fun getState(gameId: String): DownloadState {
