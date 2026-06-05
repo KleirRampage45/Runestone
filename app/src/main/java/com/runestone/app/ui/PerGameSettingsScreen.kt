@@ -387,19 +387,19 @@ class PerGameSettingsScreen(private val context: Context) {
         // ── Patches & Mods Section ──
         content.addView(sectionTitle("Patches & Mods", "Translations, +18 patches, mods, and extra content"))
         val patchManager = PatchManager(context, com.runestone.app.workspace.WorkspaceManager(context))
+        var refreshPatchList: (() -> Unit)? = null
 
-        // Install button
-        content.addView(settingsPanel {
+        fun installZipPanel(title: String, buttonText: String, isTranslation: Boolean): View = settingsPanel {
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
             row.addView(TextView(context).apply {
-                text = "Install ZIP Patch"
+                text = title
                 setTextColor(TEXT); textSize = 15f; typeface = Typeface.DEFAULT_BOLD
             }, LinearLayout.LayoutParams(0, WRAP, 1f))
             val installBtn = TextView(context).apply {
-                text = "BROWSE"
+                text = buttonText
                 setTextColor(ACCENT); textSize = 12f; typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER; setPadding(dp(12), dp(6), dp(12), dp(6))
                 background = GradientDrawable().apply {
@@ -417,8 +417,8 @@ class PerGameSettingsScreen(private val context: Context) {
                                 storageName = storageName,
                                 zipFile = zipFile,
                                 patchName = patchName,
-                                description = "",
-                                isTranslation = false,
+                                description = if (isTranslation) "User-installed translation overlay" else "User-installed patch or mod",
+                                isTranslation = isTranslation,
                             )
                             (context as? android.app.Activity)?.runOnUiThread {
                                 android.widget.Toast.makeText(context, result.message, android.widget.Toast.LENGTH_LONG).show()
@@ -429,7 +429,7 @@ class PerGameSettingsScreen(private val context: Context) {
                                     ).loadPerGame(storageName)
                                     current = current.copy(patches = fresh.patches)
                                     onConfigChanged(current)
-                                    // Force UI refresh by rebuilding patches list
+                                    refreshPatchList?.invoke()
                                 }
                             }
                         }
@@ -438,7 +438,11 @@ class PerGameSettingsScreen(private val context: Context) {
             }
             row.addView(installBtn)
             addView(row)
-        })
+        }
+
+        content.addView(installZipPanel("Install Translation ZIP", "TRANSLATION", isTranslation = true))
+        content.addView(spacer(8))
+        content.addView(installZipPanel("Install Mod/Patch ZIP", "MOD/PATCH", isTranslation = false))
         content.addView(spacer(10))
 
         // Patch list — rebuild on each update
@@ -467,20 +471,19 @@ class PerGameSettingsScreen(private val context: Context) {
             }
 
             val activePatches = patches.filter { it.isActive }
-            val inactivePatches = patches.filter { !it.isActive }
+            val translations = patches.filter { it.isTranslation }
+            val mods = patches.filter { !it.isTranslation }
 
-            // Active patches
-            if (activePatches.isNotEmpty()) {
-                val activeHeader = TextView(context).apply {
+            fun addPatchListHeader(label: String) {
+                content.addView(TextView(context).apply {
                     tag = "patch_list_header"
-                    text = "Active (${activePatches.size})"
+                    text = label
                     setTextColor(TEXT); textSize = 12f; typeface = Typeface.DEFAULT_BOLD
                     setPadding(dp(4), dp(8), 0, dp(4))
-                }
-                content.addView(activeHeader, content.childCount - 1)
+                }, content.childCount - 1)
             }
 
-            for (p in patches) {
+            fun addPatchCard(p: InstalledPatch) {
                 val card = settingsPanel {
                     tag = "patch_list_item"
 
@@ -501,7 +504,7 @@ class PerGameSettingsScreen(private val context: Context) {
 
                     infoCol.addView(TextView(context).apply {
                         val desc = buildString {
-                            if (p.isTranslation) append("Translation / ")
+                            append(if (p.isTranslation) "Translation / " else "Mod/Patch / ")
                             if (p.isActive) append("Active") else append("Reverted")
                             if (p.overwrittenCount > 0) append(" · ${p.overwrittenCount} overwritten")
                             if (p.addedCount > 0) append(" · ${p.addedCount} added")
@@ -523,8 +526,7 @@ class PerGameSettingsScreen(private val context: Context) {
 
                     if (p.isActive) {
                         // Revert button — only show if this is the most recent active patch
-                        val activeList = patches.filter { it.isActive }
-                        val isNewest = (activeList.maxByOrNull { it.installedAtMillis }?.patchId == p.patchId)
+                        val isNewest = (activePatches.maxByOrNull { it.installedAtMillis }?.patchId == p.patchId)
                         if (isNewest && storageName.isNotEmpty()) {
                             val revertBtn = TextView(context).apply {
                                 text = "REVERT"
@@ -547,6 +549,7 @@ class PerGameSettingsScreen(private val context: Context) {
                                             ).loadPerGame(storageName)
                                             current = current.copy(patches = fresh.patches)
                                             onConfigChanged(current)
+                                            buildPatchList()
                                         }
                                     }
                                 }
@@ -572,6 +575,16 @@ class PerGameSettingsScreen(private val context: Context) {
                 content.addView(card, content.childCount - 1)
             }
 
+            if (translations.isNotEmpty()) {
+                addPatchListHeader("Translations (${translations.size})")
+                translations.forEach { addPatchCard(it) }
+            }
+
+            if (mods.isNotEmpty()) {
+                addPatchListHeader("Patches & Mods (${mods.size})")
+                mods.forEach { addPatchCard(it) }
+            }
+
             // Revert All button (if any patches active)
             if (activePatches.isNotEmpty() && storageName.isNotEmpty()) {
                 val revertAllBtn = TextView(context).apply {
@@ -595,6 +608,7 @@ class PerGameSettingsScreen(private val context: Context) {
                                 ).loadPerGame(storageName)
                                 current = current.copy(patches = fresh.patches)
                                 onConfigChanged(current)
+                                buildPatchList()
                             }
                         }
                     }
@@ -603,6 +617,7 @@ class PerGameSettingsScreen(private val context: Context) {
             }
         }
         buildPatchList()
+        refreshPatchList = { buildPatchList() }
         content.addView(spacer(h = 14))
 
         content.animate().alpha(1f).setDuration(300).setInterpolator(OvershootInterpolator(1.1f)).start()
