@@ -17,6 +17,15 @@ enum class DisplayCutoutMode(val label: String) {
     EDGE_TO_EDGE("Edge to edge"),
 }
 
+enum class ControllerShortcut(val label: String) {
+    OFF("Off"),
+    L2_R2("L2 + R2"),
+    L1_R1("L1 + R1"),
+    START_SELECT("Start + Select"),
+    L2_START("L2 + Start"),
+    R2_START("R2 + Start"),
+}
+
 data class RunnerSettings(
     // Display / Layout
     val layoutMode: LayoutMode = LayoutMode.PORTRAIT_CONSOLE,
@@ -45,6 +54,10 @@ data class RunnerSettings(
     val fourthButtonKey: String = "X",
     val fifthButtonKey: String = "SHIFT_LEFT",
     val sixthButtonKey: String = "B",
+    val controllerHomeShortcut: ControllerShortcut = ControllerShortcut.L2_R2,
+    val controllerKeyboardShortcut: ControllerShortcut = ControllerShortcut.START_SELECT,
+    val controllerRuntimeMenuShortcut: ControllerShortcut = ControllerShortcut.L1_R1,
+    val controllerResumeShortcut: ControllerShortcut = ControllerShortcut.L2_R2,
 
     // Audio
     val forceAudioExt: String = ".ogg",

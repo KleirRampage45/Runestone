@@ -25,6 +25,7 @@ import android.widget.Switch
 import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import com.runestone.app.data.ControllerShortcut
 import com.runestone.app.data.DisplayCutoutMode
 import com.runestone.app.data.LayoutMode
 import com.runestone.app.data.RunnerSettings
@@ -179,6 +180,24 @@ class SettingsScreen(private val context: Context) {
                 btnPanel.addView(compactDropdown("Fourth Button", current.fourthButtonKey, keyOptions) { upd { copy(fourthButtonKey = it) } })
                 btnPanel.addView(compactDropdown("Fifth Button", current.fifthButtonKey, keyOptions) { upd { copy(fifthButtonKey = it) } })
                 btnPanel.addView(compactDropdown("Sixth Button", current.sixthButtonKey, keyOptions) { upd { copy(sixthButtonKey = it) } })
+            }
+            panel.addView(spacerAfter(6))
+            subAccordion(panel, "CONTROLLER SHORTCUTS") { shortcutPanel ->
+                val shortcuts = ControllerShortcut.values().map { it.label }
+                fun shortcutFrom(label: String): ControllerShortcut =
+                    ControllerShortcut.values().firstOrNull { it.label == label } ?: ControllerShortcut.OFF
+                shortcutPanel.addView(compactDropdown("Minimize Game", current.controllerHomeShortcut.label, shortcuts) {
+                    upd { copy(controllerHomeShortcut = shortcutFrom(it)) }
+                })
+                shortcutPanel.addView(compactDropdown("Runtime Keyboard", current.controllerKeyboardShortcut.label, shortcuts) {
+                    upd { copy(controllerKeyboardShortcut = shortcutFrom(it)) }
+                })
+                shortcutPanel.addView(compactDropdown("Runtime Menu", current.controllerRuntimeMenuShortcut.label, shortcuts) {
+                    upd { copy(controllerRuntimeMenuShortcut = shortcutFrom(it)) }
+                })
+                shortcutPanel.addView(compactDropdown("Resume Game", current.controllerResumeShortcut.label, shortcuts) {
+                    upd { copy(controllerResumeShortcut = shortcutFrom(it)) }
+                })
             }
         }
 

@@ -1000,6 +1000,8 @@ class HomeScreen(private val context: Context) {
         // Wrapper stacks card + overlay — blur only hits card
         val cardWrapper = FrameLayout(context).apply {
             layoutParams = LinearLayout.LayoutParams(cardW, cardH)
+            isFocusable = true
+            isFocusableInTouchMode = true
         }
         cardContainer.addView(cardWrapper)
 
@@ -1118,6 +1120,25 @@ class HomeScreen(private val context: Context) {
             } else {
                 // Deselect this card (tap same card again)
                 deselectAll()
+            }
+        }
+        cardWrapper.setOnKeyListener { _, keyCode, event ->
+            if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount > 0) {
+                return@setOnKeyListener false
+            }
+            when (keyCode) {
+                KeyEvent.KEYCODE_BUTTON_A,
+                KeyEvent.KEYCODE_DPAD_CENTER,
+                KeyEvent.KEYCODE_ENTER -> {
+                    onPlay(game.storageName)
+                    true
+                }
+                KeyEvent.KEYCODE_BUTTON_Y,
+                KeyEvent.KEYCODE_MENU -> {
+                    onManage(game.storageName)
+                    true
+                }
+                else -> false
             }
         }
 

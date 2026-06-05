@@ -95,6 +95,21 @@ class WebViewEngine(context: Context) : WebView(context) {
         webSettings.cacheMode = WebSettings.LOAD_DEFAULT
         webSettings.textZoom = (config.textScale * 100).toInt().coerceIn(50, 200)
         webSettings.setSupportZoom(false)
+        isVerticalScrollBarEnabled = false
+        isHorizontalScrollBarEnabled = false
+        overScrollMode = OVER_SCROLL_NEVER
+        isNestedScrollingEnabled = false
+    }
+
+    override fun scrollTo(x: Int, y: Int) {
+        super.scrollTo(0, 0)
+    }
+
+    override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
+        super.onScrollChanged(0, 0, oldl, oldt)
+        if (l != 0 || t != 0) {
+            super.scrollTo(0, 0)
+        }
     }
 
     /**

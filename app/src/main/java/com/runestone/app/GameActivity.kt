@@ -34,6 +34,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.ViewCompat
+import com.runestone.app.data.ControllerShortcut
 import com.runestone.app.data.EngineType
 import com.runestone.app.data.DisplayCutoutMode
 import com.runestone.app.data.LayoutMode
@@ -59,6 +60,8 @@ class GameActivity : Activity() {
     private var controllerPresetId: String? = null
     private val activeControllerAxisButtons = mutableSetOf<ControllerMapper.GameButton>()
     private val pressedControllerKeys = mutableSetOf<Int>()
+    private var triggerHomeComboDown = false
+    private var runtimeActionsOverlay: View? = null
 
     companion object {
         private const val TAG = "Runestone"
@@ -87,6 +90,10 @@ class GameActivity : Activity() {
         private const val EXTRA_VSYNC = "vsync"
         private const val EXTRA_FRAME_SKIP = "frame_skip"
         private const val EXTRA_SHADERS = "shaders"
+        private const val EXTRA_CONTROLLER_HOME_SHORTCUT = "controller_home_shortcut"
+        private const val EXTRA_CONTROLLER_KEYBOARD_SHORTCUT = "controller_keyboard_shortcut"
+        private const val EXTRA_CONTROLLER_RUNTIME_MENU_SHORTCUT = "controller_runtime_menu_shortcut"
+        private const val EXTRA_CONTROLLER_RESUME_SHORTCUT = "controller_resume_shortcut"
 
         fun start(activity: Activity, gamePath: String, engineType: String? = null, settings: RunnerSettings = RunnerSettings()) {
             val intent = Intent(activity, GameActivity::class.java).apply {
@@ -115,6 +122,10 @@ class GameActivity : Activity() {
                 putExtra(EXTRA_VSYNC, settings.vsync)
                 putExtra(EXTRA_FRAME_SKIP, settings.frameSkip)
                 putExtra(EXTRA_SHADERS, settings.shaders)
+                putExtra(EXTRA_CONTROLLER_HOME_SHORTCUT, settings.controllerHomeShortcut.name)
+                putExtra(EXTRA_CONTROLLER_KEYBOARD_SHORTCUT, settings.controllerKeyboardShortcut.name)
+                putExtra(EXTRA_CONTROLLER_RUNTIME_MENU_SHORTCUT, settings.controllerRuntimeMenuShortcut.name)
+                putExtra(EXTRA_CONTROLLER_RESUME_SHORTCUT, settings.controllerResumeShortcut.name)
             }
             activity.startActivity(intent)
         }
@@ -174,6 +185,10 @@ class GameActivity : Activity() {
             vsync = intent.getBooleanExtra(EXTRA_VSYNC, defaults.vsync),
             frameSkip = intent.getBooleanExtra(EXTRA_FRAME_SKIP, defaults.frameSkip),
             shaders = intent.getBooleanExtra(EXTRA_SHADERS, defaults.shaders),
+            controllerHomeShortcut = controllerShortcut(EXTRA_CONTROLLER_HOME_SHORTCUT, defaults.controllerHomeShortcut),
+            controllerKeyboardShortcut = controllerShortcut(EXTRA_CONTROLLER_KEYBOARD_SHORTCUT, defaults.controllerKeyboardShortcut),
+            controllerRuntimeMenuShortcut = controllerShortcut(EXTRA_CONTROLLER_RUNTIME_MENU_SHORTCUT, defaults.controllerRuntimeMenuShortcut),
+            controllerResumeShortcut = controllerShortcut(EXTRA_CONTROLLER_RESUME_SHORTCUT, defaults.controllerResumeShortcut),
         )
 
         if (settings.keepScreenOn) {
@@ -441,18 +456,65 @@ class GameActivity : Activity() {
     }
 
     private fun showRuntimeActions() {
-        val actions = arrayOf("Resume", "Keyboard", "Home")
-        AlertDialog.Builder(this)
-            .setTitle("Runtime Actions")
-            .setItems(actions) { dialog, which ->
-                when (which) {
-                    0 -> dialog.dismiss()
-                    1 -> toggleKeyboard()
-                    2 -> goHomePaused()
+        val root = rootView ?: return
+        runtimeActionsOverlay?.let {
+            root.removeView(it)
+            runtimeActionsOverlay = null
+            return
+        }
+
+        val overlay = FrameLayout(this).apply {
+            setBackgroundColor(Color.argb(170, 0, 0, 0))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { dismissRuntimeActions() }
+            setOnKeyListener { _, keyCode, event ->
+                if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_BUTTON_B) {
+                    dismissRuntimeActions()
+                    true
+                } else {
+                    false
                 }
             }
-            .setNegativeButton("Close", null)
-            .show()
+        }
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(235, 12, 11, 16))
+                setStroke(dp(1), Color.argb(80, 200, 180, 140))
+                cornerRadius = dp(18).toFloat()
+            }
+            isClickable = true
+        }
+        panel.addView(TextView(this).apply {
+            text = "RUNTIME"
+            setTextColor(Color.rgb(220, 200, 160))
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, dp(10))
+        })
+        panel.addView(runtimeActionButton("RESUME") { dismissRuntimeActions() })
+        panel.addView(runtimeActionButton("KEYBOARD") {
+            dismissRuntimeActions()
+            toggleKeyboard()
+        })
+        panel.addView(runtimeActionButton("HOME") {
+            dismissRuntimeActions()
+            goHomePaused()
+        })
+        overlay.addView(panel, FrameLayout.LayoutParams(
+            (resources.displayMetrics.widthPixels * 0.72f).toInt().coerceAtLeast(dp(260)),
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.CENTER,
+        ))
+        root.addView(overlay, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+        runtimeActionsOverlay = overlay
+        overlay.requestFocus()
     }
 
     private fun goHomePaused() {
@@ -467,6 +529,11 @@ class GameActivity : Activity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (keyboardVisible && event.isControllerEvent()) {
+            keyboardView?.handleControllerKey(event)?.let { handled ->
+                if (handled) return true
+            }
+        }
         if (webViewEngine != null && event.isControllerEvent()) {
             if (handleControllerCombo(event)) return true
             val mapped = mapControllerKey(event)
@@ -518,18 +585,15 @@ class GameActivity : Activity() {
         if (event.repeatCount > 0) return false
 
         return when {
-            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_L2) &&
-                pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_R2) -> {
+            shortcutPressed(settings.controllerHomeShortcut) -> {
                 goHomePaused()
                 true
             }
-            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_START) &&
-                pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_SELECT) -> {
+            shortcutPressed(settings.controllerKeyboardShortcut) -> {
                 toggleKeyboard()
                 true
             }
-            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_L1) &&
-                pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_R1) -> {
+            shortcutPressed(settings.controllerRuntimeMenuShortcut) -> {
                 openSettings()
                 true
             }
@@ -539,6 +603,8 @@ class GameActivity : Activity() {
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
         if (webViewEngine != null && event.isControllerEvent()) {
+            if (handleTriggerHomeCombo(event)) return true
+            if (keyboardVisible) return true
             val preset = controllerPresetFor(event.device)
             val activeButtons = ControllerMapper.mapAxisToButtons(event, preset).toSet()
             val released = activeControllerAxisButtons - activeButtons
@@ -631,6 +697,36 @@ class GameActivity : Activity() {
         keyboardVisible = true
     }
 
+    private fun dismissRuntimeActions() {
+        val overlay = runtimeActionsOverlay ?: return
+        rootView?.removeView(overlay)
+        runtimeActionsOverlay = null
+    }
+
+    private fun runtimeActionButton(label: String, action: () -> Unit): TextView =
+        TextView(this).apply {
+            text = label
+            setTextColor(Color.rgb(230, 220, 200))
+            textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(70, 200, 170, 130))
+                setStroke(dp(1), Color.argb(85, 210, 185, 145))
+                cornerRadius = dp(10).toFloat()
+            }
+            setOnClickListener { action() }
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+            lp.setMargins(0, dp(4), 0, dp(4))
+            layoutParams = lp
+        }
+
     private fun sendKeyboardText(text: String) {
         val engine = webViewEngine ?: return
         text.forEach { char ->
@@ -680,6 +776,54 @@ class GameActivity : Activity() {
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun controllerShortcut(extra: String, default: ControllerShortcut): ControllerShortcut =
+        runCatching {
+            ControllerShortcut.valueOf(intent.getStringExtra(extra) ?: default.name)
+        }.getOrDefault(default)
+
+    private fun shortcutPressed(shortcut: ControllerShortcut): Boolean = when (shortcut) {
+        ControllerShortcut.OFF -> false
+        ControllerShortcut.L2_R2 ->
+            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_L2) &&
+                pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_R2)
+        ControllerShortcut.L1_R1 ->
+            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_L1) &&
+                pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_R1)
+        ControllerShortcut.START_SELECT ->
+            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_START) &&
+                pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_SELECT)
+        ControllerShortcut.L2_START ->
+            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_L2) &&
+                pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_START)
+        ControllerShortcut.R2_START ->
+            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_R2) &&
+                pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_START)
+    }
+
+    private fun handleTriggerHomeCombo(event: MotionEvent): Boolean {
+        if (settings.controllerHomeShortcut != ControllerShortcut.L2_R2) {
+            triggerHomeComboDown = false
+            return false
+        }
+        val left = maxOf(
+            event.getAxisValue(MotionEvent.AXIS_LTRIGGER),
+            event.getAxisValue(MotionEvent.AXIS_BRAKE),
+        )
+        val right = maxOf(
+            event.getAxisValue(MotionEvent.AXIS_RTRIGGER),
+            event.getAxisValue(MotionEvent.AXIS_GAS),
+        )
+        val bothPressed = left > 0.55f && right > 0.55f
+        if (!bothPressed) {
+            triggerHomeComboDown = false
+            return false
+        }
+        if (triggerHomeComboDown) return true
+        triggerHomeComboDown = true
+        goHomePaused()
+        return true
+    }
 
     private fun applyImmersiveMode() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -776,6 +920,7 @@ class GameActivity : Activity() {
             putExtra("com.runestone.app.extra.HAPTICS_ENABLED", settings.hapticsEnabled)
             putExtra("com.runestone.app.extra.HAPTIC_INTENSITY", settings.hapticIntensity)
             putExtra("com.runestone.app.extra.DISPLAY_CUTOUT_MODE", settings.displayCutoutMode.name)
+            putExtra("com.runestone.app.extra.CONTROLLER_HOME_SHORTCUT", settings.controllerHomeShortcut.name)
         }
         startActivity(intent)
         finish()
@@ -806,6 +951,8 @@ class GameActivity : Activity() {
             putExtra("com.runestone.app.extra.TOUCH_SCALE", settings.touchScale)
             putExtra("com.runestone.app.extra.HAPTICS_ENABLED", settings.hapticsEnabled)
             putExtra("com.runestone.app.extra.HAPTIC_INTENSITY", settings.hapticIntensity)
+            putExtra("com.runestone.app.extra.DISPLAY_CUTOUT_MODE", settings.displayCutoutMode.name)
+            putExtra("com.runestone.app.extra.CONTROLLER_HOME_SHORTCUT", settings.controllerHomeShortcut.name)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         startActivity(intent)

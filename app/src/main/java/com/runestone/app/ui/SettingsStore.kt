@@ -11,6 +11,7 @@
 package com.runestone.app.ui
 
 import android.content.Context
+import com.runestone.app.data.ControllerShortcut
 import com.runestone.app.data.DisplayCutoutMode
 import com.runestone.app.data.LayoutMode
 import com.runestone.app.data.RunnerSettings
@@ -52,6 +53,10 @@ class SettingsStore(context: Context) {
             fourthButtonKey = prefs.getString("fourthButtonKey", defaults.fourthButtonKey) ?: defaults.fourthButtonKey,
             fifthButtonKey = prefs.getString("fifthButtonKey", defaults.fifthButtonKey) ?: defaults.fifthButtonKey,
             sixthButtonKey = prefs.getString("sixthButtonKey", defaults.sixthButtonKey) ?: defaults.sixthButtonKey,
+            controllerHomeShortcut = shortcut("controllerHomeShortcut", defaults.controllerHomeShortcut),
+            controllerKeyboardShortcut = shortcut("controllerKeyboardShortcut", defaults.controllerKeyboardShortcut),
+            controllerRuntimeMenuShortcut = shortcut("controllerRuntimeMenuShortcut", defaults.controllerRuntimeMenuShortcut),
+            controllerResumeShortcut = shortcut("controllerResumeShortcut", defaults.controllerResumeShortcut),
             forceAudioExt = prefs.getString("forceAudioExt", defaults.forceAudioExt) ?: defaults.forceAudioExt,
             disableAudioEmulation = prefs.getBoolean("disableAudioEmulation", defaults.disableAudioEmulation),
             dialogLogs = prefs.getBoolean("dialogLogs", defaults.dialogLogs),
@@ -133,6 +138,10 @@ class SettingsStore(context: Context) {
             .putString("fourthButtonKey", settings.fourthButtonKey)
             .putString("fifthButtonKey", settings.fifthButtonKey)
             .putString("sixthButtonKey", settings.sixthButtonKey)
+            .putString("controllerHomeShortcut", settings.controllerHomeShortcut.name)
+            .putString("controllerKeyboardShortcut", settings.controllerKeyboardShortcut.name)
+            .putString("controllerRuntimeMenuShortcut", settings.controllerRuntimeMenuShortcut.name)
+            .putString("controllerResumeShortcut", settings.controllerResumeShortcut.name)
             .putString("forceAudioExt", settings.forceAudioExt)
             .putBoolean("disableAudioEmulation", settings.disableAudioEmulation)
             .putBoolean("dialogLogs", settings.dialogLogs)
@@ -188,4 +197,9 @@ class SettingsStore(context: Context) {
             .putBoolean("reduceMotion", settings.reduceMotion)
             .apply()
     }
+
+    private fun shortcut(key: String, default: ControllerShortcut): ControllerShortcut =
+        runCatching {
+            ControllerShortcut.valueOf(prefs.getString(key, default.name).orEmpty())
+        }.getOrDefault(default)
 }

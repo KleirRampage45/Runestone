@@ -25,6 +25,7 @@ import android.util.Log
 import android.view.Gravity
 import android.view.InputDevice
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -38,6 +39,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.runestone.app.data.ControllerShortcut
 import com.runestone.app.data.DisplayCutoutMode
 import com.runestone.app.data.EngineType
 import com.runestone.app.data.RunnerSettings
@@ -155,6 +157,7 @@ class MainActivity : Activity() {
     private var gamesErrorMessage: String? = null
     private var downloadReceiverRegistered = false
     private val pressedControllerKeys = mutableSetOf<Int>()
+    private var triggerResumeComboDown = false
 
     private val downloadReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -1858,7 +1861,11 @@ class MainActivity : Activity() {
         if (event.isControllerShortcut() && handleControllerCombo(event)) return true
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && event.isControllerShortcut()) {
             when (event.keyCode) {
-                KeyEvent.KEYCODE_BUTTON_A -> if (performFocusedClick()) return true
+                KeyEvent.KEYCODE_BUTTON_A -> {
+                    val focused = currentFocus
+                    if (focused != null && focused != rootContainer && focused.dispatchKeyEvent(event)) return true
+                    if (performFocusedClick()) return true
+                }
                 KeyEvent.KEYCODE_BUTTON_B -> {
                     onBackPressed()
                     return true
@@ -1894,6 +1901,11 @@ class MainActivity : Activity() {
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        if (event.isControllerMotionShortcut() && handleTriggerResumeCombo(event)) return true
+        return super.dispatchGenericMotionEvent(event)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -1940,10 +1952,7 @@ class MainActivity : Activity() {
         pressedControllerKeys.add(event.keyCode)
         if (event.repeatCount > 0) return false
 
-        if (
-            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_L2) &&
-            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_R2)
-        ) {
+        if (shortcutPressed(settings.controllerResumeShortcut)) {
             val paused = games.firstOrNull { it.originalPath == pausedGamePath }
             if (paused != null) {
                 playGame(paused.storageName)
@@ -1951,6 +1960,55 @@ class MainActivity : Activity() {
             }
         }
         return false
+    }
+
+    private fun shortcutPressed(shortcut: ControllerShortcut): Boolean = when (shortcut) {
+        ControllerShortcut.OFF -> false
+        ControllerShortcut.L2_R2 ->
+            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_L2) &&
+                pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_R2)
+        ControllerShortcut.L1_R1 ->
+            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_L1) &&
+                pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_R1)
+        ControllerShortcut.START_SELECT ->
+            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_START) &&
+                pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_SELECT)
+        ControllerShortcut.L2_START ->
+            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_L2) &&
+                pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_START)
+        ControllerShortcut.R2_START ->
+            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_R2) &&
+                pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_START)
+    }
+
+    private fun MotionEvent.isControllerMotionShortcut(): Boolean {
+        val controllerSources = InputDevice.SOURCE_GAMEPAD or InputDevice.SOURCE_JOYSTICK or InputDevice.SOURCE_DPAD
+        return source and controllerSources != 0
+    }
+
+    private fun handleTriggerResumeCombo(event: MotionEvent): Boolean {
+        if (settings.controllerResumeShortcut != ControllerShortcut.L2_R2) {
+            triggerResumeComboDown = false
+            return false
+        }
+        val left = maxOf(
+            event.getAxisValue(MotionEvent.AXIS_LTRIGGER),
+            event.getAxisValue(MotionEvent.AXIS_BRAKE),
+        )
+        val right = maxOf(
+            event.getAxisValue(MotionEvent.AXIS_RTRIGGER),
+            event.getAxisValue(MotionEvent.AXIS_GAS),
+        )
+        val bothPressed = left > 0.55f && right > 0.55f
+        if (!bothPressed) {
+            triggerResumeComboDown = false
+            return false
+        }
+        if (triggerResumeComboDown) return true
+        triggerResumeComboDown = true
+        val paused = games.firstOrNull { it.originalPath == pausedGamePath } ?: return true
+        playGame(paused.storageName)
+        return true
     }
 
     private fun handleAdbCommand(intent: Intent?) {

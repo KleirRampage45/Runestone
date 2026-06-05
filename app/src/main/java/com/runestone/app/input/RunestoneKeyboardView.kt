@@ -21,6 +21,10 @@ class RunestoneKeyboardView(context: Context) : LinearLayout(context) {
     var onHide: (() -> Unit)? = null
     private var caps = false
     private var numericMode = false
+    private val controllerKeys = mutableListOf<KeyButton>()
+    private var selectedIndex = 0
+
+    private data class KeyButton(val view: TextView, val action: () -> Unit)
 
     init {
         orientation = VERTICAL
@@ -31,11 +35,14 @@ class RunestoneKeyboardView(context: Context) : LinearLayout(context) {
             cornerRadius = dp(10).toFloat()
         }
         elevation = dp(10).toFloat()
+        isFocusable = true
+        isFocusableInTouchMode = true
         rebuildKeys()
     }
 
     private fun rebuildKeys() {
         removeAllViews()
+        controllerKeys.clear()
         if (numericMode) {
             addTextRow(listOf("1", "2", "3"))
             addTextRow(listOf("4", "5", "6"))
@@ -91,6 +98,8 @@ class RunestoneKeyboardView(context: Context) : LinearLayout(context) {
                 }, wideParams(1.05f))
             }, rowParams())
         }
+        selectedIndex = selectedIndex.coerceIn(0, (controllerKeys.size - 1).coerceAtLeast(0))
+        updateControllerSelection()
     }
 
     private fun addTextRow(keys: List<String>) {
@@ -108,6 +117,44 @@ class RunestoneKeyboardView(context: Context) : LinearLayout(context) {
             onText?.invoke(if (caps) label else label.lowercase())
         }
 
+    fun handleControllerKey(event: KeyEvent): Boolean {
+        if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount > 0) return true
+        if (controllerKeys.isEmpty()) return true
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT -> moveSelection(-1)
+            KeyEvent.KEYCODE_DPAD_RIGHT -> moveSelection(1)
+            KeyEvent.KEYCODE_DPAD_UP -> moveSelection(-10)
+            KeyEvent.KEYCODE_DPAD_DOWN -> moveSelection(10)
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_BUTTON_A -> controllerKeys[selectedIndex].action()
+            KeyEvent.KEYCODE_BUTTON_B,
+            KeyEvent.KEYCODE_ESCAPE -> onHide?.invoke()
+            KeyEvent.KEYCODE_BUTTON_X -> onKeyCode?.invoke(KeyEvent.KEYCODE_DEL)
+            KeyEvent.KEYCODE_BUTTON_Y -> {
+                numericMode = !numericMode
+                rebuildKeys()
+            }
+            else -> return false
+        }
+        return true
+    }
+
+    private fun moveSelection(delta: Int) {
+        if (controllerKeys.isEmpty()) return
+        selectedIndex = (selectedIndex + delta).coerceIn(0, controllerKeys.lastIndex)
+        updateControllerSelection()
+    }
+
+    private fun updateControllerSelection() {
+        controllerKeys.forEachIndexed { index, button ->
+            button.view.alpha = if (index == selectedIndex) 1f else 0.82f
+            button.view.scaleX = if (index == selectedIndex) 1.06f else 1f
+            button.view.scaleY = if (index == selectedIndex) 1.06f else 1f
+            button.view.isSelected = index == selectedIndex
+        }
+    }
+
     private fun key(label: String, action: () -> Unit): TextView =
         TextView(context).apply {
             text = label
@@ -122,6 +169,7 @@ class RunestoneKeyboardView(context: Context) : LinearLayout(context) {
                 cornerRadius = dp(7).toFloat()
             }
             setOnClickListener { action() }
+            controllerKeys += KeyButton(this, action)
         }
 
     private fun iconKey(iconRes: Int, description: String, active: Boolean = false, action: () -> Unit): TextView =
