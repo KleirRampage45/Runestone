@@ -124,8 +124,8 @@ public class EasyRpgPlayerActivity extends com.hatkid.mkxpz.MainActivity {
         new java.io.File(mConfigPath).mkdirs();
         Log.i(TAG, "Config path: " + mConfigPath);
 
-        // Forward GAME_PATH + LAYOUT_MODE to mkxp-z parent
-        intent.putExtra("com.grimmobile.runner.extra.GAME_PATH", mProjectPath);
+        // Forward GAME_PATH to the shared SDL parent.
+        intent.putExtra("com.runestone.app.extra.GAME_PATH", mProjectPath);
         // NOTE: LAYOUT_MODE, TOUCH_* and HAPTICS_* are passed from GameActivity.kt
 
         super.onCreate(savedInstanceState);
