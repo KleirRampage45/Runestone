@@ -274,9 +274,19 @@ class PatchManager(
         var restoredCount = 0
         var removedCount = 0
         val errors = mutableListOf<String>()
+        val patchesToRevert = patches.reversed()
+
+        patchesToRevert.flatMap { validatePatchCanRevert(gameDir, it) }.let { validationErrors ->
+            if (validationErrors.isNotEmpty()) {
+                return PatchResult(
+                    success = false,
+                    message = "Cannot revert safely: ${validationErrors.take(3).joinToString("; ")}",
+                )
+            }
+        }
 
         // Revert in reverse order (newest first)
-        for (patch in patches.reversed()) {
+        for (patch in patchesToRevert) {
             val patchBackupDir = backupDir(gameDir, patch.patchId)
             val patchManifestFile = manifestFile(gameDir, patch.patchId)
 
@@ -349,7 +359,7 @@ class PatchManager(
         val names = patches.joinToString(", ") { "'${it.name}'" }
         val errorMsg = if (errors.isNotEmpty()) " (with ${errors.size} errors)" else ""
         return PatchResult(
-            success = true,
+            success = errors.isEmpty(),
             message = "Reverted $names: $restoredCount files restored, $removedCount files removed$errorMsg",
         )
     }
@@ -392,6 +402,40 @@ class PatchManager(
         if (dir.isDirectory && dir.listFiles()?.isEmpty() == true) {
             dir.delete()
         }
+    }
+
+    private fun validatePatchCanRevert(gameDir: File, patch: InstalledPatch): List<String> {
+        val originalDir = File(gameDir, "original")
+        val manifestFile = manifestFile(gameDir, patch.patchId)
+        if (!manifestFile.isFile) return emptyList()
+
+        val manifest = runCatching { JSONObject(manifestFile.readText()) }.getOrNull() ?: return emptyList()
+        val patchedHashes = manifest.optJSONObject("patchedHashes") ?: return emptyList()
+        val checkedPaths = mutableSetOf<String>()
+        val errors = mutableListOf<String>()
+
+        fun checkPath(relPath: String) {
+            if (!checkedPaths.add(relPath)) return
+            val expectedHash = patchedHashes.optString(relPath, "")
+            if (expectedHash.isBlank()) return
+            val liveFile = File(originalDir, relPath)
+            if (!liveFile.isFile) {
+                errors.add("$relPath was removed after patch install")
+                return
+            }
+            val liveHash = runCatching { sha256(liveFile) }.getOrNull()
+            if (liveHash != expectedHash) {
+                errors.add("$relPath changed after patch install")
+            }
+        }
+
+        manifest.optJSONArray("overwrittenFiles")?.let { arr ->
+            for (i in 0 until arr.length()) arr.optString(i, "").takeIf { it.isNotBlank() }?.let(::checkPath)
+        }
+        manifest.optJSONArray("addedFiles")?.let { arr ->
+            for (i in 0 until arr.length()) arr.optString(i, "").takeIf { it.isNotBlank() }?.let(::checkPath)
+        }
+        return errors
     }
 
     private data class PreflightResult(

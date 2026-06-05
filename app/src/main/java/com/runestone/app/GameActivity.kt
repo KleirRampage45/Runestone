@@ -23,7 +23,6 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -34,7 +33,9 @@ import com.runestone.app.data.RunnerSettings
 import com.runestone.app.engine.EngineDetector
 import com.runestone.app.engine.UnavailableEngine
 import com.runestone.app.engine.WebViewEngine
+import com.runestone.app.input.RunestoneKeyboardView
 import com.runestone.app.input.TouchOverlayView
+import org.json.JSONObject
 import java.io.File
 
 class GameActivity : Activity() {
@@ -44,6 +45,8 @@ class GameActivity : Activity() {
     private var gamePath: String = ""
     private var settings = RunnerSettings()
     private var overlayView: TouchOverlayView? = null
+    private var rootView: FrameLayout? = null
+    private var keyboardView: RunestoneKeyboardView? = null
 
     companion object {
         private const val TAG = "Runestone"
@@ -198,6 +201,7 @@ class GameActivity : Activity() {
             id = View.generateViewId()
             setBackgroundColor(Color.BLACK)
         }
+        rootView = root
         setContentView(root)
 
         // ── Game area (fills all space for landscape/gamepad, split for portrait console) ──
@@ -443,15 +447,69 @@ class GameActivity : Activity() {
     private var keyboardVisible = false
 
     private fun toggleKeyboard() {
-        val engine = webViewEngine ?: return
-        keyboardVisible = !keyboardVisible
-        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        if (keyboardVisible) {
-            engine.requestFocus()
-            imm.showSoftInput(engine, InputMethodManager.SHOW_IMPLICIT)
-        } else {
-            imm.hideSoftInputFromWindow(engine.windowToken, 0)
+        val root = rootView ?: return
+        val existing = keyboardView
+        if (existing != null) {
+            root.removeView(existing)
+            keyboardView = null
+            keyboardVisible = false
+            return
         }
+
+        keyboardView = RunestoneKeyboardView.attachTo(root).apply {
+            onText = { text -> sendKeyboardText(text) }
+            onKeyCode = { keyCode -> sendKeyboardKey(keyCode) }
+            onHide = { toggleKeyboard() }
+        }
+        keyboardVisible = true
+    }
+
+    private fun sendKeyboardText(text: String) {
+        val engine = webViewEngine ?: return
+        text.forEach { char ->
+            val keyCode = keyCodeForChar(char)
+            val js = """(function(){
+                try {
+                    var key = ${JSONObject.quote(char.toString())};
+                    var code = $keyCode;
+                    window.dispatchEvent(new KeyboardEvent('keydown', {key:key, keyCode:code, which:code, bubbles:true}));
+                    if (window.Input && window.Input._onKeyDown) window.Input._onKeyDown({key:key, keyCode:code, which:code});
+                    window.dispatchEvent(new KeyboardEvent('keypress', {key:key, keyCode:code, which:code, bubbles:true}));
+                    window.dispatchEvent(new InputEvent('input', {data:key, inputType:'insertText', bubbles:true}));
+                    window.dispatchEvent(new KeyboardEvent('keyup', {key:key, keyCode:code, which:code, bubbles:true}));
+                    if (window.Input && window.Input._onKeyUp) window.Input._onKeyUp({key:key, keyCode:code, which:code});
+                } catch(e) {}
+            })();""".trimIndent()
+            if (keyCode != KeyEvent.KEYCODE_UNKNOWN) {
+                engine.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+                engine.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+            }
+            engine.evaluateJavascript(js, null)
+        }
+    }
+
+    private fun sendKeyboardKey(keyCode: Int) {
+        val engine = webViewEngine ?: return
+        engine.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+        engine.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+        val key = when (keyCode) {
+            KeyEvent.KEYCODE_DEL -> "Backspace"
+            KeyEvent.KEYCODE_ENTER -> "Enter"
+            else -> ""
+        }
+        val inputType = if (keyCode == KeyEvent.KEYCODE_DEL) "deleteContentBackward" else "insertLineBreak"
+        val js = """(function(){
+            try {
+                var key = ${JSONObject.quote(key)};
+                var code = $keyCode;
+                window.dispatchEvent(new KeyboardEvent('keydown', {key:key, keyCode:code, which:code, bubbles:true}));
+                if (window.Input && window.Input._onKeyDown) window.Input._onKeyDown({key:key, keyCode:code, which:code});
+                window.dispatchEvent(new InputEvent('input', {data:null, inputType:'$inputType', bubbles:true}));
+                window.dispatchEvent(new KeyboardEvent('keyup', {key:key, keyCode:code, which:code, bubbles:true}));
+                if (window.Input && window.Input._onKeyUp) window.Input._onKeyUp({key:key, keyCode:code, which:code});
+            } catch(e) {}
+        })();""".trimIndent()
+        engine.evaluateJavascript(js, null)
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
@@ -494,6 +552,14 @@ class GameActivity : Activity() {
         "CTRL_LEFT" -> KeyEvent.KEYCODE_CTRL_LEFT
         "SHIFT_LEFT" -> KeyEvent.KEYCODE_SHIFT_LEFT
         "ALT_LEFT" -> KeyEvent.KEYCODE_ALT_LEFT
+        else -> KeyEvent.KEYCODE_UNKNOWN
+    }
+
+    private fun keyCodeForChar(char: Char): Int = when (char) {
+        in 'a'..'z' -> KeyEvent.KEYCODE_A + (char - 'a')
+        in 'A'..'Z' -> KeyEvent.KEYCODE_A + (char - 'A')
+        in '0'..'9' -> KeyEvent.KEYCODE_0 + (char - '0')
+        ' ' -> KeyEvent.KEYCODE_SPACE
         else -> KeyEvent.KEYCODE_UNKNOWN
     }
 
