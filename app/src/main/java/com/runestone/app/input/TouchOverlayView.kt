@@ -255,7 +255,7 @@ class TouchOverlayView(context: Context) : View(context) {
         // ── Bottom Bar ──
         drawBarButton(canvas, selectRect, "SELECT", a, Zone.SELECT)
         drawBarButton(canvas, startRect, "START", a, Zone.START)
-        drawBarButton(canvas, menuRect, "SETTINGS", a, Zone.SETTINGS)
+        drawBarButton(canvas, menuRect, "HOME", a, Zone.HOME)
 
         // ── L1/R1 Shoulder Buttons ──
         drawShoulderButton(canvas, l1Rect, "L1", a, Zone.L1)
@@ -564,7 +564,7 @@ class TouchOverlayView(context: Context) : View(context) {
         // Bottom bar buttons
         if (selectRect.contains(x, y)) return Zone.SELECT
         if (startRect.contains(x, y)) return Zone.START
-        if (menuRect.contains(x, y)) return Zone.SETTINGS
+        if (menuRect.contains(x, y)) return Zone.HOME
 
         // Action buttons
         if (showExtraButtons && dist(x, y, btnY.x, btnY.y) < radiusFor(Control.Y)) return Zone.BTN_Y
@@ -602,7 +602,7 @@ class TouchOverlayView(context: Context) : View(context) {
         // Bottom bar buttons
         if (selectRect.contains(x, y)) return setOf(Zone.SELECT)
         if (startRect.contains(x, y)) return setOf(Zone.START)
-        if (menuRect.contains(x, y)) return setOf(Zone.SETTINGS)
+        if (menuRect.contains(x, y)) return setOf(Zone.HOME)
 
         // Action buttons
         val result = mutableSetOf<Zone>()
@@ -652,7 +652,7 @@ class TouchOverlayView(context: Context) : View(context) {
     private fun iconForZone(zone: Zone): Bitmap? = when (zone) {
         Zone.SELECT -> selectIconBitmap
         Zone.START -> startIconBitmap
-        Zone.MENU, Zone.SETTINGS -> menuIconBitmap
+        Zone.MENU, Zone.SETTINGS, Zone.HOME -> menuIconBitmap
         else -> null
     }
 
