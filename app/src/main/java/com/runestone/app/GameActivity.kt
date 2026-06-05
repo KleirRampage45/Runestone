@@ -122,18 +122,45 @@ class GameActivity : Activity() {
             return
         }
 
+        val typeStr = intent.getStringExtra(EXTRA_ENGINE_TYPE)
+        engineType = if (typeStr != null) {
+            try { EngineType.valueOf(typeStr) } catch (e: Exception) { EngineDetector.detect(gameDir) }
+        } else {
+            EngineDetector.detect(gameDir)
+        }
+
         // Load settings from extras
+        val defaults = RunnerSettings()
         settings = RunnerSettings(
             layoutMode = runCatching {
                 LayoutMode.valueOf(intent.getStringExtra(EXTRA_LAYOUT_MODE) ?: LayoutMode.PORTRAIT_CONSOLE.name)
             }.getOrDefault(LayoutMode.PORTRAIT_CONSOLE),
-            touchOpacity = intent.getFloatExtra(EXTRA_TOUCH_OPACITY, RunnerSettings().touchOpacity),
-            touchScale = intent.getFloatExtra(EXTRA_TOUCH_SCALE, RunnerSettings().touchScale),
-            hapticsEnabled = intent.getBooleanExtra(EXTRA_HAPTICS, RunnerSettings().hapticsEnabled),
-            hapticIntensity = intent.getFloatExtra(EXTRA_HAPTIC_INTENSITY, RunnerSettings().hapticIntensity),
-            showExtraButtons = intent.getBooleanExtra(EXTRA_SHOW_EXTRA_BTNS, RunnerSettings().showExtraButtons),
-            forceAudioExt = intent.getStringExtra(EXTRA_AUDIO_EXT) ?: RunnerSettings().forceAudioExt,
+            touchOpacity = intent.getFloatExtra(EXTRA_TOUCH_OPACITY, defaults.touchOpacity),
+            touchScale = intent.getFloatExtra(EXTRA_TOUCH_SCALE, defaults.touchScale),
+            hapticsEnabled = intent.getBooleanExtra(EXTRA_HAPTICS, defaults.hapticsEnabled),
+            hapticIntensity = intent.getFloatExtra(EXTRA_HAPTIC_INTENSITY, defaults.hapticIntensity),
+            showExtraButtons = intent.getBooleanExtra(EXTRA_SHOW_EXTRA_BTNS, defaults.showExtraButtons),
+            forceAudioExt = intent.getStringExtra(EXTRA_AUDIO_EXT) ?: defaults.forceAudioExt,
+            smoothScaling = intent.getBooleanExtra(EXTRA_SMOOTH_SCALING, defaults.smoothScaling),
+            integerScaling = intent.getBooleanExtra(EXTRA_INTEGER_SCALING, defaults.integerScaling),
+            textScale = intent.getFloatExtra(EXTRA_TEXT_SCALE, defaults.textScale),
+            hideVirtualGamepad = intent.getBooleanExtra(EXTRA_HIDE_GAMEPAD, defaults.hideVirtualGamepad),
+            diagonalMovement = intent.getBooleanExtra(EXTRA_DIAGONAL, defaults.diagonalMovement),
+            keepScreenOn = intent.getBooleanExtra(EXTRA_KEEP_SCREEN_ON, defaults.keepScreenOn),
+            useHttpServer = intent.getBooleanExtra(EXTRA_USE_HTTP_SERVER, defaults.useHttpServer),
+            webgl = intent.getBooleanExtra(EXTRA_WEBGL, defaults.webgl),
+            desktopMode = intent.getBooleanExtra(EXTRA_DESKTOP_MODE, defaults.desktopMode),
+            allowExternalModules = intent.getBooleanExtra(EXTRA_ALLOW_EXTERNAL, defaults.allowExternalModules),
+            dialogLogs = intent.getBooleanExtra(EXTRA_DIALOG_LOGS, defaults.dialogLogs),
+            useRuby18 = intent.getBooleanExtra(EXTRA_USE_RUBY18, defaults.useRuby18),
+            vsync = intent.getBooleanExtra(EXTRA_VSYNC, defaults.vsync),
+            frameSkip = intent.getBooleanExtra(EXTRA_FRAME_SKIP, defaults.frameSkip),
+            shaders = intent.getBooleanExtra(EXTRA_SHADERS, defaults.shaders),
         )
+
+        if (settings.keepScreenOn) {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
 
         // Force orientation based on layout mode
         if (
@@ -148,13 +175,6 @@ class GameActivity : Activity() {
 
         // Debug: show received settings
         android.util.Log.d("Runestone", "GameActivity: layoutMode=${settings.layoutMode}, path=$gamePath")
-
-        val typeStr = intent.getStringExtra(EXTRA_ENGINE_TYPE)
-        engineType = if (typeStr != null) {
-            try { EngineType.valueOf(typeStr) } catch (e: Exception) { EngineDetector.detect(gameDir) }
-        } else {
-            EngineDetector.detect(gameDir)
-        }
 
         if (engineType == EngineType.RENPY) {
             requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE

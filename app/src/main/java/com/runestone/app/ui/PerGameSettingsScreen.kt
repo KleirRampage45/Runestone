@@ -147,6 +147,12 @@ class PerGameSettingsScreen(private val context: Context) {
         // ── Input Section ──
         content.addView(sectionTitle("Input", "Touch controls and haptics"))
 
+        content.addView(layoutModePanel(current.input.layoutMode) { mode ->
+            current = current.copy(input = current.input.copy(layoutMode = mode.name.lowercase()))
+            onConfigChanged(current)
+        })
+        content.addView(spacer(10))
+
         content.addView(switchPanel("Haptic Feedback", "Vibrate when controls are pressed",
             current.input.hapticsEnabled) { checked ->
             current = current.copy(input = current.input.copy(hapticsEnabled = checked))
@@ -776,6 +782,74 @@ class PerGameSettingsScreen(private val context: Context) {
             )
             addView(row)
         }
+
+    private fun layoutModePanel(selectedValue: String, onChange: (LayoutMode) -> Unit): LinearLayout =
+        settingsPanel {
+            addView(TextView(context).apply {
+                text = "Layout Mode"
+                setTextColor(TEXT)
+                textSize = 15f
+                typeface = Typeface.DEFAULT_BOLD
+            })
+            addView(TextView(context).apply {
+                text = "Override the global launch layout for this game"
+                setTextColor(MUTED)
+                textSize = 11f
+                setPadding(0, dp(3), 0, dp(10))
+            })
+
+            var selected = parseLayoutMode(selectedValue)
+            val buttons = mutableListOf<Pair<LayoutMode, TextView>>()
+            fun styleButton(view: TextView, mode: LayoutMode) {
+                val active = mode == selected
+                view.setTextColor(if (active) Theme.active.accentBright else MUTED)
+                view.background = GradientDrawable().apply {
+                    setColor(if (active) Theme.active.accentBg else Color.argb(34, 255, 255, 255))
+                    cornerRadius = dp(8).toFloat()
+                    setStroke(
+                        dp(1),
+                        if (active) Color.argb(
+                            100,
+                            Color.red(Theme.active.accent),
+                            Color.green(Theme.active.accent),
+                            Color.blue(Theme.active.accent),
+                        ) else Color.argb(38, 200, 180, 150),
+                    )
+                }
+            }
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+            }
+            LayoutMode.values().forEachIndexed { index, mode ->
+                row.addView(TextView(context).apply {
+                    text = mode.displayName
+                    gravity = Gravity.CENTER
+                    textSize = 12f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setPadding(dp(8), dp(9), dp(8), dp(9))
+                    styleButton(this, mode)
+                    makeLiquid(this)
+                    buttons += mode to this
+                    setOnClickListener {
+                        selected = mode
+                        buttons.forEach { (buttonMode, button) -> styleButton(button, buttonMode) }
+                        onChange(mode)
+                    }
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    if (index > 0) leftMargin = dp(6)
+                })
+            }
+            addView(row)
+        }
+
+    private fun parseLayoutMode(value: String): LayoutMode {
+        val normalized = value.trim().replace('-', '_')
+        return LayoutMode.values().firstOrNull {
+            it.name.equals(normalized, ignoreCase = true) ||
+                it.displayName.equals(value, ignoreCase = true)
+        } ?: LayoutMode.PORTRAIT_CONSOLE
+    }
 
     private fun metadataEditRow(label: String, value: String, onChange: (String) -> Unit): LinearLayout =
         LinearLayout(context).apply {

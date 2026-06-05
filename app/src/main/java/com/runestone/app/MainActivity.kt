@@ -1282,18 +1282,9 @@ class MainActivity : Activity() {
         pausedGamePath = game.originalPath
         startPlaySession(storageName, game.originalPath)
 
-        val intent = Intent(this, GameActivity::class.java).apply {
-            putExtra("game_path", game.originalPath)
-            putExtra("engine_type", game.engineType.name)
-            putExtra("layout_mode", settings.layoutMode.name)
-            putExtra("touch_opacity", settings.touchOpacity)
-            putExtra("touch_scale", settings.touchScale)
-            putExtra("haptics", settings.hapticsEnabled)
-            putExtra("haptic_intensity", settings.hapticIntensity)
-            putExtra("show_extra_btns", settings.showExtraButtons)
-            putExtra("audio_ext", settings.forceAudioExt)
-        }
-        startActivity(intent)
+        val effectiveSettings = com.runestone.app.data.GameConfigService(this, workspaceManager)
+            .resolveRunnerSettings(storageName)
+        GameActivity.start(this, game.originalPath, game.engineType.name, effectiveSettings)
     }
 
     private fun startFolderImport(requestedName: String? = null) {
