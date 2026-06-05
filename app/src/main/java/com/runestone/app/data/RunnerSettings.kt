@@ -12,6 +12,11 @@ enum class UIMode(val label: String, val description: String) {
     TILES("Tiles", "Smaller cards in rows"),
 }
 
+enum class DisplayCutoutMode(val label: String) {
+    SAFE_AREA("Safe area"),
+    EDGE_TO_EDGE("Edge to edge"),
+}
+
 data class RunnerSettings(
     // Display / Layout
     val layoutMode: LayoutMode = LayoutMode.PORTRAIT_CONSOLE,
@@ -20,6 +25,7 @@ data class RunnerSettings(
     val smoothScaling: Boolean = false,
     val textScale: Float = 1.0f,
     val keepScreenOn: Boolean = false,
+    val displayCutoutMode: DisplayCutoutMode = DisplayCutoutMode.SAFE_AREA,
 
     // Gamepad / Input
     val touchOpacity: Float = 0.72f,

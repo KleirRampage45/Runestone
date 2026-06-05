@@ -25,6 +25,7 @@ import android.widget.Switch
 import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import com.runestone.app.data.DisplayCutoutMode
 import com.runestone.app.data.LayoutMode
 import com.runestone.app.data.RunnerSettings
 import com.runestone.app.data.UIMode
@@ -96,6 +97,15 @@ class SettingsScreen(private val context: Context) {
             panel.addView(spacer(6))
             panel.addView(switchPanel("Keep Screen On", "Prevent device sleep while playing.", current.keepScreenOn) {
                 upd { copy(keepScreenOn = it) }
+            })
+            panel.addView(spacer(6))
+            panel.addView(dropdownRow(
+                "Display Cutout",
+                current.displayCutoutMode.label,
+                DisplayCutoutMode.values().map { it.label },
+            ) { label ->
+                val mode = DisplayCutoutMode.values().firstOrNull { it.label == label } ?: DisplayCutoutMode.SAFE_AREA
+                upd { copy(displayCutoutMode = mode) }
             })
             panel.addView(spacer(6))
             panel.addView(switchPanel("Reduce Motion", "Disable UI animations for accessibility.", current.reduceMotion) {

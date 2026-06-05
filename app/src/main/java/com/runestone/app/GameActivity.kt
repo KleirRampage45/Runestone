@@ -33,7 +33,9 @@ import android.widget.Toast
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.ViewCompat
 import com.runestone.app.data.EngineType
+import com.runestone.app.data.DisplayCutoutMode
 import com.runestone.app.data.LayoutMode
 import com.runestone.app.data.RunnerSettings
 import com.runestone.app.engine.EngineDetector
@@ -56,6 +58,7 @@ class GameActivity : Activity() {
     private var keyboardView: RunestoneKeyboardView? = null
     private var controllerPresetId: String? = null
     private val activeControllerAxisButtons = mutableSetOf<ControllerMapper.GameButton>()
+    private val pressedControllerKeys = mutableSetOf<Int>()
 
     companion object {
         private const val TAG = "Runestone"
@@ -74,6 +77,7 @@ class GameActivity : Activity() {
         private const val EXTRA_HIDE_GAMEPAD = "hide_gamepad"
         private const val EXTRA_DIAGONAL = "diagonal_movement"
         private const val EXTRA_KEEP_SCREEN_ON = "keep_screen_on"
+        private const val EXTRA_DISPLAY_CUTOUT_MODE = "display_cutout_mode"
         private const val EXTRA_USE_HTTP_SERVER = "use_http_server"
         private const val EXTRA_WEBGL = "webgl"
         private const val EXTRA_DESKTOP_MODE = "desktop_mode"
@@ -101,6 +105,7 @@ class GameActivity : Activity() {
                 putExtra(EXTRA_HIDE_GAMEPAD, settings.hideVirtualGamepad)
                 putExtra(EXTRA_DIAGONAL, settings.diagonalMovement)
                 putExtra(EXTRA_KEEP_SCREEN_ON, settings.keepScreenOn)
+                putExtra(EXTRA_DISPLAY_CUTOUT_MODE, settings.displayCutoutMode.name)
                 putExtra(EXTRA_USE_HTTP_SERVER, settings.useHttpServer)
                 putExtra(EXTRA_WEBGL, settings.webgl)
                 putExtra(EXTRA_DESKTOP_MODE, settings.desktopMode)
@@ -157,6 +162,9 @@ class GameActivity : Activity() {
             hideVirtualGamepad = intent.getBooleanExtra(EXTRA_HIDE_GAMEPAD, defaults.hideVirtualGamepad),
             diagonalMovement = intent.getBooleanExtra(EXTRA_DIAGONAL, defaults.diagonalMovement),
             keepScreenOn = intent.getBooleanExtra(EXTRA_KEEP_SCREEN_ON, defaults.keepScreenOn),
+            displayCutoutMode = runCatching {
+                DisplayCutoutMode.valueOf(intent.getStringExtra(EXTRA_DISPLAY_CUTOUT_MODE) ?: defaults.displayCutoutMode.name)
+            }.getOrDefault(defaults.displayCutoutMode),
             useHttpServer = intent.getBooleanExtra(EXTRA_USE_HTTP_SERVER, defaults.useHttpServer),
             webgl = intent.getBooleanExtra(EXTRA_WEBGL, defaults.webgl),
             desktopMode = intent.getBooleanExtra(EXTRA_DESKTOP_MODE, defaults.desktopMode),
@@ -171,6 +179,7 @@ class GameActivity : Activity() {
         if (settings.keepScreenOn) {
             window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
+        applyImmersiveMode()
 
         // Force orientation based on layout mode
         if (
@@ -232,6 +241,7 @@ class GameActivity : Activity() {
             setBackgroundColor(Color.BLACK)
         }
         rootView = root
+        installSafeAreaInsets(root)
         setContentView(root)
 
         // ── Game area (fills all space for landscape/gamepad, split for portrait console) ──
@@ -426,8 +436,23 @@ class GameActivity : Activity() {
         if (overlay != null) {
             overlay.toggleQuickSettings()
         } else {
-            Toast.makeText(this, "Gamepad mode — no touch controls", Toast.LENGTH_SHORT).show()
+            showRuntimeActions()
         }
+    }
+
+    private fun showRuntimeActions() {
+        val actions = arrayOf("Resume", "Keyboard", "Home")
+        AlertDialog.Builder(this)
+            .setTitle("Runtime Actions")
+            .setItems(actions) { dialog, which ->
+                when (which) {
+                    0 -> dialog.dismiss()
+                    1 -> toggleKeyboard()
+                    2 -> goHomePaused()
+                }
+            }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     private fun goHomePaused() {
@@ -443,6 +468,7 @@ class GameActivity : Activity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (webViewEngine != null && event.isControllerEvent()) {
+            if (handleControllerCombo(event)) return true
             val mapped = mapControllerKey(event)
             if (mapped != null) {
                 dispatchMappedGameKey(mapped, event.action)
@@ -480,6 +506,35 @@ class GameActivity : Activity() {
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun handleControllerCombo(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_UP) {
+            pressedControllerKeys.remove(event.keyCode)
+            return false
+        }
+        if (event.action != KeyEvent.ACTION_DOWN) return false
+        pressedControllerKeys.add(event.keyCode)
+        if (event.repeatCount > 0) return false
+
+        return when {
+            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_L2) &&
+                pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_R2) -> {
+                goHomePaused()
+                true
+            }
+            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_START) &&
+                pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_SELECT) -> {
+                toggleKeyboard()
+                true
+            }
+            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_L1) &&
+                pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_R1) -> {
+                openSettings()
+                true
+            }
+            else -> false
+        }
     }
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
@@ -633,9 +688,32 @@ class GameActivity : Activity() {
         controller.hide(WindowInsetsCompat.Type.systemBars())
         if (Build.VERSION.SDK_INT >= 28) {
             window.attributes = window.attributes.apply {
-                layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                layoutInDisplayCutoutMode = if (settings.displayCutoutMode == DisplayCutoutMode.EDGE_TO_EDGE) {
+                    android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                } else {
+                    android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+                }
             }
         }
+    }
+
+    private fun installSafeAreaInsets(root: View) {
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            if (settings.displayCutoutMode == DisplayCutoutMode.SAFE_AREA) {
+                val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+                val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
+                view.setPadding(
+                    maxOf(bars.left, cutout.left),
+                    maxOf(bars.top, cutout.top),
+                    maxOf(bars.right, cutout.right),
+                    maxOf(0, cutout.bottom),
+                )
+            } else {
+                view.setPadding(0, 0, 0, 0)
+            }
+            insets
+        }
+        ViewCompat.requestApplyInsets(root)
     }
 
     private fun zoneToKeyCode(zone: TouchOverlayView.Zone): Int = when (zone) {
@@ -697,6 +775,7 @@ class GameActivity : Activity() {
             putExtra("com.runestone.app.extra.TOUCH_SCALE", settings.touchScale)
             putExtra("com.runestone.app.extra.HAPTICS_ENABLED", settings.hapticsEnabled)
             putExtra("com.runestone.app.extra.HAPTIC_INTENSITY", settings.hapticIntensity)
+            putExtra("com.runestone.app.extra.DISPLAY_CUTOUT_MODE", settings.displayCutoutMode.name)
         }
         startActivity(intent)
         finish()

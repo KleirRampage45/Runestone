@@ -11,6 +11,7 @@
 package com.runestone.app.ui
 
 import android.content.Context
+import com.runestone.app.data.DisplayCutoutMode
 import com.runestone.app.data.LayoutMode
 import com.runestone.app.data.RunnerSettings
 import com.runestone.app.data.UIMode
@@ -31,6 +32,9 @@ class SettingsStore(context: Context) {
             smoothScaling = prefs.getBoolean("smoothScaling", defaults.smoothScaling),
             textScale = prefs.getFloat("textScale", defaults.textScale),
             keepScreenOn = prefs.getBoolean("keepScreenOn", defaults.keepScreenOn),
+            displayCutoutMode = runCatching {
+                DisplayCutoutMode.valueOf(prefs.getString("displayCutoutMode", defaults.displayCutoutMode.name).orEmpty())
+            }.getOrDefault(defaults.displayCutoutMode),
             touchOpacity = prefs.getFloat("touchOpacity", defaults.touchOpacity),
             touchScale = prefs.getFloat("touchScale", defaults.touchScale),
             hapticsEnabled = prefs.getBoolean("hapticsEnabled", defaults.hapticsEnabled),
@@ -111,6 +115,7 @@ class SettingsStore(context: Context) {
             .putBoolean("smoothScaling", settings.smoothScaling)
             .putFloat("textScale", settings.textScale)
             .putBoolean("keepScreenOn", settings.keepScreenOn)
+            .putString("displayCutoutMode", settings.displayCutoutMode.name)
             .putFloat("touchOpacity", settings.touchOpacity)
             .putFloat("touchScale", settings.touchScale)
             .putBoolean("hapticsEnabled", settings.hapticsEnabled)

@@ -38,6 +38,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.runestone.app.data.DisplayCutoutMode
 import com.runestone.app.data.EngineType
 import com.runestone.app.data.RunnerSettings
 import com.runestone.app.data.UIMode
@@ -153,6 +154,7 @@ class MainActivity : Activity() {
     private var isLoadingGames = false
     private var gamesErrorMessage: String? = null
     private var downloadReceiverRegistered = false
+    private val pressedControllerKeys = mutableSetOf<Int>()
 
     private val downloadReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -204,6 +206,7 @@ class MainActivity : Activity() {
         extractionManager = ExtractionManager(this)
         metadataService = GameMetadataService(this)
         settings = settingsStore.load()
+        applyImmersiveMode()
         Theme.active = Theme.byName(settings.colorPalette)
         homeCardLayout = runCatching {
             HomeCardLayout.valueOf(
@@ -226,7 +229,18 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(3, 3, 4))
         }
         ViewCompat.setOnApplyWindowInsetsListener(rootContainer) { v, insets ->
-            v.setPadding(0, 0, 0, 0)
+            if (settings.displayCutoutMode == DisplayCutoutMode.SAFE_AREA) {
+                val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+                val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
+                v.setPadding(
+                    maxOf(bars.left, cutout.left),
+                    maxOf(bars.top, cutout.top),
+                    maxOf(bars.right, cutout.right),
+                    maxOf(0, cutout.bottom),
+                )
+            } else {
+                v.setPadding(0, 0, 0, 0)
+            }
             applyImmersiveMode()
             insets
         }
@@ -783,7 +797,11 @@ class MainActivity : Activity() {
         controller.hide(WindowInsetsCompat.Type.systemBars())
         if (Build.VERSION.SDK_INT >= 28) {
             window.attributes = window.attributes.apply {
-                layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                layoutInDisplayCutoutMode = if (settings.displayCutoutMode == DisplayCutoutMode.EDGE_TO_EDGE) {
+                    android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                } else {
+                    android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+                }
             }
         }
     }
@@ -1127,6 +1145,8 @@ class MainActivity : Activity() {
                 onSettingsChanged = { newSettings ->
                     settings = newSettings
                     settingsStore.save(newSettings)
+                    applyImmersiveMode()
+                    ViewCompat.requestApplyInsets(rootContainer)
                 },
                 onBack = { dismissOverlay() },
                 onResetDefaults = {
@@ -1835,6 +1855,7 @@ class MainActivity : Activity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.isControllerShortcut() && handleControllerCombo(event)) return true
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && event.isControllerShortcut()) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_BUTTON_A -> if (performFocusedClick()) return true
@@ -1902,11 +1923,35 @@ class MainActivity : Activity() {
             KeyEvent.KEYCODE_BUTTON_X,
             KeyEvent.KEYCODE_BUTTON_Y,
             KeyEvent.KEYCODE_BUTTON_L1,
+            KeyEvent.KEYCODE_BUTTON_L2,
             KeyEvent.KEYCODE_BUTTON_R1,
+            KeyEvent.KEYCODE_BUTTON_R2,
             KeyEvent.KEYCODE_BUTTON_START,
             KeyEvent.KEYCODE_BUTTON_SELECT,
             KeyEvent.KEYCODE_BUTTON_MODE,
         )
+
+    private fun handleControllerCombo(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_UP) {
+            pressedControllerKeys.remove(event.keyCode)
+            return false
+        }
+        if (event.action != KeyEvent.ACTION_DOWN) return false
+        pressedControllerKeys.add(event.keyCode)
+        if (event.repeatCount > 0) return false
+
+        if (
+            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_L2) &&
+            pressedControllerKeys.contains(KeyEvent.KEYCODE_BUTTON_R2)
+        ) {
+            val paused = games.firstOrNull { it.originalPath == pausedGamePath }
+            if (paused != null) {
+                playGame(paused.storageName)
+                return true
+            }
+        }
+        return false
+    }
 
     private fun handleAdbCommand(intent: Intent?) {
         val command = intent?.getStringExtra(EXTRA_ADB_COMMAND)
