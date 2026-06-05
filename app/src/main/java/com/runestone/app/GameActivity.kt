@@ -17,6 +17,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
@@ -29,6 +30,9 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.runestone.app.data.EngineType
 import com.runestone.app.data.LayoutMode
 import com.runestone.app.data.RunnerSettings
@@ -113,6 +117,7 @@ class GameActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        applyImmersiveMode()
 
         gamePath = intent.getStringExtra(EXTRA_GAME_PATH) ?: run {
             Toast.makeText(this, "No game path provided", Toast.LENGTH_SHORT).show()
@@ -621,6 +626,18 @@ class GameActivity : Activity() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
+    private fun applyImmersiveMode() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+        if (Build.VERSION.SDK_INT >= 28) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+    }
+
     private fun zoneToKeyCode(zone: TouchOverlayView.Zone): Int = when (zone) {
         TouchOverlayView.Zone.DPAD_UP -> KeyEvent.KEYCODE_DPAD_UP
         TouchOverlayView.Zone.DPAD_DOWN -> KeyEvent.KEYCODE_DPAD_DOWN
@@ -813,6 +830,7 @@ class GameActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        applyImmersiveMode()
         // Check if we should self-destruct from STOP dialog
         val killPath = getSharedPreferences("runestone", MODE_PRIVATE)
             .getString("kill_game", null)
@@ -830,6 +848,11 @@ class GameActivity : Activity() {
     private fun releaseControllerAxes() {
         activeControllerAxisButtons.forEach { dispatchMappedGameButton(it, KeyEvent.ACTION_UP) }
         activeControllerAxisButtons.clear()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) applyImmersiveMode()
     }
 
     override fun onDestroy() {

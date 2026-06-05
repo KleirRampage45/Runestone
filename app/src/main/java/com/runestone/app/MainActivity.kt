@@ -23,6 +23,8 @@ import android.graphics.Typeface
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
+import android.view.InputDevice
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -33,7 +35,9 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.runestone.app.data.EngineType
 import com.runestone.app.data.RunnerSettings
 import com.runestone.app.data.UIMode
@@ -127,6 +131,12 @@ class MainActivity : Activity() {
         private const val TAG = "Runestone"
         private const val NOTIFICATION_CHANNEL = "runestone_downloads"
         private const val NOTIFICATION_ID_DOWNLOAD = 2001
+        private const val EXTRA_ADB_COMMAND = "runestone_adb_command"
+        private const val ADB_OPEN_FIRST_GAME = "first_game"
+        private const val ADB_OPEN_HOME = "home"
+        private const val ADB_OPEN_MANAGE = "manage"
+        private const val ADB_OPEN_SETTINGS = "settings"
+        private const val ADB_OPEN_STORE = "store"
     }
 
     private var pausedGamePath: String? = null
@@ -171,6 +181,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "onCreate")
+        applyImmersiveMode()
         // Check for paused game from SharedPreferences — load for display,
         // then clear immediately since the game activity is dead after fresh onCreate
         pausedGamePath = getSharedPreferences("runestone", MODE_PRIVATE)
@@ -215,8 +226,8 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(3, 3, 4))
         }
         ViewCompat.setOnApplyWindowInsetsListener(rootContainer) { v, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+            v.setPadding(0, 0, 0, 0)
+            applyImmersiveMode()
             insets
         }
         setContentView(rootContainer)
@@ -232,6 +243,7 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT, dp(58), Gravity.BOTTOM).apply {
             setMargins(dp(10), 0, dp(10), dp(8))
         })
+        handleAdbCommand(intent)
     }
 
     private fun registerDownloadReceiver() {
@@ -741,6 +753,7 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT)
         persistentDock.bringToFront()
         activeOverlay = wrapper
+        rootContainer.post { enableControllerNavigation(wrapper) }
     }
 
     /**
@@ -762,6 +775,99 @@ class MainActivity : Activity() {
 
     /** Density-independent pixels helper. */
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
+    private fun applyImmersiveMode() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+        if (Build.VERSION.SDK_INT >= 28) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+    }
+
+    private fun enableControllerNavigation(root: View) {
+        val clickables = mutableListOf<View>()
+        fun visit(view: View) {
+            if (view.isClickable && view.visibility == View.VISIBLE) {
+                view.isFocusable = true
+                view.isFocusableInTouchMode = true
+                clickables += view
+            }
+            if (view is ViewGroup) {
+                for (i in 0 until view.childCount) visit(view.getChildAt(i))
+            }
+        }
+        visit(root)
+        if (currentFocus == null || currentFocus == rootContainer) {
+            clickables.firstOrNull()?.requestFocus()
+        }
+    }
+
+    private fun performFocusedClick(): Boolean {
+        val target = currentFocus?.takeIf { it.isClickable && it.visibility == View.VISIBLE }
+            ?: firstClickable(rootContainer)
+        return if (target != null) {
+            target.performClick()
+            true
+        } else false
+    }
+
+    private fun firstClickable(view: View): View? {
+        if (view.isClickable && view.visibility == View.VISIBLE) return view
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                firstClickable(view.getChildAt(i))?.let { return it }
+            }
+        }
+        return null
+    }
+
+    private fun cycleSortMode() {
+        currentSort = when (currentSort) {
+            SortMode.DATE_ADDED -> SortMode.NAME_ASC
+            SortMode.NAME_ASC -> SortMode.NAME_DESC
+            SortMode.NAME_DESC -> SortMode.RECENT
+            SortMode.RECENT -> SortMode.DATE_ADDED
+        }
+        Toast.makeText(this, "Sort: ${sortLabel(currentSort)}", Toast.LENGTH_SHORT).show()
+        showHome()
+    }
+
+    private fun cycleEngineFilter() {
+        val installedEngines = games.map { it.engineType }
+            .filter { it != EngineType.UNKNOWN }
+            .distinct()
+            .sortedBy { it.label }
+        activeEngineFilter = if (installedEngines.isEmpty()) {
+            null
+        } else {
+            val currentIndex = installedEngines.indexOf(activeEngineFilter)
+            if (currentIndex < 0) installedEngines.first()
+            else installedEngines.getOrNull(currentIndex + 1)
+        }
+        Toast.makeText(this, "Filter: ${activeEngineFilter?.label ?: "All games"}", Toast.LENGTH_SHORT).show()
+        showHome()
+    }
+
+    private fun cycleCardLayout() {
+        homeCardLayout = homeCardLayout.next()
+        getSharedPreferences("runestone-settings-v1", MODE_PRIVATE)
+            .edit()
+            .putString("homeCardLayout", homeCardLayout.name)
+            .apply()
+        Toast.makeText(this, "Layout: ${homeCardLayout.name.lowercase().replace('_', ' ')}", Toast.LENGTH_SHORT).show()
+        showHome()
+    }
+
+    private fun sortLabel(sort: SortMode): String = when (sort) {
+        SortMode.NAME_ASC -> "Name A-Z"
+        SortMode.NAME_DESC -> "Name Z-A"
+        SortMode.RECENT -> "Recently played"
+        SortMode.DATE_ADDED -> "Date added"
+    }
 
     private fun showSplash() {
         val splash = FrameLayout(this).apply {
@@ -948,6 +1054,7 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT))
         homeContentView = homeView
+        rootContainer.post { enableControllerNavigation(rootContainer) }
     }
 
     private fun showManageFiles(storageName: String? = null) {
@@ -1727,8 +1834,102 @@ class MainActivity : Activity() {
         showGameFolderBrowser()
     }
 
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && event.isControllerShortcut()) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_BUTTON_A -> if (performFocusedClick()) return true
+                KeyEvent.KEYCODE_BUTTON_B -> {
+                    onBackPressed()
+                    return true
+                }
+                KeyEvent.KEYCODE_BUTTON_START -> {
+                    startFolderImport()
+                    return true
+                }
+                KeyEvent.KEYCODE_BUTTON_SELECT -> {
+                    showManageFiles()
+                    return true
+                }
+                KeyEvent.KEYCODE_BUTTON_X -> {
+                    showAvailableGames()
+                    return true
+                }
+                KeyEvent.KEYCODE_BUTTON_Y -> {
+                    cycleEngineFilter()
+                    return true
+                }
+                KeyEvent.KEYCODE_BUTTON_L1 -> {
+                    cycleCardLayout()
+                    return true
+                }
+                KeyEvent.KEYCODE_BUTTON_R1 -> {
+                    cycleSortMode()
+                    return true
+                }
+                KeyEvent.KEYCODE_BUTTON_MODE -> {
+                    showSettings()
+                    return true
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleAdbCommand(intent)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            applyImmersiveMode()
+            rootContainer.post { enableControllerNavigation(rootContainer) }
+        }
+    }
+
+    private fun KeyEvent.isControllerShortcut(): Boolean {
+        if (keyCode in controllerShortcutKeys) return true
+        val controllerSources = InputDevice.SOURCE_GAMEPAD or InputDevice.SOURCE_JOYSTICK or InputDevice.SOURCE_DPAD
+        return source and controllerSources != 0
+    }
+
+    private val controllerShortcutKeys: Set<Int>
+        get() = setOf(
+            KeyEvent.KEYCODE_BUTTON_A,
+            KeyEvent.KEYCODE_BUTTON_B,
+            KeyEvent.KEYCODE_BUTTON_X,
+            KeyEvent.KEYCODE_BUTTON_Y,
+            KeyEvent.KEYCODE_BUTTON_L1,
+            KeyEvent.KEYCODE_BUTTON_R1,
+            KeyEvent.KEYCODE_BUTTON_START,
+            KeyEvent.KEYCODE_BUTTON_SELECT,
+            KeyEvent.KEYCODE_BUTTON_MODE,
+        )
+
+    private fun handleAdbCommand(intent: Intent?) {
+        val command = intent?.getStringExtra(EXTRA_ADB_COMMAND)
+            ?: intent?.getStringExtra("runestone_open")
+            ?: return
+        rootContainer.postDelayed({
+            when (command) {
+                ADB_OPEN_FIRST_GAME -> {
+                    refreshGames()
+                    games.firstOrNull()?.let { playGame(it.storageName) }
+                        ?: Toast.makeText(this, "No installed games to launch", Toast.LENGTH_SHORT).show()
+                }
+                ADB_OPEN_HOME -> showHome()
+                ADB_OPEN_MANAGE -> showManageFiles()
+                ADB_OPEN_SETTINGS -> showSettings()
+                ADB_OPEN_STORE -> showAvailableGames()
+            }
+        }, 650)
+    }
+
     override fun onResume() {
         super.onResume()
+        applyImmersiveMode()
         Log.i(TAG, "onResume importActive=${activeImportProgressView != null} initial=$initialLaunch overlay=${activeOverlay != null}")
         if (activeImportProgressView != null) return
         if (initialLaunch) {
