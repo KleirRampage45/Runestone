@@ -4,12 +4,16 @@
  *
  * Patch/translation/mod manager for Runestone games.
  *
- * Installs patches directly into the original/ game directory.
+ * Installs patches directly into the installed game directory.
+ *
+ * The directory is still named original/ for old installs, but it is the
+ * playable game folder. Patch reversibility comes from sparse backups of only
+ * overwritten files plus path tracking for added files.
  * Only overwritten files get backed up; only added files get path-tracked.
- * Zero duplication for clean games; space-efficient for patched ones.
+ * Zero full-game duplication for clean games; space-efficient for patched ones.
  *
  * Directory layout (per game):
- *   original/             <- game files (engine reads from here)
+ *   original/             <- installed playable game files
  *   patches/
  *     backups/{patchId}/  <- original files before they got overwritten
  *     manifests/{patchId}.json  -> {"addedFiles": [...]}
@@ -48,14 +52,14 @@ class PatchManager(
     // ── Public API ──────────────────────────────────────────────────
 
     /**
-     * Install a ZIP patch onto the game's original/ directory.
+     * Install a ZIP patch onto the game's installed directory.
      *
      * Steps:
      *  1. Validate ZIP
      *  2. Extract to temp, walking each entry
-     *  3. For each file: check if it exists in original/
+     *  3. For each file: check if it exists in the installed game directory
      *     - YES (overwrite): backup original to patches/backups/, then copy new version
-     *     - NO  (new file):  copy to original/, track path in manifest
+     *     - NO  (new file):  copy to the game directory, track path in manifest
      *  4. Store source ZIP in patches/zips/
      *  5. Write manifest JSON
      *  6. Save InstalledPatch entry to PerGameConfig
@@ -121,7 +125,7 @@ class PatchManager(
                             added.add(relPath)
                         }
 
-                        // Write the patched file into original/
+                        // Write the patched file into the installed game folder.
                         FileOutputStream(targetFile).use { out ->
                             zis.copyTo(out)
                         }

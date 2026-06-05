@@ -2,7 +2,7 @@
  * Runestone - Multi-engine RPG Maker game launcher for Android
  * Copyright (C) 2026 Gerson (KleirRampage45)
  *
- * Per-game configuration stored as runestone.json in each game's workspace.
+ * Per-game configuration stored as runestone.json beside the installed game files.
  * Uses Android's built-in org.json — no extra dependencies.
  */
 

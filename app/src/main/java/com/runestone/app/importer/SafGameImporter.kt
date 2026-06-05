@@ -73,12 +73,12 @@ class SafGameImporter(
                 return SafImportResult.Failure("Could not detect a supported game engine in this folder")
             }
 
-            onProgress("Freezing clean original...")
+            onProgress("Installing game files...")
             original.deleteRecursively()
             require(incoming.renameTo(original)) { "Could not move imported files into workspace" }
 
-            onProgress("Building workspace...")
-            workspaceManager.rebuildActiveWorkspace(gameDir.name)
+            onProgress("Preparing save storage...")
+            workspaceManager.ensureWorkspace(gameDir.name)
 
             onProgress("Generating manifest...")
             File(gameDir, "manifest.json").writeText(JSONObject().apply {

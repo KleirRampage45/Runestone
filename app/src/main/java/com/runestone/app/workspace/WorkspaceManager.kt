@@ -19,12 +19,17 @@ import java.io.File
 /**
  * Manages installed games on the device.
  *
+ * The on-disk folder is still named "original" for compatibility with older
+ * installs, but it is the playable installed game directory. Runestone runs
+ * games from that directory and uses sparse patch backups for touched files
+ * instead of duplicating the full game into an active workspace.
+ *
  * Structure:
  * ```
  * {filesDir}/games/
  *   {gameName}/
- *     original/       -> clean imported game files (never modified)
- *     active/         -> playable copy (modified by mods/patches)
+ *     original/       -> installed playable game files
+ *     active/         -> legacy duplicate workspace, not used for launch
  *     saves/          -> protected save files
  *     incoming/       -> temp dir during import
  *     manifest.json   -> engine type, metadata
@@ -38,6 +43,7 @@ class WorkspaceManager(private val context: Context) {
         val displayName: String,
         val engineType: EngineType,
         val originalPath: String,
+        @Deprecated("Runestone launches from originalPath; activePath is kept for legacy callers.")
         val activePath: String,
         val fileCount: Int,
     )
@@ -150,7 +156,6 @@ class WorkspaceManager(private val context: Context) {
                 "Could not finalize repaired install for ${gameDir.name}"
             }
             ensureWorkspace(gameDir.name)
-            rebuildActiveWorkspace(gameDir.name)
 
             val fileCount = originalDir.walkTopDown().count { it.isFile }
             File(gameDir, "manifest.json").writeText(JSONObject().apply {
@@ -198,17 +203,11 @@ class WorkspaceManager(private val context: Context) {
         return dir
     }
 
-    fun rebuildActiveWorkspace(storageName: String) {
-        val gameDir = gameDir(storageName)
-        val original = File(gameDir, "original")
-        val active = File(gameDir, "active")
-
-        if (!original.isDirectory) return
-
-        active.deleteRecursively()
-        active.mkdirs()
-        original.copyRecursively(active, overwrite = true)
-    }
+    @Deprecated(
+        "Full active workspace duplication is no longer part of the install model. " +
+            "Games run from originalDir(), with patches protected by sparse backups.",
+    )
+    fun rebuildActiveWorkspace(storageName: String) = Unit
 
     fun clearActiveWorkspace(storageName: String) {
         val active = activeDir(storageName)

@@ -25,13 +25,13 @@ class GameConfigService(
         return merge(defaults, global, perGame)
     }
 
-    /** Load config from original/runestone.json in the game's workspace. */
+    /** Load config from runestone.json beside the installed game files. */
     fun loadPerGame(storageName: String): PerGameConfig {
         val configFile = java.io.File(workspaceManager.originalDir(storageName), "runestone.json")
         return PerGameConfig.load(configFile)
     }
 
-    /** Save config to original/runestone.json. */
+    /** Save config to runestone.json beside the installed game files. */
     fun savePerGame(storageName: String, config: PerGameConfig) {
         val configFile = java.io.File(workspaceManager.originalDir(storageName), "runestone.json")
         PerGameConfig.save(configFile, config)

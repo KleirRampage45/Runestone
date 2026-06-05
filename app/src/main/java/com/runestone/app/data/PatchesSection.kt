@@ -3,9 +3,11 @@
  * Copyright (C) 2026 Gerson (KleirRampage45)
  *
  * Per-game patch/mod/translation tracking.
- * Patches install on top of original/ directory — only overwritten files
- * get backed up, only added files get tracked by path.
- * Zero duplication for clean games; space-efficient for patched ones.
+ * Patches install on top of the installed playable game directory. The
+ * directory is still named original/ for compatibility, but it is not an
+ * immutable clean copy. Only overwritten files get backed up, and only added
+ * files get tracked by path.
+ * Zero full-game duplication for clean games; space-efficient for patched ones.
  */
 
 package com.runestone.app.data
