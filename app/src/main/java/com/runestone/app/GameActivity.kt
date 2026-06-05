@@ -20,7 +20,9 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
+import android.view.InputDevice
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -33,6 +35,7 @@ import com.runestone.app.data.RunnerSettings
 import com.runestone.app.engine.EngineDetector
 import com.runestone.app.engine.UnavailableEngine
 import com.runestone.app.engine.WebViewEngine
+import com.runestone.app.input.ControllerMapper
 import com.runestone.app.input.RunestoneKeyboardView
 import com.runestone.app.input.TouchOverlayView
 import org.json.JSONObject
@@ -47,6 +50,8 @@ class GameActivity : Activity() {
     private var overlayView: TouchOverlayView? = null
     private var rootView: FrameLayout? = null
     private var keyboardView: RunestoneKeyboardView? = null
+    private var controllerPresetId: String? = null
+    private val activeControllerAxisButtons = mutableSetOf<ControllerMapper.GameButton>()
 
     companion object {
         private const val TAG = "Runestone"
@@ -432,6 +437,14 @@ class GameActivity : Activity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (webViewEngine != null && event.isControllerEvent()) {
+            val mapped = mapControllerKey(event)
+            if (mapped != null) {
+                dispatchMappedGameKey(mapped, event.action)
+                return true
+            }
+        }
+
         // Forward keyboard events to the game's JS input system
         if (event.action == KeyEvent.ACTION_DOWN || event.action == KeyEvent.ACTION_UP) {
             val engine = webViewEngine
@@ -462,6 +475,80 @@ class GameActivity : Activity() {
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        if (webViewEngine != null && event.isControllerEvent()) {
+            val preset = controllerPresetFor(event.device)
+            val activeButtons = ControllerMapper.mapAxisToButtons(event, preset).toSet()
+            val released = activeControllerAxisButtons - activeButtons
+            val pressed = activeButtons - activeControllerAxisButtons
+
+            released.forEach { dispatchMappedGameButton(it, KeyEvent.ACTION_UP) }
+            pressed.forEach { dispatchMappedGameButton(it, KeyEvent.ACTION_DOWN) }
+
+            activeControllerAxisButtons.clear()
+            activeControllerAxisButtons.addAll(activeButtons)
+            if (pressed.isNotEmpty() || released.isNotEmpty()) return true
+        }
+        return super.dispatchGenericMotionEvent(event)
+    }
+
+    private fun mapControllerKey(event: KeyEvent): Int? {
+        if (event.action != KeyEvent.ACTION_DOWN && event.action != KeyEvent.ACTION_UP) return null
+        if (event.repeatCount > 0 && event.action == KeyEvent.ACTION_DOWN) return null
+
+        val directDpad = when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_DPAD_DOWN,
+            KeyEvent.KEYCODE_DPAD_LEFT,
+            KeyEvent.KEYCODE_DPAD_RIGHT -> event.keyCode
+            else -> null
+        }
+        if (directDpad != null) return directDpad
+
+        val preset = controllerPresetFor(event.device)
+        val button = ControllerMapper.mapKeyToButton(event, preset) ?: return null
+        return ControllerMapper.toKeyCode(button)
+    }
+
+    private fun dispatchMappedGameButton(button: ControllerMapper.GameButton, action: Int) {
+        dispatchMappedGameKey(ControllerMapper.toKeyCode(button), action)
+    }
+
+    private fun dispatchMappedGameKey(keyCode: Int, action: Int) {
+        if (keyCode == KeyEvent.KEYCODE_UNKNOWN) return
+        val engine = webViewEngine ?: return
+        val keyEvent = KeyEvent(action, keyCode)
+        engine.dispatchKeyEvent(keyEvent)
+        val jsAction = if (action == KeyEvent.ACTION_DOWN) "_onKeyDown" else "_onKeyUp"
+        val js = """(function(){
+            try {
+                var ev = {which:$keyCode, keyCode:$keyCode};
+                if (window.Input && window.Input.$jsAction) window.Input.$jsAction(ev);
+                if (window.TouchInput && window.TouchInput.$jsAction) window.TouchInput.$jsAction(ev);
+                window.dispatchEvent(new KeyboardEvent('${if (action == KeyEvent.ACTION_DOWN) "keydown" else "keyup"}', {
+                    keyCode:$keyCode,
+                    which:$keyCode,
+                    bubbles:true
+                }));
+            } catch(e) {}
+        })();""".trimIndent()
+        engine.evaluateJavascript(js, null)
+    }
+
+    private fun controllerPresetFor(device: android.view.InputDevice?): ControllerMapper.ControllerPreset {
+        if (device == null) return ControllerMapper.getPreset("generic")
+        val current = controllerPresetId
+        if (current != null) return ControllerMapper.getPreset(current)
+        val detected = ControllerMapper.detectPreset(device)
+        controllerPresetId = detected
+        return ControllerMapper.getPreset(detected)
+    }
+
+    private fun android.view.InputEvent.isControllerEvent(): Boolean {
+        val controllerSources = InputDevice.SOURCE_GAMEPAD or InputDevice.SOURCE_JOYSTICK or InputDevice.SOURCE_DPAD
+        return source and controllerSources != 0
     }
 
     private var keyboardVisible = false
@@ -720,6 +807,7 @@ class GameActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
+        releaseControllerAxes()
         webViewEngine?.onPause()
     }
 
@@ -737,6 +825,11 @@ class GameActivity : Activity() {
         }
         webViewEngine?.resumeTimers()
         webViewEngine?.onResume()
+    }
+
+    private fun releaseControllerAxes() {
+        activeControllerAxisButtons.forEach { dispatchMappedGameButton(it, KeyEvent.ACTION_UP) }
+        activeControllerAxisButtons.clear()
     }
 
     override fun onDestroy() {
