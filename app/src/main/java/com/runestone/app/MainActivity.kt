@@ -814,7 +814,7 @@ class MainActivity : Activity() {
         fun visit(view: View) {
             if (view.isClickable && view.visibility == View.VISIBLE) {
                 view.isFocusable = true
-                view.isFocusableInTouchMode = true
+                view.isFocusableInTouchMode = false
                 clickables += view
             }
             if (view is ViewGroup) {

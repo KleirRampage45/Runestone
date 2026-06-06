@@ -1001,7 +1001,7 @@ class HomeScreen(private val context: Context) {
         val cardWrapper = FrameLayout(context).apply {
             layoutParams = LinearLayout.LayoutParams(cardW, cardH)
             isFocusable = true
-            isFocusableInTouchMode = true
+            isFocusableInTouchMode = false
         }
         cardContainer.addView(cardWrapper)
 
