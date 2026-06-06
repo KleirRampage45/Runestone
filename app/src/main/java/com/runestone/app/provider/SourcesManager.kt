@@ -24,6 +24,8 @@ class SourcesManager(private val context: Context) {
     private val prefs = context.getSharedPreferences("runestone_providers", Context.MODE_PRIVATE)
 
     companion object {
+        const val DEFAULT_PUBLIC_CATALOGUE_URL = "https://kleirrampage45.github.io/runestone-catalogue/games.json"
+
         private const val TAG = "SourcesManager"
         private const val KEY_SOURCES = "sources_json"
         private const val BUNDLED_CATALOGUE = "runestone-catalogue.json"
@@ -59,6 +61,8 @@ class SourcesManager(private val context: Context) {
         saveSources(sources)
         return source
     }
+
+    fun addPublicCatalogue(): ProviderSource = addSource(DEFAULT_PUBLIC_CATALOGUE_URL)
 
     fun removeSource(id: String) {
         saveSources(getSources().filter { it.id != id })

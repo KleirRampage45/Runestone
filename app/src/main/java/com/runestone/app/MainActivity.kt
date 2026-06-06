@@ -1463,7 +1463,20 @@ class MainActivity : Activity() {
         manageFilesVisible = false
         showOverlay(
             ProviderSettingsScreen(this).create(
+                sources = sourcesManager.getSources(),
                 onBack = { dismissOverlay() },
+                onUsePublicCatalogue = {
+                    runCatching { sourcesManager.addPublicCatalogue() }
+                        .onFailure {
+                            Toast.makeText(
+                                this,
+                                it.message ?: "Invalid catalogue URL",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    showProviderSettings()
+                },
+                onManageSources = { showSources() },
                 onClearAll = {
                     sourcesManager.clearSources()
                     showProviderSettings()

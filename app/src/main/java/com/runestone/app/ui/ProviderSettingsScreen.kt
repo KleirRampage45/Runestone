@@ -22,10 +22,16 @@ import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import com.runestone.app.provider.ProviderSource
+import com.runestone.app.provider.SourcesManager
+
 class ProviderSettingsScreen(private val context: Context) {
 
     fun create(
+        sources: List<ProviderSource>,
         onBack: () -> Unit,
+        onUsePublicCatalogue: () -> Unit,
+        onManageSources: () -> Unit,
         onClearAll: () -> Unit,
     ): LinearLayout {
         val root = LinearLayout(context).apply {
@@ -56,8 +62,16 @@ class ProviderSettingsScreen(private val context: Context) {
         content.alpha = 0f
         content.animate().alpha(1f).setDuration(300).setInterpolator(OvershootInterpolator(1.1f)).start()
 
+        content.addView(sectionTitle("Game Catalogue", "Browse downloadable games from trusted JSON sources."))
+        content.addView(publicCataloguePanel(sources, onUsePublicCatalogue, onManageSources))
+        content.addView(spacer(dp(16)))
+
+        content.addView(sectionTitle("Current Sources", "Active catalogue URLs used by the Store."))
+        content.addView(currentSourcesPanel(sources, onManageSources))
+        content.addView(spacer(dp(16)))
+
         // How to get a catalogue
-        content.addView(sectionTitle("Source Format", "Sources are added from the Game Sources screen."))
+        content.addView(sectionTitle("Source Format", "Paste a raw JSON URL or REST API endpoint."))
         content.addView(helpPanel())
         content.addView(spacer(dp(16)))
 
@@ -67,6 +81,105 @@ class ProviderSettingsScreen(private val context: Context) {
 
         return root
     }
+
+    private fun publicCataloguePanel(
+        sources: List<ProviderSource>,
+        onUsePublicCatalogue: () -> Unit,
+        onManageSources: () -> Unit,
+    ): LinearLayout {
+        val hasPublicCatalogue = sources.any { it.url == SourcesManager.DEFAULT_PUBLIC_CATALOGUE_URL }
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = glassBg(dp(14), accent = true)
+
+            addView(TextView(context).apply {
+                text = "Runestone Public Catalogue"
+                setTextColor(TEXT); textSize = 15f
+                typeface = Typeface.DEFAULT_BOLD
+            })
+            addView(TextView(context).apply {
+                text = if (hasPublicCatalogue) {
+                    "The public catalogue is already enabled."
+                } else {
+                    "Add the maintained public JSON catalogue as a source."
+                }
+                setTextColor(MUTED); textSize = 11f
+                setPadding(0, dp(5), 0, dp(10))
+            })
+
+            addView(actionButton(
+                text = if (hasPublicCatalogue) "PUBLIC CATALOGUE ENABLED" else "USE PUBLIC CATALOGUE",
+                accent = true,
+                enabled = !hasPublicCatalogue,
+                onClick = onUsePublicCatalogue,
+            ))
+            addView(spacer(dp(8)))
+            addView(actionButton("MANAGE SOURCES", accent = false, enabled = true, onClick = onManageSources))
+        }
+    }
+
+    private fun currentSourcesPanel(
+        sources: List<ProviderSource>,
+        onManageSources: () -> Unit,
+    ): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = glassBg(dp(14))
+
+            if (sources.isEmpty()) {
+                addView(TextView(context).apply {
+                    text = "No user-added sources."
+                    setTextColor(MUTED); textSize = 12f
+                })
+                addView(TextView(context).apply {
+                    text = "The bundled local catalogue still appears in Store when available."
+                    setTextColor(MUTED_DIM); textSize = 11f
+                    setPadding(0, dp(4), 0, dp(10))
+                })
+            } else {
+                sources.forEachIndexed { index, source ->
+                    addView(TextView(context).apply {
+                        text = source.name
+                        setTextColor(TEXT); textSize = 13f
+                        typeface = Typeface.DEFAULT_BOLD
+                        maxLines = 1
+                    })
+                    addView(TextView(context).apply {
+                        text = source.url
+                        setTextColor(MUTED_DIM); textSize = 10f
+                        maxLines = 2
+                        setPadding(0, dp(3), 0, if (index == sources.lastIndex) dp(10) else dp(12))
+                    })
+                }
+            }
+
+            addView(actionButton("EDIT SOURCE URLS", accent = false, enabled = true, onClick = onManageSources))
+        }
+
+    private fun actionButton(
+        text: String,
+        accent: Boolean,
+        enabled: Boolean,
+        onClick: () -> Unit,
+    ): TextView =
+        TextView(context).apply {
+            this.text = text
+            setTextColor(if (enabled) if (accent) Color.rgb(220, 200, 160) else ACCENT else MUTED_DIM)
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            isEnabled = enabled
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            background = glassBg(dp(8), alpha = if (enabled) 120 else 55, accent = accent)
+            setOnClickListener {
+                if (!enabled) return@setOnClickListener
+                animTap(this)
+                onClick()
+            }
+            makeLiquid(this)
+        }
 
     private fun makeTopBar(onBack: () -> Unit): LinearLayout =
         LinearLayout(context).apply {

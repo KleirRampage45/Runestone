@@ -333,7 +333,7 @@ class SourcesScreen(private val context: Context) {
     private fun dp(v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
 
     private companion object {
-        const val DEFAULT_CATALOGUE_URL = "https://kleirrampage45.github.io/runestone-catalogue/games.json"
+        const val DEFAULT_CATALOGUE_URL = SourcesManager.DEFAULT_PUBLIC_CATALOGUE_URL
         val TEXT = Color.rgb(232, 229, 220)
         val MUTED = Color.rgb(140, 130, 112)
         val MUTED_DIM = Color.rgb(120, 112, 104)
