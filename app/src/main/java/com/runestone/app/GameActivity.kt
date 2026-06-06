@@ -19,6 +19,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
 import android.view.InputDevice
@@ -62,6 +63,9 @@ class GameActivity : Activity() {
     private val pressedControllerKeys = mutableSetOf<Int>()
     private var triggerHomeComboDown = false
     private var runtimeActionsOverlay: View? = null
+    private var immersiveDecorConfigured = false
+    private var lastImmersiveApplyAt = 0L
+    private var lastAppliedCutoutMode: DisplayCutoutMode? = null
 
     companion object {
         private const val TAG = "Runestone"
@@ -825,12 +829,22 @@ class GameActivity : Activity() {
         return true
     }
 
-    private fun applyImmersiveMode() {
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        val controller = WindowCompat.getInsetsController(window, window.decorView)
-        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        controller.hide(WindowInsetsCompat.Type.systemBars())
-        if (Build.VERSION.SDK_INT >= 28) {
+    private fun applyImmersiveMode(force: Boolean = false) {
+        val now = SystemClock.uptimeMillis()
+        val cutoutChanged = lastAppliedCutoutMode != settings.displayCutoutMode
+        if (!force && !cutoutChanged && now - lastImmersiveApplyAt < 350L) return
+        lastImmersiveApplyAt = now
+
+        if (!immersiveDecorConfigured) {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            WindowCompat.getInsetsController(window, window.decorView).systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            immersiveDecorConfigured = true
+        }
+        WindowCompat.getInsetsController(window, window.decorView)
+            .hide(WindowInsetsCompat.Type.systemBars())
+
+        if (Build.VERSION.SDK_INT >= 28 && cutoutChanged) {
             window.attributes = window.attributes.apply {
                 layoutInDisplayCutoutMode = if (settings.displayCutoutMode == DisplayCutoutMode.EDGE_TO_EDGE) {
                     android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -839,6 +853,7 @@ class GameActivity : Activity() {
                 }
             }
         }
+        lastAppliedCutoutMode = settings.displayCutoutMode
     }
 
     private fun installSafeAreaInsets(root: View) {
@@ -846,14 +861,27 @@ class GameActivity : Activity() {
             if (settings.displayCutoutMode == DisplayCutoutMode.SAFE_AREA) {
                 val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
                 val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
-                view.setPadding(
-                    maxOf(bars.left, cutout.left),
-                    maxOf(bars.top, cutout.top),
-                    maxOf(bars.right, cutout.right),
-                    maxOf(0, cutout.bottom),
-                )
+                val left = maxOf(bars.left, cutout.left)
+                val top = maxOf(bars.top, cutout.top)
+                val right = maxOf(bars.right, cutout.right)
+                val bottom = maxOf(0, cutout.bottom)
+                if (
+                    view.paddingLeft != left ||
+                    view.paddingTop != top ||
+                    view.paddingRight != right ||
+                    view.paddingBottom != bottom
+                ) {
+                    view.setPadding(left, top, right, bottom)
+                }
             } else {
-                view.setPadding(0, 0, 0, 0)
+                if (
+                    view.paddingLeft != 0 ||
+                    view.paddingTop != 0 ||
+                    view.paddingRight != 0 ||
+                    view.paddingBottom != 0
+                ) {
+                    view.setPadding(0, 0, 0, 0)
+                }
             }
             insets
         }

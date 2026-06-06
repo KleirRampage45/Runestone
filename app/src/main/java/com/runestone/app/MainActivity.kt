@@ -35,6 +35,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -159,6 +160,12 @@ class MainActivity : Activity() {
     private val pressedControllerKeys = mutableSetOf<Int>()
     private var triggerResumeComboDown = false
     private var controllerNavigationEnabled = false
+    private var immersiveDecorConfigured = false
+    private var lastImmersiveApplyAt = 0L
+    private var lastAppliedCutoutMode: DisplayCutoutMode? = null
+    private val gameSizeCache = mutableMapOf<String, Long>()
+    private val gameSizeInFlight = mutableSetOf<String>()
+    private val metadataWarmupInFlight = mutableSetOf<String>()
 
     private val downloadReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -236,16 +243,18 @@ class MainActivity : Activity() {
             if (settings.displayCutoutMode == DisplayCutoutMode.SAFE_AREA) {
                 val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
                 val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
-                v.setPadding(
-                    maxOf(bars.left, cutout.left),
-                    maxOf(bars.top, cutout.top),
-                    maxOf(bars.right, cutout.right),
-                    maxOf(0, cutout.bottom),
-                )
+                val left = maxOf(bars.left, cutout.left)
+                val top = maxOf(bars.top, cutout.top)
+                val right = maxOf(bars.right, cutout.right)
+                val bottom = maxOf(0, cutout.bottom)
+                if (v.paddingLeft != left || v.paddingTop != top || v.paddingRight != right || v.paddingBottom != bottom) {
+                    v.setPadding(left, top, right, bottom)
+                }
             } else {
-                v.setPadding(0, 0, 0, 0)
+                if (v.paddingLeft != 0 || v.paddingTop != 0 || v.paddingRight != 0 || v.paddingBottom != 0) {
+                    v.setPadding(0, 0, 0, 0)
+                }
             }
-            applyImmersiveMode()
             insets
         }
         setContentView(rootContainer)
@@ -683,10 +692,7 @@ class MainActivity : Activity() {
             displayName = metadata?.gameTitle?.takeIf { it.isNotEmpty() } ?: g.displayName,
             engineType = g.engineType,
             fileCount = g.fileCount,
-            fileSize = runCatching {
-                val dir = java.io.File(g.originalPath)
-                if (dir.isDirectory) dir.walkTopDown().filter { it.isFile }.sumOf { it.length() } else dir.length()
-            }.getOrNull() ?: 0L,
+            fileSize = cachedGameSize(g),
             totalPlayTime = getSharedPreferences("play_stats", MODE_PRIVATE).getLong("total_${g.storageName}", 0L),
             lastPlayedTimestamp = getSharedPreferences("play_stats", MODE_PRIVATE).getLong("last_played_${g.storageName}", 0L),
             isReady = true,
@@ -696,6 +702,37 @@ class MainActivity : Activity() {
             metadataGenres = metadata?.genres ?: "",
             metadataYear = metadata?.releaseYear ?: "",
         )
+    }
+
+    private fun cachedGameSize(g: WorkspaceManager.GameInfo): Long {
+        gameSizeCache[g.storageName]?.let { return it }
+        getSharedPreferences("game_size_cache", MODE_PRIVATE)
+            .getLong(g.storageName, -1L)
+            .takeIf { it >= 0L }
+            ?.let {
+                gameSizeCache[g.storageName] = it
+                return it
+            }
+        warmGameSize(g)
+        return 0L
+    }
+
+    private fun warmGameSize(g: WorkspaceManager.GameInfo) {
+        if (!gameSizeInFlight.add(g.storageName)) return
+        Thread {
+            val size = runCatching {
+                val dir = File(g.originalPath)
+                if (dir.isDirectory) dir.walkTopDown().filter { it.isFile }.sumOf { it.length() } else dir.length()
+            }.getOrDefault(0L)
+            getSharedPreferences("game_size_cache", MODE_PRIVATE)
+                .edit()
+                .putLong(g.storageName, size)
+                .apply()
+            runOnUiThread {
+                gameSizeCache[g.storageName] = size
+                gameSizeInFlight.remove(g.storageName)
+            }
+        }.start()
     }
 
     private fun metadataTitleMatches(installedTitle: String, metadataTitle: String): Boolean {
@@ -796,12 +833,22 @@ class MainActivity : Activity() {
     /** Density-independent pixels helper. */
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
-    private fun applyImmersiveMode() {
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        val controller = WindowCompat.getInsetsController(window, window.decorView)
-        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        controller.hide(WindowInsetsCompat.Type.systemBars())
-        if (Build.VERSION.SDK_INT >= 28) {
+    private fun applyImmersiveMode(force: Boolean = false) {
+        val now = SystemClock.uptimeMillis()
+        val cutoutChanged = lastAppliedCutoutMode != settings.displayCutoutMode
+        if (!force && !cutoutChanged && now - lastImmersiveApplyAt < 350L) return
+        lastImmersiveApplyAt = now
+
+        if (!immersiveDecorConfigured) {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            WindowCompat.getInsetsController(window, window.decorView).systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            immersiveDecorConfigured = true
+        }
+        WindowCompat.getInsetsController(window, window.decorView)
+            .hide(WindowInsetsCompat.Type.systemBars())
+
+        if (Build.VERSION.SDK_INT >= 28 && cutoutChanged) {
             window.attributes = window.attributes.apply {
                 layoutInDisplayCutoutMode = if (settings.displayCutoutMode == DisplayCutoutMode.EDGE_TO_EDGE) {
                     android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -810,6 +857,7 @@ class MainActivity : Activity() {
                 }
             }
         }
+        lastAppliedCutoutMode = settings.displayCutoutMode
     }
 
     private fun enableControllerNavigation(root: View) {
@@ -1002,33 +1050,6 @@ class MainActivity : Activity() {
             card.copy(coverUrl = coverUrl)
         }
         
-        // Fetch missing metadata into per-game config so hero cards are warm on next launch.
-        val configService = com.runestone.app.data.GameConfigService(this, workspaceManager)
-        cards.filter { it.coverUrl == null }.forEach { card ->
-            if (!gameMetadataCache.containsKey(card.displayName)) {
-                metadataService.fetchAndApplyMetadata(
-                    gameTitle = card.displayName,
-                    storageName = card.storageName,
-                    configService = configService,
-                ) { section ->
-                    section?.let {
-                        gameMetadataCache[card.displayName] = GameMetadataService.GameMetadata(
-                            title = it.gameTitle,
-                            description = it.description,
-                            coverUrl = it.coverUrl,
-                            localCoverPath = it.localCoverPath,
-                            screenshots = emptyList(),
-                            releaseDate = it.releaseYear,
-                            developer = it.developer,
-                            publisher = it.publisher,
-                            genres = it.genres.split(",").map { genre -> genre.trim() }.filter { genre -> genre.isNotEmpty() },
-                            rating = null,
-                            source = it.metadataSource,
-                        )
-                    }
-                }
-            }
-        }
         val pausedGame = cards.find { it.isPaused }
 
         val homeView = HomeScreen(this).create(
@@ -1102,6 +1123,48 @@ class MainActivity : Activity() {
         if (controllerNavigationEnabled) {
             rootContainer.post { enableControllerNavigation(rootContainer) }
         }
+        scheduleMetadataWarmup(cards)
+    }
+
+    private fun scheduleMetadataWarmup(cards: List<GameCardInfo>) {
+        val targets = cards
+            .asSequence()
+            .filter { it.coverUrl == null }
+            .filter { !gameMetadataCache.containsKey(it.displayName) }
+            .filter { it.storageName !in metadataWarmupInFlight }
+            .take(3)
+            .toList()
+        if (targets.isEmpty()) return
+        targets.forEach { metadataWarmupInFlight.add(it.storageName) }
+        rootContainer.postDelayed({
+            val configService = com.runestone.app.data.GameConfigService(this, workspaceManager)
+            targets.forEach { card ->
+                metadataService.fetchAndApplyMetadata(
+                    gameTitle = card.displayName,
+                    storageName = card.storageName,
+                    configService = configService,
+                ) { section ->
+                    runOnUiThread {
+                        metadataWarmupInFlight.remove(card.storageName)
+                        section?.let {
+                            gameMetadataCache[card.displayName] = GameMetadataService.GameMetadata(
+                                title = it.gameTitle,
+                                description = it.description,
+                                coverUrl = it.coverUrl,
+                                localCoverPath = it.localCoverPath,
+                                screenshots = emptyList(),
+                                releaseDate = it.releaseYear,
+                                developer = it.developer,
+                                publisher = it.publisher,
+                                genres = it.genres.split(",").map { genre -> genre.trim() }.filter { genre -> genre.isNotEmpty() },
+                                rating = null,
+                                source = it.metadataSource,
+                            )
+                        }
+                    }
+                }
+            }
+        }, 750L)
     }
 
     private fun showManageFiles(storageName: String? = null) {
@@ -1172,10 +1235,13 @@ class MainActivity : Activity() {
             SettingsScreen(this).create(
                 settings = settings,
                 onSettingsChanged = { newSettings ->
+                    val cutoutChanged = settings.displayCutoutMode != newSettings.displayCutoutMode
                     settings = newSettings
                     settingsStore.save(newSettings)
-                    applyImmersiveMode()
-                    ViewCompat.requestApplyInsets(rootContainer)
+                    applyImmersiveMode(force = cutoutChanged)
+                    if (cutoutChanged) {
+                        ViewCompat.requestApplyInsets(rootContainer)
+                    }
                 },
                 onBack = { dismissOverlay() },
                 onResetDefaults = {
