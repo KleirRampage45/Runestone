@@ -97,6 +97,8 @@ data class InputSection(
     val buttonOpacity: Float = 0.72f,
     val buttonScale: Float = 1.0f,
     val showExtraButtons: Boolean = false,
+    val hideVirtualGamepad: Boolean = false,
+    val diagonalMovement: Boolean = false,
     val showL1R1: Boolean = false,
     val showL2R2: Boolean = false,
     val hapticsEnabled: Boolean = true,
@@ -116,6 +118,8 @@ data class InputSection(
                 buttonOpacity = j.optDouble("buttonOpacity", 0.72).toFloat(),
                 buttonScale = j.optDouble("buttonScale", 1.0).toFloat(),
                 showExtraButtons = j.optBoolean("showExtraButtons", false),
+                hideVirtualGamepad = j.optBoolean("hideVirtualGamepad", false),
+                diagonalMovement = j.optBoolean("diagonalMovement", false),
                 showL1R1 = j.optBoolean("showL1R1", false),
                 showL2R2 = j.optBoolean("showL2R2", false),
                 hapticsEnabled = j.optBoolean("hapticsEnabled", true),
@@ -134,6 +138,8 @@ data class InputSection(
         put("buttonOpacity", buttonOpacity.toDouble())
         put("buttonScale", buttonScale.toDouble())
         put("showExtraButtons", showExtraButtons)
+        put("hideVirtualGamepad", hideVirtualGamepad)
+        put("diagonalMovement", diagonalMovement)
         put("showL1R1", showL1R1)
         put("showL2R2", showL2R2)
         put("hapticsEnabled", hapticsEnabled)

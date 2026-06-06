@@ -153,6 +153,27 @@ class PerGameSettingsScreen(private val context: Context) {
         })
         content.addView(spacer(10))
 
+        content.addView(switchPanel("Hide Virtual Gamepad", "Use this game with a physical controller only",
+            current.input.hideVirtualGamepad) { checked ->
+            current = current.copy(input = current.input.copy(hideVirtualGamepad = checked))
+            onConfigChanged(current)
+        })
+        content.addView(spacer(10))
+
+        content.addView(switchPanel("Diagonal Movement", "Allow D-pad diagonals when sliding between directions",
+            current.input.diagonalMovement) { checked ->
+            current = current.copy(input = current.input.copy(diagonalMovement = checked))
+            onConfigChanged(current)
+        })
+        content.addView(spacer(10))
+
+        content.addView(switchPanel("Show X/Y Buttons", "Expose the extra action buttons on the touch overlay",
+            current.input.showExtraButtons) { checked ->
+            current = current.copy(input = current.input.copy(showExtraButtons = checked))
+            onConfigChanged(current)
+        })
+        content.addView(spacer(10))
+
         content.addView(switchPanel("Haptic Feedback", "Vibrate when controls are pressed",
             current.input.hapticsEnabled) { checked ->
             current = current.copy(input = current.input.copy(hapticsEnabled = checked))
@@ -387,6 +408,21 @@ class PerGameSettingsScreen(private val context: Context) {
                 current = current.copy(fonts = current.fonts.copy(lineSpacing = 0.5f + progress / 200f))
                 label.text = "${(current.fonts.lineSpacing * 100).toInt()}%"
                 onConfigChanged(current)
+            }
+        })
+        content.addView(spacer(10))
+
+        content.addView(resetRuntimePanel {
+            current = current.copy(
+                input = InputSection(),
+                video = VideoSection(),
+                audio = AudioSection(),
+                performance = PerformanceSection(),
+                fonts = FontSection(),
+            )
+            onConfigChanged(current)
+            (context as? android.app.Activity)?.runOnUiThread {
+                android.widget.Toast.makeText(context, "Runtime settings reset", android.widget.Toast.LENGTH_SHORT).show()
             }
         })
 
@@ -781,6 +817,39 @@ class PerGameSettingsScreen(private val context: Context) {
                 },
             )
             addView(row)
+        }
+
+    private fun resetRuntimePanel(onReset: () -> Unit): LinearLayout =
+        settingsPanel {
+            addView(TextView(context).apply {
+                text = "Reset Runtime Settings"
+                setTextColor(TEXT)
+                textSize = 15f
+                typeface = Typeface.DEFAULT_BOLD
+            })
+            addView(TextView(context).apply {
+                text = "Restore this game's input, display, audio, performance, and font overrides."
+                setTextColor(MUTED)
+                textSize = 11f
+                setPadding(0, dp(3), 0, dp(10))
+            })
+            addView(TextView(context).apply {
+                text = "RESET RUNTIME"
+                setTextColor(Color.rgb(220, 160, 160))
+                textSize = 12f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setPadding(dp(16), dp(9), dp(16), dp(9))
+                background = GradientDrawable().apply {
+                    setColor(Color.argb(40, 200, 80, 80))
+                    cornerRadius = dp(8).toFloat()
+                    setStroke(dp(1), Color.argb(55, 200, 80, 80))
+                }
+                makeLiquid(this)
+                setOnClickListener {
+                    onReset()
+                }
+            })
         }
 
     private fun layoutModePanel(selectedValue: String, onChange: (LayoutMode) -> Unit): LinearLayout =

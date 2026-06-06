@@ -56,6 +56,8 @@ class GameConfigService(
                 hapticsEnabled = if (input.has("hapticsEnabled")) input.optBoolean("hapticsEnabled", result.hapticsEnabled) else result.hapticsEnabled,
                 hapticIntensity = if (input.has("hapticIntensity")) input.optDouble("hapticIntensity", result.hapticIntensity.toDouble()).toFloat() else result.hapticIntensity,
                 showExtraButtons = if (input.has("showExtraButtons")) input.optBoolean("showExtraButtons", result.showExtraButtons) else result.showExtraButtons,
+                hideVirtualGamepad = if (input.has("hideVirtualGamepad")) input.optBoolean("hideVirtualGamepad", result.hideVirtualGamepad) else result.hideVirtualGamepad,
+                diagonalMovement = if (input.has("diagonalMovement")) input.optBoolean("diagonalMovement", result.diagonalMovement) else result.diagonalMovement,
             )
         }
         json.optJSONObject("video")?.let { video ->
@@ -116,6 +118,8 @@ class GameConfigService(
             buttonOpacity = override(o.buttonOpacity, 0.72f, b.buttonOpacity),
             buttonScale = override(o.buttonScale, 1.0f, b.buttonScale),
             showExtraButtons = o.showExtraButtons,
+            hideVirtualGamepad = o.hideVirtualGamepad,
+            diagonalMovement = o.diagonalMovement,
             showL1R1 = o.showL1R1,
             showL2R2 = o.showL2R2,
             hapticsEnabled = o.hapticsEnabled,
@@ -199,6 +203,8 @@ class GameConfigService(
                 buttonOpacity = settings.touchOpacity,
                 buttonScale = settings.touchScale,
                 showExtraButtons = settings.showExtraButtons,
+                hideVirtualGamepad = settings.hideVirtualGamepad,
+                diagonalMovement = settings.diagonalMovement,
                 hapticsEnabled = settings.hapticsEnabled,
                 hapticIntensity = settings.hapticIntensity,
             ),
