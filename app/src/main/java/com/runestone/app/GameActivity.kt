@@ -947,6 +947,9 @@ class GameActivity : Activity() {
             putExtra("com.runestone.app.extra.TOUCH_SCALE", settings.touchScale)
             putExtra("com.runestone.app.extra.HAPTICS_ENABLED", settings.hapticsEnabled)
             putExtra("com.runestone.app.extra.HAPTIC_INTENSITY", settings.hapticIntensity)
+            putExtra("com.runestone.app.extra.HIDE_VIRTUAL_GAMEPAD", settings.hideVirtualGamepad)
+            putExtra("com.runestone.app.extra.TEXT_SCALE", settings.textScale)
+            putExtra("com.runestone.app.extra.INTEGER_SCALING", settings.integerScaling)
             putExtra("com.runestone.app.extra.DISPLAY_CUTOUT_MODE", settings.displayCutoutMode.name)
             putExtra("com.runestone.app.extra.CONTROLLER_HOME_SHORTCUT", settings.controllerHomeShortcut.name)
         }

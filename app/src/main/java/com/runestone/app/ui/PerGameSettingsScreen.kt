@@ -160,7 +160,7 @@ class PerGameSettingsScreen(private val context: Context) {
         })
         content.addView(spacer(10))
 
-        content.addView(switchPanel("Diagonal Movement", "Allow D-pad diagonals when sliding between directions",
+        content.addView(switchPanel("Diagonal Movement", "Allow simultaneous corner input when touching two D-pad directions",
             current.input.diagonalMovement) { checked ->
             current = current.copy(input = current.input.copy(diagonalMovement = checked))
             onConfigChanged(current)
@@ -1158,7 +1158,11 @@ class PerGameSettingsScreen(private val context: Context) {
     }
 
     private fun slider(max: Int, progress: Int, onChange: (Int) -> Unit): GlassSlider =
-        GlassSlider(context, max, progress, onChange)
+        GlassSlider(context, max, progress, onChange).apply {
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(44)).apply {
+                topMargin = dp(8)
+            }
+        }
 
     private fun spacer(h: Int = 0, w: Int = 0): View {
         val lp = LinearLayout.LayoutParams(
@@ -1228,23 +1232,25 @@ class PerGameSettingsScreen(private val context: Context) {
             style = android.graphics.Paint.Style.FILL
             isAntiAlias = true
         }
+        private val thumbStroke = android.graphics.Paint().apply {
+            color = ACCENT
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = dp(2).toFloat()
+            isAntiAlias = true
+        }
+        private var isTracking = false
 
         init {
-            setOnTouchListener { v, event ->
-                when (event.action) {
-                    android.view.MotionEvent.ACTION_DOWN,
-                    android.view.MotionEvent.ACTION_MOVE -> {
-                        val newValue = ((event.x / width) * maxValue).toInt().coerceIn(0, maxValue)
-                        if (newValue != value) {
-                            value = newValue
-                            onChange(value)
-                            invalidate()
-                        }
-                        true
-                    }
-                    else -> false
-                }
-            }
+            minimumHeight = dp(44)
+            isClickable = true
+            isFocusable = true
+        }
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val desiredHeight = dp(44)
+            val width = MeasureSpec.getSize(widthMeasureSpec)
+            val height = resolveSize(desiredHeight, heightMeasureSpec)
+            setMeasuredDimension(width, height)
         }
 
         override fun onDraw(canvas: android.graphics.Canvas) {
@@ -1273,7 +1279,43 @@ class PerGameSettingsScreen(private val context: Context) {
             )
 
             // Thumb
-            canvas.drawCircle(progressWidth, centerY, thumbRadius.toFloat(), thumbPaint)
+            val scale = if (isTracking) 1.25f else 1f
+            canvas.drawCircle(progressWidth, centerY, thumbRadius * scale, thumbPaint)
+            canvas.drawCircle(progressWidth, centerY, thumbRadius * scale, thumbStroke)
+        }
+
+        override fun onTouchEvent(event: android.view.MotionEvent): Boolean =
+            when (event.action) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    isTracking = true
+                    updateValue(event.x)
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    true
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    updateValue(event.x)
+                    true
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    isTracking = false
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    invalidate()
+                    true
+                }
+                else -> false
+            }
+
+        private fun updateValue(x: Float) {
+            val thumbRadius = dp(10).toFloat()
+            val trackLeft = thumbRadius
+            val trackRight = width - thumbRadius
+            val fraction = ((x - trackLeft) / (trackRight - trackLeft)).coerceIn(0f, 1f)
+            val newValue = (fraction * maxValue).toInt().coerceIn(0, maxValue)
+            if (newValue != value) {
+                value = newValue
+                onChange(value)
+            }
+            invalidate()
         }
     }
 
