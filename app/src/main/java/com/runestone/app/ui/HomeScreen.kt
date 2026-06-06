@@ -1000,8 +1000,6 @@ class HomeScreen(private val context: Context) {
         // Wrapper stacks card + overlay — blur only hits card
         val cardWrapper = FrameLayout(context).apply {
             layoutParams = LinearLayout.LayoutParams(cardW, cardH)
-            isFocusable = true
-            isFocusableInTouchMode = false
         }
         cardContainer.addView(cardWrapper)
 

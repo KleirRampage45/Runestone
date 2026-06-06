@@ -158,6 +158,7 @@ class MainActivity : Activity() {
     private var downloadReceiverRegistered = false
     private val pressedControllerKeys = mutableSetOf<Int>()
     private var triggerResumeComboDown = false
+    private var controllerNavigationEnabled = false
 
     private val downloadReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -770,7 +771,9 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT)
         persistentDock.bringToFront()
         activeOverlay = wrapper
-        rootContainer.post { enableControllerNavigation(wrapper) }
+        if (controllerNavigationEnabled) {
+            rootContainer.post { enableControllerNavigation(wrapper) }
+        }
     }
 
     /**
@@ -825,6 +828,27 @@ class MainActivity : Activity() {
         if (currentFocus == null || currentFocus == rootContainer) {
             clickables.firstOrNull()?.requestFocus()
         }
+    }
+
+    private fun ensureControllerNavigation() {
+        if (!controllerNavigationEnabled) {
+            controllerNavigationEnabled = true
+        }
+        enableControllerNavigation(activeOverlay ?: rootContainer)
+    }
+
+    private fun disableControllerNavigation(root: View) {
+        fun visit(view: View) {
+            if (view.isClickable && view !is android.widget.EditText) {
+                view.isFocusable = false
+                view.isFocusableInTouchMode = false
+            }
+            if (view is ViewGroup) {
+                for (i in 0 until view.childCount) visit(view.getChildAt(i))
+            }
+        }
+        visit(root)
+        controllerNavigationEnabled = false
     }
 
     private fun performFocusedClick(): Boolean {
@@ -1075,7 +1099,9 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT))
         homeContentView = homeView
-        rootContainer.post { enableControllerNavigation(rootContainer) }
+        if (controllerNavigationEnabled) {
+            rootContainer.post { enableControllerNavigation(rootContainer) }
+        }
     }
 
     private fun showManageFiles(storageName: String? = null) {
@@ -1858,7 +1884,10 @@ class MainActivity : Activity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.isControllerShortcut() && handleControllerCombo(event)) return true
+        if (event.isControllerShortcut()) {
+            ensureControllerNavigation()
+            if (handleControllerCombo(event)) return true
+        }
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && event.isControllerShortcut()) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_BUTTON_A -> {
@@ -1903,6 +1932,13 @@ class MainActivity : Activity() {
         return super.dispatchKeyEvent(event)
     }
 
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        if (event.action == android.view.MotionEvent.ACTION_DOWN && controllerNavigationEnabled) {
+            disableControllerNavigation(rootContainer)
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
         if (event.isControllerMotionShortcut() && handleTriggerResumeCombo(event)) return true
         return super.dispatchGenericMotionEvent(event)
@@ -1918,7 +1954,9 @@ class MainActivity : Activity() {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
             applyImmersiveMode()
-            rootContainer.post { enableControllerNavigation(rootContainer) }
+            if (controllerNavigationEnabled) {
+                rootContainer.post { enableControllerNavigation(rootContainer) }
+            }
         }
     }
 
