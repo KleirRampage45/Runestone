@@ -414,12 +414,8 @@ class GameActivity : Activity() {
             gravity = Gravity.CENTER
             setTextColor(Color.rgb(220, 210, 190))
             typeface = Typeface.DEFAULT_BOLD
-            background = GradientDrawable().apply {
-                setColor(Color.argb(185, 12, 11, 16))
-                setStroke(dp(1), Color.argb(70, 160, 140, 110))
-                cornerRadius = dp(16).toFloat()
-            }
-            setPadding(dp(14), dp(6), dp(14), dp(6))
+            background = null
+            setPadding(dp(18), dp(10), dp(18), dp(10))
             setCompoundDrawablesWithIntrinsicBounds(0, com.runestone.app.R.drawable.ic_runtime_dropdown, 0, 0)
             setOnClickListener { showRuntimeActions() }
             layoutParams = FrameLayout.LayoutParams(

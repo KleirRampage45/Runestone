@@ -261,13 +261,6 @@ public class PythonSDLActivity extends SDLActivity {
         }
 
         private void drawHandle(Canvas canvas) {
-            fillPaint.setStyle(Paint.Style.FILL);
-            fillPaint.setColor(Color.argb(95, 0, 0, 0));
-            canvas.drawRoundRect(handleRect, dp(12f), dp(12f), fillPaint);
-            strokePaint.setStyle(Paint.Style.STROKE);
-            strokePaint.setStrokeWidth(dp(1f));
-            strokePaint.setColor(Color.argb(100, 200, 170, 130));
-            canvas.drawRoundRect(handleRect, dp(12f), dp(12f), strokePaint);
             Path caret = new Path();
             float cx = handleRect.centerX();
             float cy = handleRect.centerY();
