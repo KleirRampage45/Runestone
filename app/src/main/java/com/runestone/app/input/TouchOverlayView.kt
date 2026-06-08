@@ -33,6 +33,8 @@ class TouchOverlayView(context: Context) : View(context) {
     var showExtraButtons: Boolean = false
     var diagonalMovement: Boolean = false
     var onInput: ((Zone, pressed: Boolean) -> Unit)? = null
+    var onToggleControls: (() -> Unit)? = null
+    var onRotateLayout: (() -> Unit)? = null
 
     // Active presses for visual feedback
     private val activeZones = mutableSetOf<Zone>()
@@ -271,14 +273,19 @@ class TouchOverlayView(context: Context) : View(context) {
         invalidate()
     }
 
+    fun openLayoutEditor() {
+        startEditing()
+    }
+
     private fun drawQuickSettings(canvas: Canvas, a: Float) {
         editorPaint.alpha = (185 * a).toInt().coerceIn(0, 255)
         canvas.drawRoundRect(quickSettingsRect, 14f * scale, 14f * scale, editorPaint)
         btnStroke.alpha = (105 * a).toInt().coerceIn(0, 255)
         canvas.drawRoundRect(quickSettingsRect, 14f * scale, 14f * scale, btnStroke)
 
-        val cellW = quickSettingsRect.width() / 7f
-        for (i in 0 until 7) {
+        val cellCount = 9
+        val cellW = quickSettingsRect.width() / cellCount.toFloat()
+        for (i in 0 until cellCount) {
             val cx = quickSettingsRect.left + cellW * i + cellW / 2f
             val cy = quickSettingsRect.centerY()
             drawQuickIcon(canvas, i, cx, cy, minOf(cellW, quickSettingsRect.height()) * 0.28f, a)
@@ -322,6 +329,17 @@ class TouchOverlayView(context: Context) : View(context) {
             6 -> {
                 canvas.drawCircle(cx, cy, s, paint)
                 canvas.drawLine(cx, cy, cx + s * 0.75f, cy - s * 0.75f, paint)
+            }
+            7 -> {
+                canvas.drawRoundRect(RectF(cx - s, cy - s * 0.75f, cx + s, cy + s * 0.75f), s * 0.2f, s * 0.2f, paint)
+                canvas.drawLine(cx - s * 0.45f, cy, cx + s * 0.45f, cy, paint)
+            }
+            8 -> {
+                canvas.drawArc(RectF(cx - s, cy - s, cx + s, cy + s), 40f, 260f, false, paint)
+                path.moveTo(cx + s * 0.65f, cy - s * 0.55f)
+                path.lineTo(cx + s * 0.95f, cy - s * 0.2f)
+                path.lineTo(cx + s * 0.45f, cy - s * 0.18f)
+                canvas.drawPath(path, paint)
             }
         }
     }
@@ -530,7 +548,7 @@ class TouchOverlayView(context: Context) : View(context) {
             return false
         }
         if (action != MotionEvent.ACTION_UP) return true
-        val index = ((x - quickSettingsRect.left) / (quickSettingsRect.width() / 7f)).toInt().coerceIn(0, 6)
+        val index = ((x - quickSettingsRect.left) / (quickSettingsRect.width() / 9f)).toInt().coerceIn(0, 8)
         when (index) {
             0 -> onInput?.invoke(Zone.HOME, true)
             1 -> opacity = (opacity - 0.12f).coerceAtLeast(0.18f)
@@ -539,6 +557,8 @@ class TouchOverlayView(context: Context) : View(context) {
             4 -> scale = (scale + 0.10f).coerceAtMost(1.75f)
             5 -> startEditing()
             6 -> showExtraButtons = !showExtraButtons
+            7 -> onToggleControls?.invoke()
+            8 -> onRotateLayout?.invoke()
         }
         requestLayout()
         invalidate()

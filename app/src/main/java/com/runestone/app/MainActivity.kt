@@ -1519,7 +1519,7 @@ class MainActivity : Activity() {
 
         val effectiveSettings = com.runestone.app.data.GameConfigService(this, workspaceManager)
             .resolveRunnerSettings(storageName)
-        GameActivity.start(this, game.originalPath, game.engineType.name, effectiveSettings)
+        GameActivity.start(this, game.originalPath, game.engineType.name, effectiveSettings, storageName)
     }
 
     private fun startFolderImport(requestedName: String? = null) {

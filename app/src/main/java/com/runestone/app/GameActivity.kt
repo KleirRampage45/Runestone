@@ -38,6 +38,7 @@ import androidx.core.view.ViewCompat
 import com.runestone.app.data.ControllerShortcut
 import com.runestone.app.data.EngineType
 import com.runestone.app.data.DisplayCutoutMode
+import com.runestone.app.data.GameConfigService
 import com.runestone.app.data.LayoutMode
 import com.runestone.app.data.RunnerSettings
 import com.runestone.app.engine.EngineDetector
@@ -46,6 +47,7 @@ import com.runestone.app.engine.WebViewEngine
 import com.runestone.app.input.ControllerMapper
 import com.runestone.app.input.RunestoneKeyboardView
 import com.runestone.app.input.TouchOverlayView
+import com.runestone.app.workspace.WorkspaceManager
 import org.json.JSONObject
 import java.io.File
 
@@ -54,8 +56,10 @@ class GameActivity : Activity() {
     private var webViewEngine: WebViewEngine? = null
     private var engineType: EngineType = EngineType.UNKNOWN
     private var gamePath: String = ""
+    private var storageName: String? = null
     private var settings = RunnerSettings()
     private var overlayView: TouchOverlayView? = null
+    private var overlayContainer: ViewGroup? = null
     private var rootView: FrameLayout? = null
     private var keyboardView: RunestoneKeyboardView? = null
     private var controllerPresetId: String? = null
@@ -70,6 +74,7 @@ class GameActivity : Activity() {
     companion object {
         private const val TAG = "Runestone"
         private const val EXTRA_GAME_PATH = "game_path"
+        private const val EXTRA_STORAGE_NAME = "storage_name"
         private const val EXTRA_ENGINE_TYPE = "engine_type"
         private const val EXTRA_LAYOUT_MODE = "layout_mode"
         private const val EXTRA_TOUCH_OPACITY = "touch_opacity"
@@ -99,9 +104,10 @@ class GameActivity : Activity() {
         private const val EXTRA_CONTROLLER_RUNTIME_MENU_SHORTCUT = "controller_runtime_menu_shortcut"
         private const val EXTRA_CONTROLLER_RESUME_SHORTCUT = "controller_resume_shortcut"
 
-        fun start(activity: Activity, gamePath: String, engineType: String? = null, settings: RunnerSettings = RunnerSettings()) {
+        fun start(activity: Activity, gamePath: String, engineType: String? = null, settings: RunnerSettings = RunnerSettings(), storageName: String? = null) {
             val intent = Intent(activity, GameActivity::class.java).apply {
                 putExtra(EXTRA_GAME_PATH, gamePath)
+                if (storageName != null) putExtra(EXTRA_STORAGE_NAME, storageName)
                 if (engineType != null) putExtra(EXTRA_ENGINE_TYPE, engineType)
                 putExtra(EXTRA_LAYOUT_MODE, settings.layoutMode.name)
                 putExtra(EXTRA_TOUCH_OPACITY, settings.touchOpacity)
@@ -144,6 +150,7 @@ class GameActivity : Activity() {
             finish()
             return
         }
+        storageName = intent.getStringExtra(EXTRA_STORAGE_NAME)
 
         val gameDir = File(gamePath)
         if (!gameDir.exists() || !gameDir.isDirectory) {
@@ -401,6 +408,29 @@ class GameActivity : Activity() {
             layoutParams = pk
         }
         root.addView(kbBtn)
+
+        val menuBtn = TextView(this).apply {
+            text = "MENU"
+            textSize = 11f
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(220, 210, 190))
+            typeface = Typeface.DEFAULT_BOLD
+            background = GradientDrawable().apply {
+                setColor(Color.argb(185, 12, 11, 16))
+                setStroke(dp(1), Color.argb(70, 160, 140, 110))
+                cornerRadius = dp(16).toFloat()
+            }
+            setPadding(dp(14), dp(6), dp(14), dp(6))
+            setOnClickListener { showRuntimeActions() }
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.CENTER_HORIZONTAL,
+            ).apply {
+                topMargin = dp(8)
+            }
+        }
+        root.addView(menuBtn)
     }
 
     private fun setupTouchOverlay(container: ViewGroup, engine: WebViewEngine) {
@@ -416,6 +446,8 @@ class GameActivity : Activity() {
             showExtraButtons = settings.showExtraButtons
             diagonalMovement = settings.diagonalMovement
             controlsOnly = (settings.layoutMode == LayoutMode.PORTRAIT_CONSOLE)
+            onToggleControls = { setVirtualControlsVisible(false) }
+            onRotateLayout = { rotateRuntimeLayout() }
 
             onInput = inputHandler@{ zone, pressed ->
                 if (zone == TouchOverlayView.Zone.SETTINGS && pressed) {
@@ -451,16 +483,12 @@ class GameActivity : Activity() {
             }
         }
         this@GameActivity.overlayView = overlay
+        this@GameActivity.overlayContainer = container
         container.addView(overlay)
     }
 
     private fun openSettings() {
-        val overlay = overlayView
-        if (overlay != null) {
-            overlay.toggleQuickSettings()
-        } else {
-            showRuntimeActions()
-        }
+        showRuntimeActions()
     }
 
     private fun showRuntimeActions() {
@@ -504,6 +532,20 @@ class GameActivity : Activity() {
             setPadding(0, 0, 0, dp(10))
         })
         panel.addView(runtimeActionButton("RESUME") { dismissRuntimeActions() })
+        panel.addView(runtimeActionButton(if (settings.hideVirtualGamepad) "CONTROLS ON" else "CONTROLS OFF") {
+            dismissRuntimeActions()
+            setVirtualControlsVisible(settings.hideVirtualGamepad)
+        })
+        panel.addView(runtimeActionButton(if (settings.layoutMode == LayoutMode.LANDSCAPE) "ROTATE PORTRAIT" else "ROTATE LANDSCAPE") {
+            dismissRuntimeActions()
+            rotateRuntimeLayout()
+        })
+        if (overlayView != null) {
+            panel.addView(runtimeActionButton("EDIT CONTROLS") {
+                dismissRuntimeActions()
+                overlayView?.openLayoutEditor()
+            })
+        }
         panel.addView(runtimeActionButton("KEYBOARD") {
             dismissRuntimeActions()
             toggleKeyboard()
@@ -523,6 +565,73 @@ class GameActivity : Activity() {
         ))
         runtimeActionsOverlay = overlay
         overlay.requestFocus()
+    }
+
+    private fun setVirtualControlsVisible(visible: Boolean) {
+        settings = settings.copy(hideVirtualGamepad = !visible)
+        if (!visible) {
+            overlayView?.let { overlay ->
+                (overlay.parent as? ViewGroup)?.removeView(overlay)
+            }
+            overlayView = null
+            persistRuntimeInputSettings()
+            Toast.makeText(this, "Controls hidden", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val engine = webViewEngine
+        val container = overlayContainer ?: rootView
+        if (engine != null && container != null && overlayView == null) {
+            setupTouchOverlay(container, engine)
+            persistRuntimeInputSettings()
+            Toast.makeText(this, "Controls shown", Toast.LENGTH_SHORT).show()
+        } else {
+            persistRuntimeInputSettings()
+            Toast.makeText(this, "Controls will update next launch", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun rotateRuntimeLayout() {
+        val next = if (settings.layoutMode == LayoutMode.LANDSCAPE) {
+            LayoutMode.PORTRAIT_CONSOLE
+        } else {
+            LayoutMode.LANDSCAPE
+        }
+        settings = settings.copy(layoutMode = next)
+        requestedOrientation = if (next == LayoutMode.LANDSCAPE) {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        }
+        overlayView?.controlsOnly = next == LayoutMode.PORTRAIT_CONSOLE
+        overlayView?.requestLayout()
+        overlayView?.invalidate()
+        persistRuntimeInputSettings()
+        val note = if (webViewEngine != null) {
+            "Rotated. Relaunch applies the full split/full layout."
+        } else {
+            "Saved. Native runtime applies it next launch."
+        }
+        Toast.makeText(this, note, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun persistRuntimeInputSettings() {
+        val name = storageName ?: return
+        runCatching {
+            val service = GameConfigService(this, WorkspaceManager(this))
+            val current = service.loadPerGame(name)
+            service.savePerGame(
+                name,
+                current.copy(
+                    input = current.input.copy(
+                        layoutMode = settings.layoutMode.name.lowercase(),
+                        hideVirtualGamepad = settings.hideVirtualGamepad,
+                    ),
+                ),
+            )
+        }.onFailure {
+            Log.w(TAG, "Failed to persist runtime input settings", it)
+        }
     }
 
     private fun goHomePaused() {

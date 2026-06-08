@@ -23,7 +23,7 @@ enum class LayoutMode(val displayName: String) {
         val visibleModes: List<LayoutMode> = listOf(PORTRAIT_CONSOLE, LANDSCAPE)
 
         fun parse(value: String?, fallback: LayoutMode = PORTRAIT_CONSOLE): LayoutMode {
-            val normalized = value.orEmpty().trim().replace('-', '_')
+            val normalized = value.orEmpty().trim().replace('-', '_').replace(' ', '_')
             return values().firstOrNull {
                 it.name.equals(normalized, ignoreCase = true) ||
                     it.displayName.equals(value.orEmpty(), ignoreCase = true)
