@@ -45,6 +45,7 @@ import com.runestone.app.engine.EngineDetector
 import com.runestone.app.engine.UnavailableEngine
 import com.runestone.app.engine.WebViewEngine
 import com.runestone.app.input.ControllerMapper
+import com.runestone.app.input.ControlProfileStore
 import com.runestone.app.input.RunestoneKeyboardView
 import com.runestone.app.input.TouchOverlayView
 import com.runestone.app.workspace.WorkspaceManager
@@ -211,6 +212,7 @@ class GameActivity : Activity() {
         if (settings.keepScreenOn) {
             window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
+        ControlProfileStore(this).ensureDefaults(engineType, storageName, settings)
         applyImmersiveMode()
 
         // Force orientation based on layout mode
