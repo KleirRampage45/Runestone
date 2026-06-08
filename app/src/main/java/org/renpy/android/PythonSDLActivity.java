@@ -244,8 +244,8 @@ public class PythonSDLActivity extends SDLActivity {
             dpadCx = clamp(dpadCx, dpadRadius + dp(8f), getWidth() - dpadRadius - dp(8f));
             dpadCy = clamp(dpadCy, dpadRadius + dp(8f), getHeight() - dpadRadius - dp(8f));
             dpadBounds.set(dpadCx - dpadRadius, dpadCy - dpadRadius, dpadCx + dpadRadius, dpadCy + dpadRadius);
-            float handleW = dp(86f);
-            float handleH = dp(34f);
+            float handleW = dp(48f);
+            float handleH = dp(28f);
             handleRect.set(getWidth() / 2f - handleW / 2f, dp(8f), getWidth() / 2f + handleW / 2f, dp(8f) + handleH);
             float settingsW = Math.min(getWidth() - dp(24f), dp(620f));
             settingsRect.set(getWidth() / 2f - settingsW / 2f, dp(36f), getWidth() / 2f + settingsW / 2f, dp(124f));
@@ -268,13 +268,10 @@ public class PythonSDLActivity extends SDLActivity {
             strokePaint.setStrokeWidth(dp(1f));
             strokePaint.setColor(Color.argb(100, 200, 170, 130));
             canvas.drawRoundRect(handleRect, dp(12f), dp(12f), strokePaint);
-            textPaint.setTextSize(dp(11f));
-            textPaint.setColor(Color.argb(220, 238, 226, 190));
-            canvas.drawText("MENU", handleRect.centerX(), handleRect.centerY() + dp(4f), textPaint);
             Path caret = new Path();
-            float cx = handleRect.right - dp(12f);
+            float cx = handleRect.centerX();
             float cy = handleRect.centerY();
-            float s = dp(4f);
+            float s = dp(7f);
             if (settingsOpen) {
                 caret.moveTo(cx - s, cy + s / 2f); caret.lineTo(cx, cy - s / 2f); caret.lineTo(cx + s, cy + s / 2f);
             } else {

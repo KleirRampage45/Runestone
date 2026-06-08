@@ -409,8 +409,8 @@ class GameActivity : Activity() {
         root.addView(kbBtn)
 
         val menuBtn = TextView(this).apply {
-            text = "MENU"
-            textSize = 11f
+            text = ""
+            textSize = 0f
             gravity = Gravity.CENTER
             setTextColor(Color.rgb(220, 210, 190))
             typeface = Typeface.DEFAULT_BOLD
@@ -420,6 +420,7 @@ class GameActivity : Activity() {
                 cornerRadius = dp(16).toFloat()
             }
             setPadding(dp(14), dp(6), dp(14), dp(6))
+            setCompoundDrawablesWithIntrinsicBounds(0, com.runestone.app.R.drawable.ic_runtime_dropdown, 0, 0)
             setOnClickListener { showRuntimeActions() }
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
