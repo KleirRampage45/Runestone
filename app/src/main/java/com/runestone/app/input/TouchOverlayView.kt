@@ -35,6 +35,7 @@ class TouchOverlayView(context: Context) : View(context) {
     var onInput: ((Zone, pressed: Boolean) -> Unit)? = null
     var onToggleControls: (() -> Unit)? = null
     var onRotateLayout: (() -> Unit)? = null
+    var onProfileLayoutChanged: ((List<ControlButtonProfile>) -> Unit)? = null
 
     // Active presses for visual feedback
     private val activeZones = mutableSetOf<Zone>()
@@ -867,6 +868,7 @@ class TouchOverlayView(context: Context) : View(context) {
             prefs.putFloat("${prefix}_size", placement.size)
         }
         prefs.apply()
+        onProfileLayoutChanged?.invoke(exportProfileButtons())
     }
 
     private fun resetToPreset() {
@@ -876,6 +878,37 @@ class TouchOverlayView(context: Context) : View(context) {
         applySavedLayout()
         selectedControl = null
         invalidate()
+    }
+
+    private fun exportProfileButtons(): List<ControlButtonProfile> {
+        val layoutName = if (controlsOnly) "portrait" else "landscape"
+        fun keyFor(control: Control): String = when (control) {
+            Control.DPAD -> "DPAD"
+            Control.A -> "A"
+            Control.B -> "B"
+            Control.X -> "X"
+            Control.Y -> "Y"
+            Control.SELECT -> "ESCAPE"
+            Control.START -> "ENTER"
+            Control.MENU -> "MENU"
+        }
+        return layout.mapNotNull { (control, placement) ->
+            val label = when (control) {
+                Control.DPAD -> "D-Pad"
+                else -> control.name.lowercase().replaceFirstChar { it.uppercase() }
+            }
+            ControlButtonProfile(
+                id = control.name.lowercase(),
+                label = label,
+                key = keyFor(control),
+                layout = layoutName,
+                x = placement.x,
+                y = placement.y,
+                size = placement.size,
+                opacity = opacity,
+                hapticIntensity = hapticIntensity,
+            )
+        }
     }
 
     private fun applySavedLayout() {

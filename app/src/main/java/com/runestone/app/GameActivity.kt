@@ -44,6 +44,9 @@ import com.runestone.app.data.RunnerSettings
 import com.runestone.app.engine.EngineDetector
 import com.runestone.app.engine.UnavailableEngine
 import com.runestone.app.engine.WebViewEngine
+import com.runestone.app.input.ControlButtonProfile
+import com.runestone.app.input.ControlProfile
+import com.runestone.app.input.ControlProfileScope
 import com.runestone.app.input.ControllerMapper
 import com.runestone.app.input.ControlProfileStore
 import com.runestone.app.input.RunestoneKeyboardView
@@ -450,6 +453,9 @@ class GameActivity : Activity() {
             controlsOnly = (settings.layoutMode == LayoutMode.PORTRAIT_CONSOLE)
             onToggleControls = { setVirtualControlsVisible(false) }
             onRotateLayout = { rotateRuntimeLayout() }
+            onProfileLayoutChanged = { buttons ->
+                persistRuntimeControlProfile(buttons)
+            }
 
             onInput = inputHandler@{ zone, pressed ->
                 if (zone == TouchOverlayView.Zone.SETTINGS && pressed) {
@@ -542,12 +548,10 @@ class GameActivity : Activity() {
             dismissRuntimeActions()
             rotateRuntimeLayout()
         })
-        if (overlayView != null) {
-            panel.addView(runtimeActionButton("EDIT CONTROLS") {
-                dismissRuntimeActions()
-                overlayView?.openLayoutEditor()
-            })
-        }
+        panel.addView(runtimeActionButton("EDIT CONTROLS") {
+            dismissRuntimeActions()
+            openControlLayoutEditor()
+        })
         panel.addView(runtimeActionButton("KEYBOARD") {
             dismissRuntimeActions()
             toggleKeyboard()
@@ -617,6 +621,22 @@ class GameActivity : Activity() {
         Toast.makeText(this, note, Toast.LENGTH_SHORT).show()
     }
 
+    private fun openControlLayoutEditor() {
+        val overlay = overlayView
+        if (overlay != null) {
+            overlay.openLayoutEditor()
+            return
+        }
+        if (webViewEngine != null) {
+            setVirtualControlsVisible(true)
+            rootView?.post {
+                overlayView?.openLayoutEditor()
+            }
+        } else {
+            Toast.makeText(this, "Control editor opens in WebView sessions for now", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun persistRuntimeInputSettings() {
         val name = storageName ?: return
         runCatching {
@@ -633,6 +653,31 @@ class GameActivity : Activity() {
             )
         }.onFailure {
             Log.w(TAG, "Failed to persist runtime input settings", it)
+        }
+    }
+
+    private fun persistRuntimeControlProfile(buttons: List<ControlButtonProfile>) {
+        if (buttons.isEmpty()) return
+        runCatching {
+            val store = ControlProfileStore(this)
+            val existing = store.loadEffective(engineType, storageName, settings)
+            val editedLayout = buttons.first().layout
+            val mergedButtons = existing.buttons.filterNot { it.layout == editedLayout } + buttons
+            val name = storageName
+            val scope = if (name != null) ControlProfileScope.GAME else ControlProfileScope.ENGINE
+            store.save(
+                ControlProfile(
+                    id = if (name != null) "custom-$name" else "custom-${engineType.name.lowercase()}",
+                    name = "Custom Layout",
+                    scope = scope,
+                    engineType = engineType,
+                    storageName = name,
+                    buttons = mergedButtons,
+                ),
+            )
+            Toast.makeText(this, "Control layout saved", Toast.LENGTH_SHORT).show()
+        }.onFailure {
+            Log.w(TAG, "Failed to persist control profile", it)
         }
     }
 
