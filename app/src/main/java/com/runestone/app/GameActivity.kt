@@ -194,6 +194,12 @@ class GameActivity : Activity() {
             controllerRuntimeMenuShortcut = controllerShortcut(EXTRA_CONTROLLER_RUNTIME_MENU_SHORTCUT, defaults.controllerRuntimeMenuShortcut),
             controllerResumeShortcut = controllerShortcut(EXTRA_CONTROLLER_RESUME_SHORTCUT, defaults.controllerResumeShortcut),
         )
+        if (settings.layoutMode == LayoutMode.GAMEPAD) {
+            settings = settings.copy(
+                layoutMode = LayoutMode.LANDSCAPE,
+                hideVirtualGamepad = true,
+            )
+        }
 
         if (settings.keepScreenOn) {
             window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -203,8 +209,7 @@ class GameActivity : Activity() {
         // Force orientation based on layout mode
         if (
             engineType == EngineType.RENPY ||
-            settings.layoutMode == LayoutMode.LANDSCAPE ||
-            settings.layoutMode == LayoutMode.GAMEPAD
+            settings.layoutMode == LayoutMode.LANDSCAPE
         ) {
             requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         } else {
@@ -249,7 +254,6 @@ class GameActivity : Activity() {
     private fun launchWebViewGame(gameDir: File) {
         val isLandscape = settings.layoutMode == LayoutMode.LANDSCAPE
         val isPortraitConsole = settings.layoutMode == LayoutMode.PORTRAIT_CONSOLE
-        val isGamepad = settings.layoutMode == LayoutMode.GAMEPAD
 
         // Debug
         android.util.Log.d("Runestone", "launchWebViewGame: layoutMode=${settings.layoutMode.name} landscape=$isLandscape portraitConsole=$isPortraitConsole")

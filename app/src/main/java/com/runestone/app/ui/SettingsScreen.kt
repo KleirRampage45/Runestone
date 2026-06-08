@@ -738,19 +738,16 @@ Core runtimes: SDL2, mkxp-z, EasyRPG, Ruby, OpenAL, WebView
                 card.background = selectorCardBackground(cardMode == mode)
             }
         }
-        val portrait = layoutCard(LayoutMode.PORTRAIT_CONSOLE, selected, "Portrait Console", "Game above, controls below", select)
-        val landscape = layoutCard(LayoutMode.LANDSCAPE, selected, "Landscape", "Game fills wide screen", select)
-        val gamepad = layoutCard(LayoutMode.GAMEPAD, selected, "Gamepad", "Fullscreen, use controller", select)
+        val normalizedSelected = selected.normalized()
+        val portrait = layoutCard(LayoutMode.PORTRAIT_CONSOLE, normalizedSelected, "Portrait", "Game above, controls below", select)
+        val landscape = layoutCard(LayoutMode.LANDSCAPE, normalizedSelected, "Landscape", "Game fills wide screen", select)
         cards = listOf(
             LayoutMode.PORTRAIT_CONSOLE to portrait,
             LayoutMode.LANDSCAPE to landscape,
-            LayoutMode.GAMEPAD to gamepad,
         )
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             addView(twoColumn(portrait, landscape))
-            addView(spacer(10))
-            addView(gamepad)
         }
     }
 
