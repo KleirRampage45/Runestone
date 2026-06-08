@@ -475,19 +475,19 @@ class SettingsScreen(private val context: Context) {
         // ────────────────────────────────────────────────
         //  11. HELP & ABOUT
         // ────────────────────────────────────────────────
-        accordion(content, "HELP & ABOUT", "Usage guide and version info.") { panel ->
+        accordion(content, "HELP & ABOUT", "Quick guide, runtimes, and project info.") { panel ->
             panel.addView(TextView(context).apply {
                 text = """
-HOW TO USE RUNESTONE
+QUICK START
 
-1. ADD A GAME — Tap [+ ADD] in the dock. Select the game's root folder.
-2. PLAY — Tap a game card, then tap PLAY. Engine auto-detected.
-3. RESUME — If a game was running, a RESUME bar appears.
-4. OPTIONS — Select a game, tap OPTIONS for per-game settings.
-5. FILTER & SORT — Filter by engine type, sort by name/recent.
-6. SETTINGS — Tap the gear icon. Configure all engine options here.
-7. SAVES — Protected in saves/ folder. Survives reimports.
-8. IMPORT — Games stored as single copy. Reimport keeps saves.
+1. Import — Tap +, choose a game folder, then let Runestone detect the engine.
+2. Play — Tap a game card. Runestone launches the matching runtime.
+3. Store — Use the store tab for public catalogue entries and user-added sources.
+4. Files — Use the folder tab for per-game settings, saves, engine overrides, patches, and removal.
+5. Runtime menu — In game, use the small runtime controls or controller shortcut for Home, Keyboard, and settings.
+6. Saves — Saves are kept separately where supported, so reimports and repairs can preserve progress.
+7. Layouts — Portrait and landscape are game settings. Controller users can hide touch controls.
+8. Backups — Patch/mod flows back up touched files instead of duplicating the entire game.
                 """.trimIndent()
                 setTextColor(MUTED); textSize = 11f
                 setLineSpacing(2f, 1f)
@@ -496,10 +496,21 @@ HOW TO USE RUNESTONE
             panel.addView(spacer(6))
             panel.addView(TextView(context).apply {
                 text = """
-Runestone v0.7.0 — Glass UI
-GPLv2+ — github.com/KleirRampage45/Runestone
-Kotlin — 100% programmatic UI
-Built with SDL2, mkxp-z, Ruby, OpenAL, WebView.
+ABOUT RUNESTONE
+
+Runestone is a multi-engine Android launcher for imported games.
+Bring your own legally owned game files. The APK does not include commercial game data.
+
+Supported runtime families include:
+• RPG Maker XP/VX/VX Ace through mkxp-z
+• RPG Maker 2000/2003 through EasyRPG
+• MV/MZ and HTML engines through WebView
+• Ren'Py and other runtimes where available or experimental
+
+Open source: GPLv2+
+Repository: github.com/KleirRampage45/Runestone
+UI: Kotlin, programmatic glass interface
+Core runtimes: SDL2, mkxp-z, EasyRPG, Ruby, OpenAL, WebView
                 """.trimIndent()
                 setTextColor(Color.rgb(120, 110, 90)); textSize = 10f
                 setLineSpacing(1.5f, 1f)
