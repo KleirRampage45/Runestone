@@ -216,9 +216,13 @@ class TouchOverlayView(context: Context) : View(context) {
         editButtonRect.set(w - 76f * s, h - 76f * s, w - 8f * s, h - 8f * s)
         val quickW = minOf(w - 32f * s, 420f * s)
         quickSettingsRect.set(w * 0.5f - quickW / 2f, 14f * s, w * 0.5f + quickW / 2f, 62f * s)
-        doneRect.set(12f * s, 12f * s, 128f * s, 62f * s)
-        revertRect.set(140f * s, 12f * s, 268f * s, 62f * s)
-        presetRect.set(280f * s, 12f * s, 398f * s, 62f * s)
+        val editorButtonW = 150f * s
+        val editorButtonH = 58f * s
+        val editorGap = 10f * s
+        val editorTop = 12f * s
+        doneRect.set(12f * s, editorTop, 12f * s + editorButtonW, editorTop + editorButtonH)
+        revertRect.set(doneRect.right + editorGap, editorTop, doneRect.right + editorGap + editorButtonW, editorTop + editorButtonH)
+        presetRect.set(revertRect.right + editorGap, editorTop, revertRect.right + editorGap + editorButtonW, editorTop + editorButtonH)
 
         defaultLayout = captureCurrentLayout()
         if (!loadedLayout) {
@@ -804,11 +808,13 @@ class TouchOverlayView(context: Context) : View(context) {
 
     private fun drawEditorButton(canvas: Canvas, rect: RectF, label: String) {
         editorPaint.alpha = 210
-        canvas.drawRoundRect(rect, 8f, 8f, editorPaint)
+        val radius = rect.height() * 0.42f
+        canvas.drawRoundRect(rect, radius, radius, editorPaint)
         selectedStrokePaint.alpha = 180
-        canvas.drawRoundRect(rect, 8f, 8f, selectedStrokePaint)
+        canvas.drawRoundRect(rect, radius, radius, selectedStrokePaint)
         smallLabelPaint.alpha = 235
         smallLabelPaint.color = Color.rgb(232, 229, 220)
+        smallLabelPaint.textSize = 13f * scale
         canvas.drawText(label, rect.centerX(), rect.centerY() + 5f, smallLabelPaint)
     }
 

@@ -264,13 +264,6 @@ class GameActivity : Activity() {
     }
 
     private fun launchWebViewGame(gameDir: File) {
-        val isLandscape = settings.layoutMode == LayoutMode.LANDSCAPE
-        val isPortraitConsole = settings.layoutMode == LayoutMode.PORTRAIT_CONSOLE
-
-        // Debug
-        android.util.Log.d("Runestone", "launchWebViewGame: layoutMode=${settings.layoutMode.name} landscape=$isLandscape portraitConsole=$isPortraitConsole")
-
-        // ── Root: FrameLayout ──
         val root = FrameLayout(this).apply {
             id = View.generateViewId()
             setBackgroundColor(Color.BLACK)
@@ -279,10 +272,39 @@ class GameActivity : Activity() {
         installSafeAreaInsets(root)
         setContentView(root)
 
-        // ── Game area (fills all space for landscape/gamepad, split for portrait console) ──
+        val engine = WebViewEngine(this)
+        webViewEngine = engine
+        rebuildWebViewRuntimeLayout(engine)
+        engine.loadGame(gameDir.absolutePath, WebViewEngine.WebViewGameConfig(
+            title = gameDir.name,
+            addGamepad = false,
+            fakeGreenworks = true,
+            showFps = true,
+            forceAudioExt = settings.forceAudioExt,
+            smoothScaling = settings.smoothScaling,
+            integerScaling = settings.integerScaling,
+            textScale = settings.textScale,
+            webgl = settings.webgl,
+            desktopMode = settings.desktopMode,
+            allowExternalModules = settings.allowExternalModules,
+            dialogLogs = settings.dialogLogs,
+        ))
+        engine.isFocusable = true
+        engine.isFocusableInTouchMode = true
+    }
+
+    private fun rebuildWebViewRuntimeLayout(engine: WebViewEngine) {
+        val root = rootView ?: return
+        (engine.parent as? ViewGroup)?.removeView(engine)
+        root.removeAllViews()
+        overlayView = null
+        overlayContainer = null
+
+        val isLandscape = settings.layoutMode == LayoutMode.LANDSCAPE
+        val isPortraitConsole = settings.layoutMode == LayoutMode.PORTRAIT_CONSOLE
         val hideOverlay = settings.hideVirtualGamepad
+
         if (isPortraitConsole && !hideOverlay) {
-            // Portrait Console: game above (52%), controls below (48%)
             val splitLayout = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = FrameLayout.LayoutParams(
@@ -301,8 +323,6 @@ class GameActivity : Activity() {
             }
             splitLayout.addView(gameArea)
 
-            val engine = WebViewEngine(this)
-            webViewEngine = engine
             gameArea.addView(engine, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -320,24 +340,17 @@ class GameActivity : Activity() {
 
             setupTouchOverlay(controlPanel, engine)
         } else if (isPortraitConsole && hideOverlay) {
-            // Portrait, no virtual gamepad — game fills screen
-            val engine = WebViewEngine(this)
-            webViewEngine = engine
             root.addView(engine, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
             ))
         } else {
-            // Landscape or Gamepad: game fills the whole screen
-            val engine = WebViewEngine(this)
-            webViewEngine = engine
             root.addView(engine, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
             ))
 
             if (isLandscape && !hideOverlay) {
-                // Landscape: overlay controls on top of game
                 val overlayContainer = FrameLayout(this).apply {
                     setBackgroundColor(Color.TRANSPARENT)
                     layoutParams = FrameLayout.LayoutParams(
@@ -348,31 +361,12 @@ class GameActivity : Activity() {
                 root.addView(overlayContainer)
                 setupTouchOverlay(overlayContainer, engine)
             }
-            // Gamepad: no touch overlay, just the game
         }
 
-        // ── Load game with settings ──
-        webViewEngine?.let { eng ->
-            eng.loadGame(gameDir.absolutePath, WebViewEngine.WebViewGameConfig(
-                title = gameDir.name,
-                addGamepad = false, // Using native overlay
-                fakeGreenworks = true,
-                showFps = true,
-                forceAudioExt = settings.forceAudioExt,
-                smoothScaling = settings.smoothScaling,
-                integerScaling = settings.integerScaling,
-                textScale = settings.textScale,
-                webgl = settings.webgl,
-                desktopMode = settings.desktopMode,
-                allowExternalModules = settings.allowExternalModules,
-                dialogLogs = settings.dialogLogs,
-            ))
-            // Make WebView focusable for keyboard input
-            eng.isFocusable = true
-            eng.isFocusableInTouchMode = true
-        }
+        addWebRuntimeChrome(root)
+    }
 
-        // ── HOME & Keyboard buttons ──
+    private fun addWebRuntimeChrome(root: FrameLayout) {
         val homeBtn = TextView(this).apply {
             text = "HOME"
             textSize = 11f; gravity = Gravity.CENTER
@@ -508,7 +502,7 @@ class GameActivity : Activity() {
         }
 
         val overlay = FrameLayout(this).apply {
-            setBackgroundColor(Color.argb(170, 0, 0, 0))
+            setBackgroundColor(Color.argb(95, 0, 0, 0))
             isClickable = true
             isFocusable = true
             setOnClickListener { dismissRuntimeActions() }
@@ -523,45 +517,54 @@ class GameActivity : Activity() {
         }
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(16), dp(18), dp(16))
+            setPadding(dp(12), dp(10), dp(12), dp(12))
             background = GradientDrawable().apply {
-                setColor(Color.argb(235, 12, 11, 16))
+                setColor(Color.argb(218, 12, 11, 16))
                 setStroke(dp(1), Color.argb(80, 200, 180, 140))
-                cornerRadius = dp(18).toFloat()
+                cornerRadius = dp(14).toFloat()
             }
             isClickable = true
         }
-        panel.addView(TextView(this).apply {
-            text = "RUNTIME"
-            setTextColor(Color.rgb(220, 200, 160))
-            textSize = 12f
-            typeface = Typeface.DEFAULT_BOLD
+        val topRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(10))
-        })
-        panel.addView(runtimeActionButton("RESUME") { dismissRuntimeActions() })
-        panel.addView(runtimeActionButton(if (settings.hideVirtualGamepad) "CONTROLS ON" else "CONTROLS OFF") {
-            dismissRuntimeActions()
-            setVirtualControlsVisible(settings.hideVirtualGamepad)
-        })
-        panel.addView(runtimeActionButton(if (settings.layoutMode == LayoutMode.LANDSCAPE) "ROTATE PORTRAIT" else "ROTATE LANDSCAPE") {
-            dismissRuntimeActions()
-            rotateRuntimeLayout()
-        })
-        panel.addView(runtimeActionButton("EDIT CONTROLS") {
-            dismissRuntimeActions()
-            openControlLayoutEditor()
-        })
-        panel.addView(runtimeActionButton("KEYBOARD") {
-            dismissRuntimeActions()
-            toggleKeyboard()
-        })
-        panel.addView(runtimeActionButton("HOME") {
+        }
+        topRow.addView(runtimeActionButton("RESUME", com.runestone.app.R.drawable.ic_runtime_resume) { dismissRuntimeActions() },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(6) })
+        topRow.addView(runtimeActionButton("HOME", com.runestone.app.R.drawable.ic_runtime_home) {
             dismissRuntimeActions()
             goHomePaused()
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6) })
+        panel.addView(topRow)
+
+        panel.addView(runtimeToggleButton(!settings.hideVirtualGamepad) {
+            setVirtualControlsVisible(settings.hideVirtualGamepad)
+            dismissRuntimeActions()
         })
+
+        val actionRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        actionRow.addView(runtimeActionButton(
+            if (settings.layoutMode == LayoutMode.LANDSCAPE) "PORTRAIT" else "LANDSCAPE",
+            com.runestone.app.R.drawable.ic_runtime_rotate,
+        ) {
+            dismissRuntimeActions()
+            rotateRuntimeLayout()
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(6) })
+        actionRow.addView(runtimeActionButton("EDIT", com.runestone.app.R.drawable.ic_runtime_edit) {
+            dismissRuntimeActions()
+            openControlLayoutEditor()
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6); rightMargin = dp(6) })
+        actionRow.addView(runtimeActionButton("KEYBOARD", com.runestone.app.R.drawable.ic_runtime_keyboard) {
+            dismissRuntimeActions()
+            toggleKeyboard()
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6) })
+        panel.addView(actionRow)
+
         overlay.addView(panel, FrameLayout.LayoutParams(
-            (resources.displayMetrics.widthPixels * 0.72f).toInt().coerceAtLeast(dp(260)),
+            (resources.displayMetrics.widthPixels * 0.54f).toInt().coerceIn(dp(300), dp(560)),
             ViewGroup.LayoutParams.WRAP_CONTENT,
             Gravity.CENTER,
         ))
@@ -575,26 +578,14 @@ class GameActivity : Activity() {
 
     private fun setVirtualControlsVisible(visible: Boolean) {
         settings = settings.copy(hideVirtualGamepad = !visible)
-        if (!visible) {
-            overlayView?.let { overlay ->
-                (overlay.parent as? ViewGroup)?.removeView(overlay)
-            }
-            overlayView = null
+        webViewEngine?.let { engine ->
+            rebuildWebViewRuntimeLayout(engine)
             persistRuntimeInputSettings()
-            Toast.makeText(this, "Controls hidden", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, if (visible) "Controls shown" else "Controls hidden", Toast.LENGTH_SHORT).show()
             return
         }
-
-        val engine = webViewEngine
-        val container = overlayContainer ?: rootView
-        if (engine != null && container != null && overlayView == null) {
-            setupTouchOverlay(container, engine)
-            persistRuntimeInputSettings()
-            Toast.makeText(this, "Controls shown", Toast.LENGTH_SHORT).show()
-        } else {
-            persistRuntimeInputSettings()
-            Toast.makeText(this, "Controls will update next launch", Toast.LENGTH_SHORT).show()
-        }
+        persistRuntimeInputSettings()
+        Toast.makeText(this, "Controls will update next launch", Toast.LENGTH_SHORT).show()
     }
 
     private fun rotateRuntimeLayout() {
@@ -609,12 +600,12 @@ class GameActivity : Activity() {
         } else {
             android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
         }
-        overlayView?.controlsOnly = next == LayoutMode.PORTRAIT_CONSOLE
-        overlayView?.requestLayout()
-        overlayView?.invalidate()
+        webViewEngine?.let { engine ->
+            rootView?.post { rebuildWebViewRuntimeLayout(engine) }
+        }
         persistRuntimeInputSettings()
         val note = if (webViewEngine != null) {
-            "Rotated. Relaunch applies the full split/full layout."
+            "Layout rotated"
         } else {
             "Saved. Native runtime applies it next launch."
         }
@@ -867,28 +858,50 @@ class GameActivity : Activity() {
         runtimeActionsOverlay = null
     }
 
-    private fun runtimeActionButton(label: String, action: () -> Unit): TextView =
+    private fun runtimeActionButton(label: String, iconRes: Int, action: () -> Unit): TextView =
         TextView(this).apply {
             text = label
             setTextColor(Color.rgb(230, 220, 200))
-            textSize = 13f
+            textSize = 11f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             isClickable = true
             isFocusable = true
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setCompoundDrawablesWithIntrinsicBounds(0, iconRes, 0, 0)
+            compoundDrawablePadding = dp(4)
             background = GradientDrawable().apply {
                 setColor(Color.argb(70, 200, 170, 130))
                 setStroke(dp(1), Color.argb(85, 210, 185, 145))
                 cornerRadius = dp(10).toFloat()
             }
             setOnClickListener { action() }
-            val lp = LinearLayout.LayoutParams(
+        }
+
+    private fun runtimeToggleButton(enabled: Boolean, action: () -> Unit): TextView =
+        TextView(this).apply {
+            text = if (enabled) "CONTROLS ON" else "CONTROLS OFF"
+            setTextColor(if (enabled) Color.rgb(245, 228, 190) else Color.rgb(170, 160, 145))
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            setPadding(dp(12), dp(9), dp(12), dp(9))
+            setCompoundDrawablesWithIntrinsicBounds(0, com.runestone.app.R.drawable.ic_runtime_controls, 0, 0)
+            compoundDrawablePadding = dp(4)
+            background = GradientDrawable().apply {
+                setColor(if (enabled) Color.argb(105, 120, 95, 62) else Color.argb(55, 80, 75, 70))
+                setStroke(dp(1), if (enabled) Color.argb(120, 225, 195, 140) else Color.argb(70, 160, 150, 130))
+                cornerRadius = dp(11).toFloat()
+            }
+            setOnClickListener { action() }
+            layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
-            lp.setMargins(0, dp(4), 0, dp(4))
-            layoutParams = lp
+            ).apply {
+                setMargins(0, dp(10), 0, dp(10))
+            }
         }
 
     private fun sendKeyboardText(text: String) {
@@ -1142,6 +1155,7 @@ class GameActivity : Activity() {
             putExtra("com.runestone.app.extra.TOUCH_SCALE", settings.touchScale)
             putExtra("com.runestone.app.extra.HAPTICS_ENABLED", settings.hapticsEnabled)
             putExtra("com.runestone.app.extra.HAPTIC_INTENSITY", settings.hapticIntensity)
+            putExtra("com.runestone.app.extra.HIDE_VIRTUAL_GAMEPAD", settings.hideVirtualGamepad)
             putExtra("com.runestone.app.extra.DISPLAY_CUTOUT_MODE", settings.displayCutoutMode.name)
             putExtra("com.runestone.app.extra.CONTROLLER_HOME_SHORTCUT", settings.controllerHomeShortcut.name)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
