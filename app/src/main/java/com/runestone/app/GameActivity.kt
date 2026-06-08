@@ -1241,11 +1241,17 @@ class GameActivity : Activity() {
             val shouldQuit = engine.handleBack()
             if (shouldQuit) {
                 // Clear paused state — game is done
-                getSharedPreferences("runestone", MODE_PRIVATE).edit().remove("paused_game").apply()
+                getSharedPreferences("runestone", MODE_PRIVATE).edit()
+                    .remove("paused_game")
+                    .remove("game_minimized")
+                    .apply()
                 super.onBackPressed()
             }
         } else {
-            getSharedPreferences("runestone", MODE_PRIVATE).edit().remove("paused_game").apply()
+            getSharedPreferences("runestone", MODE_PRIVATE).edit()
+                .remove("paused_game")
+                .remove("game_minimized")
+                .apply()
             super.onBackPressed()
         }
     }

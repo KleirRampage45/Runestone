@@ -195,18 +195,10 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "onCreate")
         applyImmersiveMode()
-        // Check for paused game from SharedPreferences — load for display,
-        // then clear immediately since the game activity is dead after fresh onCreate
-        pausedGamePath = getSharedPreferences("runestone", MODE_PRIVATE)
-            .getString("paused_game", null)
-        if (getSharedPreferences("runestone", MODE_PRIVATE).getBoolean("game_minimized", false)) {
-            Log.i(TAG, "onCreate preserving minimized game path=$pausedGamePath")
-        } else {
-            finalizeActivePlaySession(reason = "fresh_on_create")
-            getSharedPreferences("runestone", MODE_PRIVATE).edit()
-                .remove("paused_game").apply()
-            pausedGamePath = null // game process died with the app
-        }
+        // A fresh MainActivity means there is no live GameActivity to resume.
+        // Resume state is only valid when GameActivity intentionally returns
+        // to an already-running hub through goHomePaused().
+        clearRuntimeResumeState(reason = "fresh_on_create")
         settingsStore = SettingsStore(this)
         workspaceManager = WorkspaceManager(this)
         installStateStore = InstallStateStore(workspaceManager)
@@ -308,7 +300,8 @@ class MainActivity : Activity() {
             .putString("active_game_path", gamePath)
             .putLong("active_game_started_at", now)
             .putLong("active_game_last_seen_at", now)
-            .putString("paused_game", gamePath)
+            .remove("paused_game")
+            .remove("game_minimized")
             .apply()
 
         getSharedPreferences("play_stats", MODE_PRIVATE).edit()
@@ -341,6 +334,18 @@ class MainActivity : Activity() {
             .remove("active_game_started_at")
             .remove("active_game_last_seen_at")
             .remove("paused_game")
+            .remove("game_minimized")
+            .remove("kill_game")
+            .apply()
+        pausedGamePath = null
+    }
+
+    private fun clearRuntimeResumeState(reason: String) {
+        finalizeActivePlaySession(reason)
+        getSharedPreferences("runestone", MODE_PRIVATE).edit()
+            .remove("paused_game")
+            .remove("game_minimized")
+            .remove("kill_game")
             .apply()
         pausedGamePath = null
     }
@@ -1501,7 +1506,9 @@ class MainActivity : Activity() {
     private fun playGame(storageName: String) {
         val game = games.find { it.storageName == storageName } ?: return
 
-        if (pausedGamePath != null && pausedGamePath == game.originalPath) {
+        val isMinimized = getSharedPreferences("runestone", MODE_PRIVATE)
+            .getBoolean("game_minimized", false)
+        if (isMinimized && pausedGamePath != null && pausedGamePath == game.originalPath) {
             Log.i(TAG, "RESUME: $storageName")
             pausedGamePath = null
             getSharedPreferences("runestone", MODE_PRIVATE).edit()
@@ -2159,7 +2166,15 @@ class MainActivity : Activity() {
         if (activeOverlay != null) return
         val runestonePrefs = getSharedPreferences("runestone", MODE_PRIVATE)
         if (runestonePrefs.getBoolean("game_minimized", false)) {
-            pausedGamePath = runestonePrefs.getString("paused_game", null)
+            val minimizedPath = runestonePrefs.getString("paused_game", null)
+            val activePath = runestonePrefs.getString("active_game_path", null)
+            if (minimizedPath != null && minimizedPath == activePath) {
+                pausedGamePath = minimizedPath
+                refreshGames()
+                showHome()
+                return
+            }
+            clearRuntimeResumeState(reason = "invalid_minimized_state")
             refreshGames()
             showHome()
             return
