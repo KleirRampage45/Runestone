@@ -1,5 +1,12 @@
 # Runestone Changelog
 
+## v0.7.5 (2026-06-09) — fix/runtime-menu-native-layout-polish
+### Fixed
+- **MkxpZEngine detection for unencrypted RGSS games** — added Game.ini + Data/ fallback so games like NTRPG2 v1.14 (no .rgss3a, no .rvproj2) are recognized as VX Ace. Previously only hit when the folder contained `Game.rgss3a` or `Game.rvproj2` archives.
+  - canRun() now also matches `Game.ini` + non-empty `Data/` directory
+  - detectRgssVersion() reads .rvdata2 / .rvdata / .rxdata inside Data/ to pick the right RGSS version label
+- **versionCode bumped 24→25** for install upgrade
+
 ## v0.6.13 (2026-06-01) — feat/asuka-gap-closure
 ### Added
 - **L1/R1 shoulder buttons** in TouchOverlayView — small pill buttons at top of control panel
