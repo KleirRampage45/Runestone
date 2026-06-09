@@ -1616,6 +1616,7 @@ class MainActivity : Activity() {
             val importer = SafGameImporter(
                 contentResolver = contentResolver,
                 workspaceManager = workspaceManager,
+                rtpManager = com.runestone.app.rtp.RtpManager(this@MainActivity),
                 onProgress = { msg ->
                     runOnUiThread {
                         Log.d(TAG, "import progress: $msg")
@@ -1644,7 +1645,12 @@ class MainActivity : Activity() {
                         saveManager.restoreToActive(result.storageName)
                         activeImportProgressView = null
                         refreshGames()
-                        dismissOverlay { showHome() }
+                        dismissOverlay {
+                            showHome()
+                            if (result.missingRtps.isNotEmpty()) {
+                                showRtpDownloadDialog(result.storageName, result.missingRtps)
+                            }
+                        }
                     }
                     is SafImportResult.Failure -> {
                         Log.e(TAG, "Import FAILED: ${result.reason}")
@@ -1659,6 +1665,132 @@ class MainActivity : Activity() {
                 }
             }
         }.start()
+    }
+
+    private fun showRtpDownloadDialog(storageName: String, missing: List<com.runestone.app.rtp.RtpPack>) {
+        if (missing.isEmpty()) return
+
+        val pack = missing.first()
+        val totalBytes = pack.approxBytes
+        val sizeMb = totalBytes / 1024 / 1024
+
+        val eulaMessage = buildString {
+            append("This game uses the ").append(pack.displayName).append(",\n")
+            append("which isn't installed on your device.\n\n")
+            append("Size: ~").append(sizeMb).append(" MB (downloaded once, shared with all games)\n\n")
+            append("By tapping DOWNLOAD, you confirm that you have read and agree to the ")
+                .append("Enterbrain/Kadokawa End User License Agreement for the ")
+                .append("RPG Maker Runtime Packages.\n\n")
+            append("Source: ").append(pack.sourceAttribution).append("\n")
+            append("URL: ").append(pack.sourceUrl)
+        }
+
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("Runtime Package Required")
+            .setMessage(eulaMessage)
+            .setPositiveButton("DOWNLOAD") { _, _ ->
+                startRtpDownload(storageName, pack)
+            }
+            .setNegativeButton("LATER") { d, _ ->
+                d.dismiss()
+                showHome()
+            }
+            .setCancelable(true)
+            .create()
+        dialog.show()
+    }
+
+    private fun startRtpDownload(storageName: String, pack: com.runestone.app.rtp.RtpPack) {
+        Log.i(TAG, "Starting RTP download: ${pack.id} for game=$storageName")
+        val installer = com.runestone.app.rtp.RtpInstaller(this@MainActivity)
+        showRtpDownloadProgressOverlay(pack)
+        installer.install(pack, object : com.runestone.app.rtp.RtpInstaller.Listener {
+            override fun onStatus(status: com.runestone.app.rtp.RtpInstaller.Status) {
+                runOnUiThread { handleRtpStatus(pack, status) }
+            }
+        })
+    }
+
+    private fun handleRtpStatus(pack: com.runestone.app.rtp.RtpPack, status: com.runestone.app.rtp.RtpInstaller.Status) {
+        when (status) {
+            is com.runestone.app.rtp.RtpInstaller.Status.Downloading -> {
+                val pct = if (status.total > 0) (status.bytes.toFloat() / status.total * 100).toInt() else 0
+                rtpOverlayStatusText?.text = "Downloading ${pack.displayName}\n${pct}%  (${status.bytes / 1024 / 1024} MB / ${status.total / 1024 / 1024} MB)"
+                rtpOverlayProgressBar?.progress = pct
+            }
+            is com.runestone.app.rtp.RtpInstaller.Status.Extracting -> {
+                rtpOverlayStatusText?.text = "Extracting ${pack.displayName}..."
+                rtpOverlayProgressBar?.progress = 100
+            }
+            is com.runestone.app.rtp.RtpInstaller.Status.Installed -> {
+                rtpOverlayStatusText?.text = "${pack.displayName} ready."
+                rtpOverlayProgressBar?.progress = 100
+                android.widget.Toast.makeText(
+                    this,
+                    "RTP installed. You can now launch the game.",
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+                dismissRtpDownloadOverlay()
+            }
+            is com.runestone.app.rtp.RtpInstaller.Status.Error -> {
+                rtpOverlayStatusText?.text = "RTP download failed:\n${status.message}"
+                rtpOverlayProgressBar?.progress = 0
+                android.widget.Toast.makeText(
+                    this,
+                    "RTP download failed: ${status.message}",
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            }
+            else -> Unit
+        }
+    }
+
+    private var rtpOverlayStatusText: android.widget.TextView? = null
+    private var rtpOverlayProgressBar: android.widget.ProgressBar? = null
+
+    private fun showRtpDownloadProgressOverlay(pack: com.runestone.app.rtp.RtpPack) {
+        // Tear down any existing overlay
+        dismissRtpDownloadOverlay()
+
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(40, 40, 40, 40)
+        }
+        val title = android.widget.TextView(this).apply {
+            text = "Runtime Package"
+            textSize = 18f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }
+        val status = android.widget.TextView(this).apply {
+            text = "Downloading ${pack.displayName}..."
+            setPadding(0, 16, 0, 16)
+        }
+        val progress = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            isIndeterminate = false
+            max = 100
+        }
+        container.addView(title)
+        container.addView(status)
+        container.addView(progress)
+        rtpOverlayStatusText = status
+        rtpOverlayProgressBar = progress
+
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setView(container)
+            .setCancelable(false)
+            .setNegativeButton("HIDE") { d, _ -> d.dismiss() }
+            .create()
+        dialog.show()
+        activeRtpDialog = dialog
+    }
+
+    private var activeRtpDialog: android.app.AlertDialog? = null
+
+    private fun dismissRtpDownloadOverlay() {
+        activeRtpDialog?.dismiss()
+        activeRtpDialog = null
+        rtpOverlayStatusText = null
+        rtpOverlayProgressBar = null
     }
 
     private fun confirmRemoveGameData(storageName: String) {

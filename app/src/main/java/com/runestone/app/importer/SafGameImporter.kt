@@ -21,13 +21,19 @@ import org.json.JSONObject
 import java.io.File
 
 sealed class SafImportResult {
-    data class Success(val storageName: String, val engineType: EngineType, val fileCount: Int) : SafImportResult()
+    data class Success(
+        val storageName: String,
+        val engineType: EngineType,
+        val fileCount: Int,
+        val missingRtps: List<com.runestone.app.rtp.RtpPack> = emptyList(),
+    ) : SafImportResult()
     data class Failure(val reason: String) : SafImportResult()
 }
 
 class SafGameImporter(
     private val contentResolver: ContentResolver,
     private val workspaceManager: WorkspaceManager,
+    private val rtpManager: com.runestone.app.rtp.RtpManager? = null,
     private val onProgress: (String) -> Unit = {},
 ) {
     companion object {
@@ -95,7 +101,10 @@ class SafGameImporter(
             onProgress("Import complete: $fileCount files")
             Log.d(TAG, "Import complete: $fileCount files, engine=$engineType")
 
-            SafImportResult.Success(gameDir.name, engineType, fileCount)
+            // Check if the game needs any RTPs that aren't installed yet
+            val missingRtps = detectMissingRtps(original, engineType)
+
+            SafImportResult.Success(gameDir.name, engineType, fileCount, missingRtps)
         }.getOrElse { error ->
             incoming.deleteRecursively()
             Log.e(TAG, "Import failed", error)
@@ -173,6 +182,31 @@ class SafGameImporter(
         val documentId = runCatching { DocumentsContract.getDocumentId(uri) }
             .getOrElse { DocumentsContract.getTreeDocumentId(uri) }
         return DocumentsContract.buildDocumentUriUsingTree(uri, documentId)
+    }
+
+    /**
+     * Returns the list of [com.runestone.app.rtp.RtpPack]s referenced in
+     * the game's Game.ini `RTP=` lines that are not yet installed. The
+     * list is empty when the game either doesn't need an RTP, or every
+     * RTP it needs is already on disk.
+     */
+    private fun detectMissingRtps(gameDir: File, engineType: EngineType): List<com.runestone.app.rtp.RtpPack> {
+        if (rtpManager == null) return emptyList()
+        // Only the RGSS engines and MV/MZ use the official RTP convention.
+        val supportsRtp = engineType in setOf(
+            EngineType.RGSS_XP, EngineType.RGSS_VX, EngineType.RGSS_VX_ACE,
+            EngineType.MV, EngineType.MZ,
+        )
+        if (!supportsRtp) return emptyList()
+
+        val ini = File(gameDir, "Game.ini")
+        if (!ini.isFile) return emptyList()
+
+        val required = runCatching { ini.readText() }
+            .map { rtpManager.requiredPacksForIni(it) }
+            .getOrDefault(emptyList())
+
+        return required.filterNot { rtpManager.isInstalled(it) }
     }
 
     private fun sanitizeName(name: String): String {

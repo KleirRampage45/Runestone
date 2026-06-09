@@ -1,5 +1,16 @@
 # Runestone Changelog
 
+## v0.7.6 (2026-06-09) — fix/runtime-menu-native-layout-polish
+### Added
+- **Auto RTP downloader** — VX Ace Runtime Package (~195 MB) installs in one tap when an imported game references `RTP=RPGVXAce` in its Game.ini. Single install is shared across every game that needs it.
+  - EULA dialog with attribution to the Internet Archive mirror of the official Enterbrain/Kadokawa RPG Maker RTP collection
+  - Progress dialog with bytes downloaded / total and percentage
+  - `RtpManager` / `RtpDownloader` / `RtpExtractor` / `RtpInstaller` modules under `com.runestone.app.rtp`
+  - `RtpPack` enum extensible to other engines (XP / VX / 2000 / 2003 / MV / MZ) when ZIP sources are added
+- **Per-game mkxp.json writer** — `RuntimeConfigWriter.writeMkxpConfig()` writes a fresh `mkxp.json` to SDL_GetPrefPath on every launch with the `RTP` array populated from installed packs. Without this, games that don't bundle the official RTP crash on first map load with `no such file or directory` because mkxp-z falls back to `/sdcard/mkxp-z`.
+- **Import-time RTP check** — `SafGameImporter.detectMissingRtps()` reads `RTP=` from the imported game's Game.ini, returns the list of packs not yet on disk, surfaced via the EULA dialog right after import completes.
+- **Dead code removed** — `MkxpRuntime` and `NativeBridge` were unused (the actual launch path goes through `GameActivity.launchRgssGame` which fires the intent directly).
+
 ## v0.7.5 (2026-06-09) — fix/runtime-menu-native-layout-polish
 ### Fixed
 - **MkxpZEngine detection for unencrypted RGSS games** — added Game.ini + Data/ fallback so games like NTRPG2 v1.14 (no .rgss3a, no .rvproj2) are recognized as VX Ace. Previously only hit when the folder contained `Game.rgss3a` or `Game.rvproj2` archives.

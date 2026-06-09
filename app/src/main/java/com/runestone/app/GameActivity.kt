@@ -1109,6 +1109,21 @@ class GameActivity : Activity() {
 
     private fun launchRgssGame(gameDir: File) {
         Log.i(TAG, "launchRgssGame: $gameDir (engine=$engineType)")
+
+        // Write a per-game mkxp.json that lists all installed RTPs as
+        // additional search paths. mkxp-z reads this from its customDataPath
+        // (= SDL_GetPrefPath on Android) at startup. Without this, a game
+        // that doesn't bundle the official RTP tilesets/sounds crashes with
+        // 'no such file or directory' the moment it tries to load a map.
+        try {
+            val rtpManager = com.runestone.app.rtp.RtpManager(this)
+            val gameTitle = readGameTitle(gameDir) ?: gameDir.name
+            com.runestone.app.runtime.RuntimeConfigWriter()
+                .writeMkxpConfig(this, gameDir, gameTitle, rtpManager)
+        } catch (t: Throwable) {
+            Log.w(TAG, "Failed to write mkxp.json; launching without RTP support", t)
+        }
+
         val intent = Intent().apply {
             setClassName(this@GameActivity, "com.hatkid.mkxpz.MainActivity")
             putExtra("com.runestone.app.extra.GAME_PATH", gameDir.absolutePath)
@@ -1125,6 +1140,19 @@ class GameActivity : Activity() {
         }
         startActivity(intent)
         finish()
+    }
+
+    /** Reads the game's title from Game.ini's `[Game] Title=` line. */
+    private fun readGameTitle(gameDir: File): String? {
+        val ini = File(gameDir, "Game.ini")
+        if (!ini.isFile) return null
+        return runCatching {
+            ini.readLines()
+                .firstOrNull { it.trim().startsWith("Title=", ignoreCase = true) }
+                ?.substringAfter("Title=")
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        }.getOrNull()
     }
 
     // ── EasyRPG (GPLv3 — bundled native, no download needed) ─────

@@ -10,22 +10,61 @@
 
 package com.runestone.app.runtime
 
-import com.runestone.app.data.RunnerSettings
+import android.content.Context
+import android.util.Log
+import com.runestone.app.rtp.RtpManager
+import com.runestone.app.rtp.RtpPack
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 
+/**
+ * Writes the per-game mkxp.json config that the native mkxp-z interpreter
+ * reads from `customDataPath` (= SDL_GetPrefPath on Android). The
+ * interpreter uses the `RTP` array to register additional search paths
+ * beyond the game folder, which is how Runestone shares a single
+ * installed RTP across every game that needs it.
+ *
+ * Called before launching a native mkxp-z game from
+ * [com.runestone.app.GameActivity.launchRgssGame].
+ */
 class RuntimeConfigWriter {
-    fun writeConfig(storageName: String, activeGamePath: File, settings: RunnerSettings): File {
-        val config = File(activeGamePath.parentFile, "runtime-$storageName.conf")
-        config.writeText(
-            """
-            storageName=$storageName
-            gamePath=${activeGamePath.absolutePath}
-            layout=${settings.layoutMode.name}
-            textScale=${settings.textScale}
-            integerScaling=${settings.integerScaling}
-            smoothScaling=${settings.smoothScaling}
-            """.trimIndent(),
-        )
+
+    companion object {
+        private const val TAG = "RuntimeConfigWriter"
+    }
+
+    /**
+     * Writes a fresh mkxp.json for the game at [gameDir] with the title
+     * found in its Game.ini ([gameTitle] is used as a fallback if Game.ini
+     * is missing or unreadable).
+     */
+    fun writeMkxpConfig(
+        context: Context,
+        gameDir: File,
+        gameTitle: String,
+        rtpManager: RtpManager,
+    ): File {
+        val mkxpDir = File(
+            context.getExternalFilesDir(null) ?: context.filesDir,
+            "./$gameTitle",
+        ).apply { mkdirs() }
+        val config = File(mkxpDir, "mkxp.json")
+
+        val installed = rtpManager.installedIds().toList()
+        val rtps = JSONArray()
+        for (id in installed) {
+            val pack = RtpPack.forId(id) ?: continue
+            rtps.put(rtpManager.packDir(pack).absolutePath)
+        }
+
+        val json = JSONObject().apply {
+            put("RTP", rtps)
+            put("gameFolder", gameDir.absolutePath)
+        }
+
+        config.writeText(json.toString(2))
+        Log.i(TAG, "Wrote mkxp.json to ${config.absolutePath} (RTP entries: ${installed.size})")
         return config
     }
 }
