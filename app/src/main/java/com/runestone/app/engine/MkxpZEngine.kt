@@ -58,9 +58,22 @@ class MkxpZEngine : GameEngine {
         val files = gameFolder.listFiles() ?: return false
         val names = files.map { it.name }.toSet()
 
-        // Check for project files or RGSS archives
-        return PROJECT_FILES.any { names.contains(it) } ||
-               RGSS_ARCHIVES.any { names.contains(it) }
+        // Check for project files or RGSS archives (encrypted games)
+        if (PROJECT_FILES.any { names.contains(it) } ||
+            RGSS_ARCHIVES.any { names.contains(it) }) {
+            return true
+        }
+
+        // Unencrypted RGSS games: Game.ini + Data/ directory
+        // Many indie/translated VX Ace/VX/XP games ship without project files
+        if (names.contains("Game.ini") && names.contains("Data")) {
+            val dataDir = File(gameFolder, "Data")
+            if (dataDir.isDirectory && dataDir.listFiles()?.isNotEmpty() == true) {
+                return true
+            }
+        }
+
+        return false
     }
 
     override fun detect(gameFolder: File): EngineMetadata? {
@@ -143,6 +156,16 @@ class MkxpZEngine : GameEngine {
             names.contains("Game.rvproj2") || names.contains("Game.rgss3a") -> "RGSS3 (VX Ace)"
             names.contains("Game.rvproj") -> "RGSS2 (VX)"
             names.contains("Game.rxproj") -> "RGSS1 (XP)"
+            names.contains("Game.ini") && names.contains("Data") -> {
+                val dataDir = File(gameFolder, "Data")
+                val dataFiles = dataDir.listFiles() ?: emptyArray()
+                when {
+                    dataFiles.any { it.name.endsWith(".rvdata2") } -> "RGSS3 (VX Ace)"
+                    dataFiles.any { it.name.endsWith(".rvdata") } -> "RGSS2 (VX)"
+                    dataFiles.any { it.name.endsWith(".rxdata") } -> "RGSS1 (XP)"
+                    else -> "RGSS (Unknown version)"
+                }
+            }
             else -> "RGSS (Unknown version)"
         }
     }
