@@ -937,8 +937,28 @@ class GameActivity : Activity() {
         else -> KeyEvent.KEYCODE_UNKNOWN
     }
 
+    private lateinit var rtpInstaller: com.runestone.app.rtp.RtpInstaller
+    private lateinit var rtpManager: com.runestone.app.rtp.RtpManager
+
+    private fun initRtp() {
+        if (!::rtpInstaller.isInitialized) {
+            rtpInstaller = com.runestone.app.rtp.RtpInstaller(this)
+            rtpManager = com.runestone.app.rtp.RtpManager(this)
+        }
+    }
+
     private fun launchRgssGame(gameDir: File) {
         Log.i(TAG, "launchRgssGame: $gameDir (engine=$engineType)")
+
+        // Write mkxp.json with RTP detection before launching
+        initRtp()
+        val iniFile = File(gameDir, "Game.ini")
+        val rtpPack = rtpManager.detectRequiredPack(iniFile)
+        val rtpPacks = if (rtpPack != null && rtpInstaller.isInstalled(rtpPack))
+            listOf(rtpPack) else emptyList()
+        val configWriter = com.runestone.app.runtime.RuntimeConfigWriter(rtpInstaller)
+        configWriter.writeConfig(gameDir.name, gameDir, this.settings, rtpPacks)
+
         val intent = Intent().apply {
             setClassName(this@GameActivity, "com.hatkid.mkxpz.MainActivity")
             putExtra("com.runestone.app.extra.GAME_PATH", gameDir.absolutePath)

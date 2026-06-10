@@ -50,6 +50,9 @@ import com.runestone.app.ui.SortMode
 import com.runestone.app.importer.SafGameImporter
 import com.runestone.app.importer.SafImportResult
 import com.runestone.app.importer.SafStorageBrowser
+import com.runestone.app.rtp.RtpInstaller
+import com.runestone.app.rtp.RtpManager
+import com.runestone.app.rtp.RtpPack
 import com.runestone.app.ui.AvailableGamesScreen
 import com.runestone.app.ui.GameFolderBrowserScreen
 import com.runestone.app.ui.GameCardInfo
@@ -1637,6 +1640,25 @@ class MainActivity : Activity() {
                         saveManager.restoreToActive(result.storageName)
                         activeImportProgressView = null
                         refreshGames()
+
+                        // Check if this game needs RTP
+                        val gameDir = workspaceManager.gameDir(result.storageName)
+                        val originalDir = java.io.File(gameDir, "original")
+                        val iniFile = java.io.File(originalDir, "Game.ini")
+                        if ((result.engineType == EngineType.RGSS_VX_ACE ||
+                             result.engineType == EngineType.RGSS_VX ||
+                             result.engineType == EngineType.RGSS_XP) && iniFile.exists()) {
+                            val rtpManager = RtpManager(this@MainActivity)
+                            val rtpPack = rtpManager.detectRequiredPack(iniFile)
+                            if (rtpPack != null) {
+                                val rtpInstaller = RtpInstaller(this@MainActivity)
+                                if (!rtpInstaller.isInstalled(rtpPack)) {
+                                    startRtpInstallForImport(result.storageName, rtpPack)
+                                    return@runOnUiThread
+                                }
+                            }
+                        }
+
                         dismissOverlay { showHome() }
                     }
                     is SafImportResult.Failure -> {
@@ -1651,6 +1673,83 @@ class MainActivity : Activity() {
                     }
                 }
             }
+        }.start()
+    }
+
+    private fun startRtpInstallForImport(storageName: String, rtpPack: RtpPack) {
+        val rtpInstaller = RtpInstaller(this)
+        Log.i(TAG, "RTP needed for $storageName: ${rtpPack.label}")
+
+        // If EULA already accepted, start install directly
+        if (rtpInstaller.hasAcceptedEula(rtpPack)) {
+            doRtpInstall(storageName, rtpPack)
+            return
+        }
+
+        // Show EULA dialog first
+        rtpInstaller.showEulaDialog(rtpPack,
+            onAccepted = { doRtpInstall(storageName, rtpPack) },
+            onRejected = { dismissOverlay { showHome() } }
+        )
+    }
+
+    private fun doRtpInstall(storageName: String, rtpPack: RtpPack) {
+        Log.i(TAG, "Starting RTP install for $storageName: ${rtpPack.label}")
+        val rtpInstaller = RtpInstaller(this)
+
+        // Show progress overlay
+        showImportProgress("Downloading ${rtpPack.label}...")
+
+        Thread {
+            rtpInstaller.install(rtpPack, object : RtpInstaller.InstallCallback {
+                override fun onProgress(progress: RtpInstaller.InstallProgress) {
+                    runOnUiThread {
+                        val pv = activeImportProgressView
+                        if (pv != null) {
+                            when (progress.state) {
+                                RtpInstaller.InstallState.DOWNLOADING -> {
+                                    pv.phaseView.text = "Downloading ${rtpPack.label}..."
+                                    val pct = if (progress.totalBytes > 0)
+                                        "${progress.bytesDownloaded * 100 / progress.totalBytes}%"
+                                    else "${progress.bytesDownloaded / 1024} KB"
+                                    pv.fileView.text = pct
+                                }
+                                RtpInstaller.InstallState.EXTRACTING -> {
+                                    pv.phaseView.text = "Extracting ${rtpPack.label}..."
+                                    pv.fileView.text = "${progress.filesExtracted} files"
+                                }
+                                RtpInstaller.InstallState.COMPLETED -> {
+                                    pv.phaseView.text = "RTP ready!"
+                                    pv.fileView.text = ""
+                                }
+                                else -> {}
+                            }
+                        }
+                    }
+                }
+
+                override fun onComplete() {
+                    runOnUiThread {
+                        activeImportProgressView = null
+                        android.widget.Toast.makeText(
+                            this@MainActivity,
+                            "${rtpPack.label} installed successfully",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                        dismissOverlay { showHome() }
+                    }
+                }
+
+                override fun onError(message: String) {
+                    runOnUiThread {
+                        android.app.AlertDialog.Builder(this@MainActivity)
+                            .setTitle("RTP Install Failed")
+                            .setMessage(message)
+                            .setPositiveButton("OK") { _, _ -> dismissOverlay { showHome() } }
+                            .show()
+                    }
+                }
+            })
         }.start()
     }
 

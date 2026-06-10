@@ -13,6 +13,10 @@ package com.runestone.app.engine
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.runestone.app.runtime.RuntimeConfigWriter
+import com.runestone.app.rtp.RtpInstaller
+import com.runestone.app.rtp.RtpManager
+import com.runestone.app.data.RunnerSettings
 import java.io.File
 
 /**
@@ -92,6 +96,20 @@ class MkxpZEngine : GameEngine {
 
     override fun launch(context: Context, gameFolder: File, config: GameConfig) {
         Log.i(TAG, "Launching ${gameFolder.name} via mkxp-z")
+
+        // Write mkxp.json with RTP detection before launching
+        try {
+            val rtpInstaller = RtpInstaller(context)
+            val rtpManager = RtpManager(context)
+            val iniFile = File(gameFolder, "Game.ini")
+            val rtpPack = rtpManager.detectRequiredPack(iniFile)
+            val rtpPacks = if (rtpPack != null && rtpInstaller.isInstalled(rtpPack))
+                listOf(rtpPack) else emptyList()
+            val cfgWriter = RuntimeConfigWriter(rtpInstaller)
+            cfgWriter.writeConfig(gameFolder.name, gameFolder, RunnerSettings(), rtpPacks)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to write mkxp.json (non-fatal): ${e.message}")
+        }
 
         try {
             // Launch mkxp-z native activity
