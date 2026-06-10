@@ -13,10 +13,21 @@
   - Bundled innoextract v1.9 + shared libraries (Boost, liblzma, libiconv) compiled for ARM64 Android API 24+
   - EULA text updated to reference the official source
 ### Added
-- **InnoextractHelper.kt** — manages the bundled ARM64 innoextract binary (copy from assets, set permissions, execute with ProcessBuilder)
+- **InnoextractHelper.kt** — manages the bundled innoextract JNI library
 - **RtpInstaller.kt** — updated install pipeline: download official ZIP → unzip → innoextract → move assets → verify marker
 - **innoextract assets** — `assets/innoextract/innoextract` binary + `assets/innoextract/lib/*.so` libraries
 - versionCode 27
+
+## v0.8.2.2 (2026-06-10) — fix/rtp-innoextract
+### Changed
+- **innoextract now runs as a JNI library**, not an external binary —
+  compiled from source as `libinnoextract_jni.so` with Boost, liblzma,
+  and libiconv dependencies. Uses `System.loadLibrary()` → `dlopen()`
+  instead of `execve()`, works on ALL Android devices regardless of
+  OEM noexec restrictions (OPPO, Huawei, etc.).
+- Removed `assets/innoextract/` (old binary + shared libs approach)
+- Added `jniLibs/arm64-v8a/libinnoextract_jni.so` + deps
+- versionCode 30
 
 ## v0.8.0 (2026-06-10) — fix/help-about-copy
 ### Fixed

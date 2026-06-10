@@ -71,7 +71,7 @@ By continuing, you confirm:
 
     private val manager = RtpManager(context)
     private val downloader = RtpDownloader()
-    private val innoextract = InnoextractHelper(context)
+    private val innoextract = InnoextractHelper()
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     /** Whether the user has accepted the EULA for a given pack. */
