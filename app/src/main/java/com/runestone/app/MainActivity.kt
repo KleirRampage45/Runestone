@@ -1255,6 +1255,16 @@ class MainActivity : Activity() {
                 onClearRuntimeCache = {
                     clearRuntimeCache()
                 },
+                onInstallRtp = {
+                    dismissOverlay()
+                    val vxace = com.runestone.app.rtp.RtpPack.VX_ACE
+                    val rtpManager = com.runestone.app.rtp.RtpManager(this)
+                    if (!rtpManager.isInstalled(vxace)) {
+                        startRtpInstallForImport(vxace)
+                    } else {
+                        android.widget.Toast.makeText(this, "VX Ace RTP is already installed.", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                },
             ),
         )
     }
@@ -1691,6 +1701,79 @@ class MainActivity : Activity() {
             onAccepted = { doRtpInstall(storageName, rtpPack) },
             onRejected = { dismissOverlay { showHome() } }
         )
+    }
+
+    private fun startRtpInstallForImport(rtpPack: RtpPack) {
+        // Manual RTP install from settings — no game context
+        val rtpInstaller = RtpInstaller(this)
+
+        if (rtpInstaller.hasAcceptedEula(rtpPack)) {
+            doRtpInstall(rtpPack)
+            return
+        }
+
+        rtpInstaller.showEulaDialog(rtpPack,
+            onAccepted = { doRtpInstall(rtpPack) },
+            onRejected = {}
+        )
+    }
+
+    private fun doRtpInstall(rtpPack: RtpPack) {
+        Log.i(TAG, "Starting RTP install (manual): ${rtpPack.label}")
+        val rtpInstaller = RtpInstaller(this)
+        showImportProgress("Downloading ${rtpPack.label}...")
+        Thread {
+            rtpInstaller.install(rtpPack, object : RtpInstaller.InstallCallback {
+                override fun onProgress(progress: RtpInstaller.InstallProgress) {
+                    runOnUiThread {
+                        val pv = activeImportProgressView
+                        if (pv != null) {
+                            when (progress.state) {
+                                RtpInstaller.InstallState.DOWNLOADING -> {
+                                    pv.phaseView.text = "Downloading ${rtpPack.label}..."
+                                    val pct = if (progress.totalBytes > 0)
+                                        "${progress.bytesDownloaded * 100 / progress.totalBytes}%"
+                                    else "${progress.bytesDownloaded / 1024} KB"
+                                    pv.fileView.text = pct
+                                }
+                                RtpInstaller.InstallState.EXTRACTING -> {
+                                    pv.phaseView.text = "Extracting ${rtpPack.label}..."
+                                    pv.fileView.text = "${progress.filesExtracted} files"
+                                }
+                                RtpInstaller.InstallState.COMPLETED -> {
+                                    pv.phaseView.text = "RTP ready!"
+                                    pv.fileView.text = ""
+                                }
+                                else -> {}
+                            }
+                        }
+                    }
+                }
+
+                override fun onComplete() {
+                    runOnUiThread {
+                        activeImportProgressView = null
+                        android.widget.Toast.makeText(
+                            this@MainActivity,
+                            "${rtpPack.label} installed successfully",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                        dismissOverlay { showHome() }
+                    }
+                }
+
+                override fun onError(message: String) {
+                    runOnUiThread {
+                        activeImportProgressView = null
+                        android.app.AlertDialog.Builder(this@MainActivity)
+                            .setTitle("RTP Install Failed")
+                            .setMessage(message)
+                            .setPositiveButton("OK") { _, _ -> showHome() }
+                            .show()
+                    }
+                }
+            })
+        }.start()
     }
 
     private fun doRtpInstall(storageName: String, rtpPack: RtpPack) {

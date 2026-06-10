@@ -39,6 +39,7 @@ class SettingsScreen(private val context: Context) {
         onBack: () -> Unit,
         onResetDefaults: () -> Unit,
         onClearRuntimeCache: () -> Unit = {},
+        onInstallRtp: () -> Unit = {},
     ): LinearLayout {
         var current = settings.copy()
 
@@ -456,7 +457,68 @@ class SettingsScreen(private val context: Context) {
         }
 
         // ────────────────────────────────────────────────
-        //  10. ESSENTIALS
+        //  10. RUNTIME PACKAGES (RTP)
+        // ────────────────────────────────────────────────
+        accordion(content, "RUNTIME PACKAGES (RTP)", "Install or manage game engine runtime packages like RPG Maker VX Ace RTP.") { panel ->
+            panel.addView(TextView(context).apply {
+                text = "Some games require RTP (Runtime Package) files for standard assets like tilesets, characters, and music.\n" +
+                       "Runestone can download and install these automatically when you import a game that needs them."
+                setTextColor(MUTED); textSize = 11f
+                setLineSpacing(1.5f, 1f)
+                setPadding(dp(4), dp(4), dp(4), dp(4))
+            })
+            panel.addView(spacer(8))
+
+            // Install VX Ace RTP button
+            panel.addView(
+                TextView(context).apply {
+                    text = "INSTALL VX ACE RTP (~195 MB)"
+                    setTextColor(Color.rgb(160, 200, 240))
+                    textSize = 13f
+                    typeface = Typeface.DEFAULT_BOLD
+                    gravity = Gravity.CENTER
+                    setPadding(dp(16), dp(11), dp(16), dp(11))
+                    background = GradientDrawable().apply {
+                        setColor(Color.argb(50, 80, 140, 200))
+                        cornerRadius = dp(12).toFloat()
+                        setStroke(dp(1), Color.argb(70, 100, 160, 220))
+                    }
+                    makeLiquid(this)
+                    setOnClickListener {
+                        animTap(this)
+                        onInstallRtp()
+                    }
+                },
+            )
+
+            panel.addView(spacerAfter(6))
+
+            // Browse for existing RTP
+            panel.addView(
+                TextView(context).apply {
+                    text = "BROWSE FOR EXISTING RTP"
+                    setTextColor(Color.rgb(160, 200, 160))
+                    textSize = 12f
+                    typeface = Typeface.DEFAULT_BOLD
+                    gravity = Gravity.CENTER
+                    setPadding(dp(16), dp(9), dp(16), dp(9))
+                    background = GradientDrawable().apply {
+                        setColor(Color.argb(40, 80, 180, 80))
+                        cornerRadius = dp(10).toFloat()
+                        setStroke(dp(1), Color.argb(60, 100, 200, 100))
+                    }
+                    makeLiquid(this)
+                    setOnClickListener {
+                        animTap(this)
+                        // Starts SAF picker; handled in MainActivity
+                        onInstallRtp()
+                    }
+                },
+            )
+        }
+
+        // ────────────────────────────────────────────────
+        //  11. ESSENTIALS
         // ────────────────────────────────────────────────
         stubAccordion(content, "ESSENTIALS", "Compatibility toggles (not yet implemented).") { panel ->
             panel.addView(switchPanel("Keep Downloaded ZIPs", "Keep store ZIP files after install instead of deleting them.", current.preserveFiles) {
@@ -473,7 +535,7 @@ class SettingsScreen(private val context: Context) {
         }
 
         // ────────────────────────────────────────────────
-        //  11. HELP & ABOUT
+        //  12. HELP & ABOUT
         // ────────────────────────────────────────────────
         accordion(content, "HELP & ABOUT", "Quick guide, runtimes, and project info.") { panel ->
             panel.addView(TextView(context).apply {
