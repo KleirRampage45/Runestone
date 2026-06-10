@@ -41,9 +41,9 @@ enum class RtpPack(
         slug = "vx_ace",
         iniName = "RPGVXAce",
         engineTags = listOf("rgss3", "vxace", "vx_ace", "rgss_vx_ace"),
-        zipUrl = "https://archive.org/download/RPG_Maker_RTP_Collection/English/RTP%20VX%20Ace%20%28RGSS3%29.zip",
+        zipUrl = "https://dl.komodo.jp/rpgmakerweb/run-time-packages/RPGVXAce_RTP.zip",
         zipPrefix = "RTP100/",
-        markerFile = "Graphics/Tilesets/World_Tileset.png",
+        markerFile = "Graphics/Tilesets/World_A1.png",
     );
 
     companion object {

@@ -1,6 +1,18 @@
 # Runestone Changelog
 
-## v0.7.5 (2026-06-09) — fix/help-about-copy
+## v0.8.1 (2026-06-10) — fix/rtp-innoextract
+### Fixed
+- **RTP extraction pipeline** — official RPG Maker VX Ace RTP installer (ZIP containing Setup.exe + Setup-1.bin) is now properly extracted. The app downloads the official ZIP from dl.komodo.jp, unzips it, then runs a bundled innoextract ARM64 binary to extract the 780 actual RTP assets (Graphics/, Audio/, Fonts/) from the Inno Setup installer.
+  - Marker file corrected: `Graphics/Tilesets/World_Tileset.png` → `Graphics/Tilesets/World_A1.png`
+  - Bundled innoextract v1.9 + shared libraries (Boost, liblzma, libiconv) compiled for ARM64 Android API 24+
+  - EULA text updated to reference the official source
+### Added
+- **InnoextractHelper.kt** — manages the bundled ARM64 innoextract binary (copy from assets, set permissions, execute with ProcessBuilder)
+- **RtpInstaller.kt** — updated install pipeline: download official ZIP → unzip → innoextract → move assets → verify marker
+- **innoextract assets** — `assets/innoextract/innoextract` binary + `assets/innoextract/lib/*.so` libraries
+- versionCode 27
+
+## v0.8.0 (2026-06-10) — fix/help-about-copy
 ### Fixed
 - **MkxpZEngine detection for unencrypted RGSS games** — added Game.ini + Data/ fallback so games like NTRPG2 v1.14 (no .rgss3a, no .rvproj2) are recognized as VX Ace. Previously only hit when the folder contained `Game.rgss3a` or `Game.rvproj2` archives.
   - canRun() now also matches `Game.ini` + non-empty `Data/` directory
