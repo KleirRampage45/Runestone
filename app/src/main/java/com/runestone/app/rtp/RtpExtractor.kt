@@ -14,6 +14,7 @@ import android.util.Log
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.util.ArrayDeque
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 
@@ -46,6 +47,11 @@ class RtpExtractor {
     fun extract(archive: File, targetDir: File): Result {
         if (!archive.isFile) return Result.Failure("Archive not found: ${archive.absolutePath}")
         targetDir.mkdirs()
+
+        // Check if this is an Inno Setup installer (contains Setup.exe)
+        if (peekForSetupExe(archive)) {
+            return extractInnoSetup(archive, targetDir)
+        }
 
         var totalBytes = 0L
         var fileCount = 0
@@ -127,5 +133,105 @@ class RtpExtractor {
 
         Log.i(TAG, "Extracted $fileCount files (${totalBytes} bytes) to ${targetDir.absolutePath}")
         return Result.Success(totalBytes, fileCount)
+    }
+
+    // ── Inno Setup installer extraction ──
+
+    private fun peekForSetupExe(archive: File): Boolean {
+        return try {
+            ZipInputStream(FileInputStream(archive).buffered()).use { zis ->
+                var entry: ZipEntry? = zis.nextEntry
+                while (entry != null) {
+                    val name = entry.name
+                    if (name.equals("Setup.exe", ignoreCase = true) ||
+                        name.endsWith("/Setup.exe", ignoreCase = true)) {
+                        return@use true
+                    }
+                    entry = zis.nextEntry
+                }
+                false
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to peek archive", e)
+            false
+        }
+    }
+
+    private fun extractInnoSetup(archive: File, targetDir: File): Result {
+        val workDir = File(targetDir.parentFile, "${targetDir.name}_work")
+        try {
+            workDir.mkdirs()
+
+            // Step 1: Extract ZIP to get Setup.exe
+            val zipResult = extractZipToDir(archive, workDir)
+            if (zipResult is Result.Failure) return zipResult
+
+            // Step 2: Find Setup.exe
+            val setupExe = findSetupExe(workDir)
+            if (setupExe == null) {
+                return Result.Failure("Setup.exe not found after ZIP extraction")
+            }
+
+            // Step 3: Run innoextract
+            val innoDir = File(workDir, "inno_output")
+            val exitCode = try {
+                InnoextractHelper().extract(setupExe, innoDir)
+            } catch (e: Exception) {
+                return Result.Failure("innoextract failed: ${e.message}", e)
+            }
+            if (exitCode != 0) {
+                return Result.Failure("innoextract exited with code $exitCode")
+            }
+
+            // Step 4: Move app/* to targetDir
+            val appDir = File(innoDir, "app")
+            if (!appDir.exists()) {
+                return Result.Failure("innoextract output missing 'app/' directory")
+            }
+            val fileCount = appDir.walkTopDown().filter { it.isFile }.count()
+            val totalBytes = appDir.walkTopDown().filter { it.isFile }.map { it.length() }.sum()
+            appDir.copyRecursively(targetDir, overwrite = true)
+
+            Log.i(TAG, "Extracted $fileCount files ($totalBytes bytes) via innoextract")
+            return Result.Success(totalBytes, fileCount)
+        } finally {
+            workDir.deleteRecursively()
+        }
+    }
+
+    private fun extractZipToDir(archive: File, targetDir: File): Result {
+        return try {
+            ZipInputStream(FileInputStream(archive).buffered()).use { zis ->
+                var entry: ZipEntry? = zis.nextEntry
+                while (entry != null) {
+                    val name = entry.name
+                    val outFile = File(targetDir, name)
+                    if (entry.isDirectory) {
+                        outFile.mkdirs()
+                    } else {
+                        outFile.parentFile?.mkdirs()
+                        FileOutputStream(outFile).use { fos ->
+                            zis.copyTo(fos)
+                        }
+                    }
+                    entry = zis.nextEntry
+                }
+            }
+            Result.Success(0, 0) // dummy — caller only checks for Failure
+        } catch (t: Throwable) {
+            Result.Failure("ZIP extraction failed: ${t.message}", t)
+        }
+    }
+
+    private fun findSetupExe(dir: File): File? {
+        val queue = ArrayDeque(listOf(dir))
+        while (queue.isNotEmpty()) {
+            val files = queue.removeFirst().listFiles() ?: continue
+            for (f in files) {
+                if (f.isDirectory) queue.addLast(f)
+                else if (f.name.equals("Setup.exe", ignoreCase = true)) return f
+            }
+        }
+        return null
     }
 }
