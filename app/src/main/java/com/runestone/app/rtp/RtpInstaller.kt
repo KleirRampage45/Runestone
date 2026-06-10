@@ -42,7 +42,7 @@ class RtpInstaller(val context: Context) {
 RPG Maker VX Ace RTP — Run-Time Package
 
 This software is the property of KADOKAWA / Gotcha Gotcha Games.
-Runestone downloads this pack from the official RPG Maker website.
+Runestone downloads this pack from a public archive mirror.
 You may only use this pack if you legally own RPG Maker VX Ace.
 
 By continuing, you confirm:

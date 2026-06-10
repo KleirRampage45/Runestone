@@ -1,5 +1,11 @@
 # Runestone Changelog
 
+## v0.8.2 (2026-06-10) — fix/rtp-innoextract
+### Fixed
+- **SSL cert trust issue** — switched download URL back to archive.org (GoDaddy cert) because dl.komodo.jp uses Sectigo which isn't trusted on some Android devices (OPPO, etc.)
+### Changed
+- EULA text updated for archive.org source
+
 ## v0.8.1 (2026-06-10) — fix/rtp-innoextract
 ### Fixed
 - **RTP extraction pipeline** — official RPG Maker VX Ace RTP installer (ZIP containing Setup.exe + Setup-1.bin) is now properly extracted. The app downloads the official ZIP from dl.komodo.jp, unzips it, then runs a bundled innoextract ARM64 binary to extract the 780 actual RTP assets (Graphics/, Audio/, Fonts/) from the Inno Setup installer.
