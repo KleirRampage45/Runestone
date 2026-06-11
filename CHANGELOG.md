@@ -1,5 +1,24 @@
 # Runestone Changelog
 
+## v0.8.5 (2026-06-11) — feat/mkxpz-controller-overhaul
+### Added
+- **Tap-to-skip** — tapping empty space in the game area sends Confirm key (C/Enter/Z), perfect for text skipping in RPG Maker games. Touch ignores the menu pill area at the top.
+- **Edit Layout mode** — enter via Runtime Menu → EDIT LAYOUT. Drag any button to reposition it. THREE buttons in the edit toolbar: SAVE (persists positions), REVERT (resets to default), CANCEL (exits without saving). Positions survive game restarts via SharedPreferences.
+- **Glassy runtime menu** — menu moved to top of screen (was centered, covering game view). Reduced opacity, lighter borders, frosted glass GradientDrawable. New divider, EDIT LAYOUT and REVERT buttons added.
+- **Glassy floating menu pill** — "☰" hamburger icon with frosted glass rounded pill background. Was invisible icon-only button.
+
+### Modified
+- **Gamepad.java** — full rewrite of touch handling: tap-to-skip via setOnTapConfirmListener, edit mode support through GamepadButton.OnDragListener, save/load button positions via SharedPreferences, reset to default.
+- **GamepadButton.java** — added `mEditMode` flag, `setEditMode()`, `OnDragListener` interface, `handleEditModeTouch()` for drag-with-visual-feedback.
+- **MainActivity.java** — wired tap-to-skip to Confirm key dispatch, added `enterEditMode()`/`exitEditMode()` with glassy bottom toolbar overlay (SAVE/REVERT/CANCEL).
+
+### Fixed
+- Runtime menu no longer overlaps the game viewport (gravity changed from CENTER to TOP | CENTER_HORIZONTAL).
+
+## v0.8.4 (2026-06-11) — feat/mkxpz-controller-overhaul
+### Fixed
+- **Landscape button alignment** — back buttons (CTRL/ALT/SHIFT row) removed from center-bottom
+
 ## v0.7.6 (2026-06-09) — fix/runtime-menu-native-layout-polish
 ### Added
 - **Auto RTP downloader** — VX Ace Runtime Package (~195 MB) installs in one tap when an imported game references `RTP=RPGVXAce` in its Game.ini. Single install is shared across every game that needs it.
