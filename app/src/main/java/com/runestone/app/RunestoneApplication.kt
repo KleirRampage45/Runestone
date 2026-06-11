@@ -42,7 +42,7 @@ class RunestoneApplication : Application() {
                 val manager = getSystemService(Context.PERFORMANCE_HINT_SERVICE) as PerformanceHintManager
                 val tid = Process.myTid()
                 val session = manager.createHintSession(intArrayOf(tid), 2_000_000_000L)
-                session.reportActualWorkDuration(1_000_000L)
+                session?.reportActualWorkDuration(1_000_000L)
                 performanceHintSession = session
                 Log.i(TAG, "PerformanceHintManager boost activated")
             } catch (e: Exception) {
