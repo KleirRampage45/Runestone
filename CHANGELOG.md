@@ -1,6 +1,25 @@
 # Runestone Changelog
 
-## v0.8.5 (2026-06-11) — feat/mkxpz-controller-overhaul
+## v0.8.6 (2026-06-11) — feat/mkxpz-controller-overhaul
+### Added
+- **Controller mode toggle** — BASIC MODE / FULL MODE toggle button in the runtime menu dropdown (both WebView and mkxp-z overlays). Switches on the fly without restarting.
+- **Tap-to-move** — tapping the game area now injects a mouse click at the tap position alongside the confirm key, enabling click-to-move in compatible RPG Maker games.
+- **WebView GPU rendering** — forced hardware layer, offscreen pre-rasterization, renderer priority boost (API 31+), cache mode changed to LOAD_CACHE_ELSE_NETWORK for instant asset reload.
+- **Buffer size increased** — DownloadManager and ExtractionManager buffer from 8KB → 64KB for 10-20% faster downloads and extraction.
+
+### Fixed
+- **Edit mode buttons positioned** — DONE/REVERT/PRESET buttons in the editor toolbar were never positioned (RectFs at 0,0,0,0), making edit mode non-functional. Now properly positioned at top of screen.
+- **L1/R1 saved sizing** — shoulder buttons now respect saved layout size instead of ignoring it.
+- **Dropdown arrow rotation** — menu pill (dropdown arrow) now rotates 180° when the runtime actions panel opens, and flips back when dismissed.
+- **Runtime menu compacted** — repacked from 6 vertical buttons to 3 compact rows (RESUME/HOME, BASIC MODE/CONTROLS, KEYBOARD/EDIT/REVERT). Reduced width range from 240-400dp to 230-380dp with tighter padding.
+- **D-Pad drag in edit mode** — D-Pad can now be repositioned in edit mode (was only L/R).
+- **Edit mode toolbar** — changed from WRAP_CONTENT to MATCH_PARENT width with dp(16) margins, matching gamepad styling.
+- **Keyboard position** — text input rectangle moved from (0,0) to centered at 1/3 screen height.
+- **WebViewEngine imports** — added missing android.view.View and android.os.Build imports.
+
+### Performance
+- **Cold start**: WebView cache mode switched from LOAD_DEFAULT to LOAD_CACHE_ELSE_NETWORK (game assets don't change).
+- **Downloads/extraction**: 8KB → 64KB I/O buffers reduce syscall overhead by 8x.
 ### Added
 - **Tap-to-skip** — tapping empty space in the game area sends Confirm key (C/Enter/Z), perfect for text skipping in RPG Maker games. Touch ignores the menu pill area at the top.
 - **Edit Layout mode** — enter via Runtime Menu → EDIT LAYOUT. Drag any button to reposition it. THREE buttons in the edit toolbar: SAVE (persists positions), REVERT (resets to default), CANCEL (exits without saving). Positions survive game restarts via SharedPreferences.
