@@ -1195,6 +1195,7 @@ class GameActivity : Activity() {
             putExtra("com.runestone.app.extra.INTEGER_SCALING", settings.integerScaling)
             putExtra("com.runestone.app.extra.DISPLAY_CUTOUT_MODE", settings.displayCutoutMode.name)
             putExtra("com.runestone.app.extra.CONTROLLER_HOME_SHORTCUT", settings.controllerHomeShortcut.name)
+            putExtra("com.runestone.app.extra.CONTROLLER_PRESET", settings.controllerPreset)
         }
         startActivity(intent)
         finish()
