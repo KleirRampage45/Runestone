@@ -21,7 +21,7 @@ class ExtractionManager(private val context: Context) {
 
     companion object {
         private const val TAG = "EXTRACT"
-        private const val BUFFER_SIZE = 8192
+        private const val BUFFER_SIZE = 65536
         private const val MAX_FILES = 50_000
         private const val MAX_EXTRACTED_BYTES = 16L * 1024 * 1024 * 1024
         private const val MAX_ENTRY_BYTES = 4L * 1024 * 1024 * 1024

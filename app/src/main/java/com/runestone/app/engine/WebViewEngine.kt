@@ -13,8 +13,10 @@ package com.runestone.app.engine
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.Build
 import android.util.Log
 import android.view.MotionEvent
+import android.view.View
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -79,6 +81,9 @@ class WebViewEngine(context: Context) : WebView(context) {
     private fun configure() {
         setBackgroundColor(android.graphics.Color.BLACK)
 
+        // Force hardware layer for GPU compositing
+        setLayerType(View.LAYER_TYPE_HARDWARE, null)
+
         val webSettings = settings
         webSettings.javaScriptEnabled = true
         webSettings.javaScriptCanOpenWindowsAutomatically = true
@@ -92,13 +97,20 @@ class WebViewEngine(context: Context) : WebView(context) {
         webSettings.allowFileAccessFromFileURLs = true
         webSettings.allowUniversalAccessFromFileURLs = true
         webSettings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-        webSettings.cacheMode = WebSettings.LOAD_DEFAULT
+        webSettings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
         webSettings.textZoom = (config.textScale * 100).toInt().coerceIn(50, 200)
         webSettings.setSupportZoom(false)
+        webSettings.setOffscreenPreRaster(true)
         isVerticalScrollBarEnabled = false
         isHorizontalScrollBarEnabled = false
         overScrollMode = OVER_SCROLL_NEVER
         isNestedScrollingEnabled = false
+
+        // API 31+: GPU rasterization + renderer priority
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            webSettings.setEnableGpuRasterization(true)
+            setRendererPriorityPolicy(RENDERER_PRIORITY_IMPORTANT, true)
+        }
     }
 
     override fun scrollTo(x: Int, y: Int) {
