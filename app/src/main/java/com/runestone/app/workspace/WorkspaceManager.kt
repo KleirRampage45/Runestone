@@ -13,6 +13,7 @@ package com.runestone.app.workspace
 import android.content.Context
 import com.runestone.app.data.EngineType
 import com.runestone.app.engine.EngineDetector
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
@@ -56,7 +57,10 @@ class WorkspaceManager(private val context: Context) {
         ensureNoMedia(dir)
         if (!dir.exists()) return emptyList()
 
-        return dir.listFiles()
+        // Try cache first to avoid full filesystem scan on every call
+        getGameScanCache()?.let { return it }
+
+        val games = dir.listFiles()
             ?.filter { it.isDirectory }
             ?.mapNotNull { gameDir ->
                 ensureNoMedia(gameDir)
@@ -91,7 +95,68 @@ class WorkspaceManager(private val context: Context) {
             }
             ?.sortedBy { it.displayName }
             ?: emptyList()
+
+        // Persist scan result to cache for subsequent calls
+        saveGameScanCache(games)
+        return games
     }
+
+    /** Try to load previously-cached game list. Returns null on miss/stale/error. */
+    private fun getGameScanCache(): List<GameInfo>? {
+        val cacheFile = gameScanCacheFile
+        if (!cacheFile.exists()) return null
+        return try {
+            val json = JSONObject(cacheFile.readText())
+            val versionCode = json.optInt("versionCode", -1)
+            if (versionCode != appVersionCode) {
+                cacheFile.delete()
+                return null
+            }
+            val arr = json.getJSONArray("games")
+            (0 until arr.length()).map { i ->
+                val obj = arr.getJSONObject(i)
+                GameInfo(
+                    storageName = obj.getString("storageName"),
+                    displayName = obj.getString("displayName"),
+                    engineType = EngineType.valueOf(obj.getString("engineType")),
+                    originalPath = obj.getString("originalPath"),
+                    activePath = obj.getString("originalPath"),
+                    fileCount = obj.getInt("fileCount"),
+                )
+            }
+        } catch (e: Exception) {
+            cacheFile.delete()
+            null
+        }
+    }
+
+    /** Persist scanned game list to cache. Failures are non-critical. */
+    private fun saveGameScanCache(games: List<GameInfo>) {
+        try {
+            val arr = JSONArray()
+            games.forEach { game ->
+                arr.put(JSONObject().apply {
+                    put("storageName", game.storageName)
+                    put("displayName", game.displayName)
+                    put("engineType", game.engineType.name)
+                    put("originalPath", game.originalPath)
+                    put("fileCount", game.fileCount)
+                })
+            }
+            gameScanCacheFile.writeText(JSONObject().apply {
+                put("versionCode", appVersionCode)
+                put("games", arr)
+            }.toString())
+        } catch (e: Exception) { /* cache write failure is non-critical */ }
+    }
+
+    private val gameScanCacheFile: File
+        get() = File(context.filesDir, "game_scan_cache.json")
+
+    private val appVersionCode: Int
+        get() = try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionCode
+        } catch (e: Exception) { 0 }
 
     /** Read the game's actual title from its metadata files. */
     private fun readGameTitle(originalDir: File, engineType: EngineType): String? {

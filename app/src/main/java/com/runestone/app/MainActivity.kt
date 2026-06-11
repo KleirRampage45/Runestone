@@ -107,6 +107,7 @@ class MainActivity : Activity() {
     private var pendingPatchCallback: ((String) -> Unit)? = null
     private var pendingSaveExportStorage: String? = null
     private var pendingSaveImportStorage: String? = null
+    private var splashView: FrameLayout? = null
     private val importBrowserStack = mutableListOf<SafStorageBrowser.Folder>()
     private var importBrowserShowLocations = false
     private var downloadProgressMap = mutableMapOf<String, DownloadManager.DownloadProgress>()
@@ -291,6 +292,7 @@ class MainActivity : Activity() {
     private fun refreshGames() {
         games = workspaceManager.scanInstalledGames()
         Log.i(TAG, "refreshGames: found ${games.size} games")
+        dismissSplash()
     }
 
     private fun startPlaySession(storageName: String, gamePath: String) {
@@ -997,16 +999,21 @@ class MainActivity : Activity() {
             alpha = 0f
         }
         rootContainer.addView(splash, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        splashView = splash
 
-        // Fade in quickly, hold, then fade out and show home
-        splash.animate().alpha(1f).setDuration(400).withEndAction {
-            splash.postDelayed({
-                splash.animate().alpha(0f).setDuration(400).withEndAction {
-                    rootContainer.removeView(splash)
-                    showHome()
-                }.start()
-            }, 600)
-        }.start()
+        // Fade in quickly, stay visible as loading mask
+        splash.animate().alpha(1f).setDuration(300).start()
+    }
+
+    private fun dismissSplash() {
+        val splash = splashView ?: return
+        splashView = null
+        splash.post {
+            splash.animate().alpha(0f).setDuration(300).withEndAction {
+                rootContainer.removeView(splash)
+                showHome()
+            }.start()
+        }
     }
 
     // ═══════════════════════════════════════════════════════

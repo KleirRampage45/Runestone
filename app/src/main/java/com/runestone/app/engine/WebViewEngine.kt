@@ -53,6 +53,7 @@ class WebViewEngine(context: Context) : WebView(context) {
     private var localStorageShim: LocalStorageInterface? = null
     private var gameDir: File? = null
     private var config: WebViewGameConfig = WebViewGameConfig()
+    private val externalHostCache = mutableMapOf<String, Boolean>()
 
     data class WebViewGameConfig(
         val fixLocalStorage: Boolean = true,
@@ -164,18 +165,17 @@ class WebViewEngine(context: Context) : WebView(context) {
             ): WebResourceResponse? {
                 val url = request.url.toString()
 
-                // Block external modules if not allowed
+                // Block external modules if not allowed (cached per host)
                 if (!config.allowExternalModules) {
                     val host = request.url.host ?: ""
-                    val isExternal = host.isNotEmpty() &&
-                        !url.startsWith("file://") &&
-                        host != "localhost" &&
-                        host != "127.0.0.1" &&
-                        !isPrivateIp(host) &&
-                        host !in config.allowedExternalHosts
-                    if (isExternal) {
-                        return WebResourceResponse("text/plain", "utf-8",
-                            ByteArrayInputStream("".toByteArray()))
+                    if (host.isNotEmpty()) {
+                        val isExternal = externalHostCache.getOrPut(host) {
+                            host != "localhost" && host != "127.0.0.1" && !isPrivateIp(host) && host !in config.allowedExternalHosts
+                        }
+                        if (isExternal) {
+                            return WebResourceResponse("text/plain", "utf-8",
+                                ByteArrayInputStream("".toByteArray()))
+                        }
                     }
                 }
 
