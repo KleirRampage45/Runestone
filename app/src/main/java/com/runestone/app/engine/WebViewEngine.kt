@@ -106,9 +106,8 @@ class WebViewEngine(context: Context) : WebView(context) {
         overScrollMode = OVER_SCROLL_NEVER
         isNestedScrollingEnabled = false
 
-        // API 31+: GPU rasterization + renderer priority
+        // API 31+: renderer priority
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            webSettings.setEnableGpuRasterization(true)
             setRendererPriorityPolicy(RENDERER_PRIORITY_IMPORTANT, true)
         }
     }
