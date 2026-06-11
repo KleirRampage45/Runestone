@@ -159,7 +159,6 @@ class HomeScreen(private val context: Context) {
                 games.forEach { game ->
                     val tile = createHeroCard(game, onPlay, onManage, ::deselectCurrent, selectedCard,
                         tileW, true, false, null)
-                    tile.layoutParams = null // clear for RecyclerView
                     prebuiltCards.add(tile)
                 }
             } else {
@@ -168,7 +167,6 @@ class HomeScreen(private val context: Context) {
                 games.forEach { game ->
                     val card = createHeroCard(game, onPlay, onManage, ::deselectCurrent, selectedCard,
                         if (columnCount > 1) cardW else (screenW * 0.88f).toInt(), compact, showGameName, onLongPress)
-                    card.layoutParams = null
                     prebuiltCards.add(card)
                 }
             }
@@ -1863,6 +1861,5 @@ class PrebuiltCardAdapter(
             newCard.removeViewAt(0)
             holder.container.addView(child)
         }
-        holder.container.layoutParams = newCard.layoutParams
     }
 }
