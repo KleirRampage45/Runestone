@@ -153,6 +153,11 @@ class WorkspaceManager(private val context: Context) {
     private val gameScanCacheFile: File
         get() = File(context.filesDir, "game_scan_cache.json")
 
+    /** Clear the game scan cache so next scanInstalledGames() does a full re-scan. */
+    fun invalidateGameScanCache() {
+        gameScanCacheFile.delete()
+    }
+
     private val appVersionCode: Int
         get() = try {
             context.packageManager.getPackageInfo(context.packageName, 0).versionCode

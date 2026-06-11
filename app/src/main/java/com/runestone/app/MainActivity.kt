@@ -1651,6 +1651,7 @@ class MainActivity : Activity() {
                         importMessage = null
                         saveManager.restoreToActive(result.storageName)
                         activeImportProgressView = null
+                        workspaceManager.invalidateGameScanCache()
                         refreshGames()
                         dismissOverlay {
                             showHome()
