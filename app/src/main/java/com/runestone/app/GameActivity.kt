@@ -597,8 +597,8 @@ class GameActivity : Activity() {
         }
         val isFull = overlayView?.controllerPreset == TouchOverlayView.ControllerPreset.FULL
         modeRow.addView(runtimeActionButton(
-            if (isFull) "BASIC MODE" else "FULL MODE",
-            com.runestone.app.R.drawable.ic_runtime_edit,
+            if (isFull) "BASIC" else "FULL",
+            com.runestone.app.R.drawable.ic_runtime_controls,
         ) {
             dismissRuntimeActions()
             toggleControllerPreset()
