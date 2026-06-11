@@ -1851,7 +1851,13 @@ class PrebuiltCardAdapter(
     override fun getItemCount() = cards.size
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder =
-        Holder(LinearLayout(parent.context))
+        Holder(LinearLayout(parent.context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = ViewGroup.MarginLayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        })
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val newCard = cards[position]
