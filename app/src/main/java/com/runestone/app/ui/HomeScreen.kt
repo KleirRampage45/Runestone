@@ -46,6 +46,7 @@ import com.runestone.app.ui.carousel.BloomOverlay
 import com.runestone.app.ui.carousel.GameColorExtractor
 import com.runestone.app.ui.carousel.ItemTouchHelperCallback
 import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.PagerSnapHelper
 import androidx.recyclerview.widget.RecyclerView
@@ -140,18 +141,52 @@ class HomeScreen(private val context: Context) {
         }
         mainColumn.addView(stickyHeader, LinearLayout.LayoutParams(MATCH, WRAP))
 
-        val scroll = ScrollView(context).apply {
-            isFillViewport = true; overScrollMode = ScrollView.OVER_SCROLL_NEVER
-            setPadding(0, 0, 0, bottomClearance)
-        }
-        mainColumn.addView(scroll, LinearLayout.LayoutParams(MATCH, 0, 1f))
+        // Pre-build game cards so they can be placed in a RecyclerView.
+        // Cards are built once using the existing hero-card rendering code,
+        // then hosted in a RecyclerView for proper measured layout pass.
+        val columnCount = if (cardLayout == HomeCardLayout.GRID_3) 3 else if (cardLayout == HomeCardLayout.WIDE) 1 else 2
+        val screenW = context.resources.displayMetrics.widthPixels
+        val gap = dp(8)
+        val available = screenW - dp(20) - gap * (columnCount - 1)
+        val cardW = available / columnCount
 
-        val content = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(10), dp(8), dp(10), dp(18))
+        // Build all cards upfront (same as before, same rendering code)
+        val prebuiltCards = mutableListOf<LinearLayout>()
+        if (games.isNotEmpty() && uiMode != UIMode.CAROUSEL_3D) {
+            if (uiMode == UIMode.TILES) {
+                // TILES: build each tile as a separate card — RecyclerView handles 2-col grid
+                val tileW = ((screenW - dp(10) * 3) / 2).toInt()
+                games.forEach { game ->
+                    val tile = createHeroCard(game, onPlay, onManage, ::deselectCurrent, selectedCard,
+                        tileW, true, false, null)
+                    tile.layoutParams = null // clear for RecyclerView
+                    prebuiltCards.add(tile)
+                }
+            } else {
+                // GRID: build hero cards for each game
+                val compact = cardLayout != HomeCardLayout.WIDE
+                games.forEach { game ->
+                    val card = createHeroCard(game, onPlay, onManage, ::deselectCurrent, selectedCard,
+                        if (columnCount > 1) cardW else (screenW * 0.88f).toInt(), compact, showGameName, onLongPress)
+                    card.layoutParams = null
+                    prebuiltCards.add(card)
+                }
+            }
         }
-        scroll.addView(content, ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+        val recyclerView = RecyclerView(context).apply {
+            overScrollMode = RecyclerView.OVER_SCROLL_NEVER
+            setPadding(0, 0, 0, bottomClearance)
+            clipToPadding = false
+            isNestedScrollingEnabled = true
+            layoutManager = when {
+                uiMode == UIMode.TILES -> GridLayoutManager(context, 2)
+                uiMode == UIMode.LIST -> LinearLayoutManager(context)
+                else -> GridLayoutManager(context, columnCount)
+            }
+            adapter = PrebuiltCardAdapter(prebuiltCards)
+        }
+        mainColumn.addView(recyclerView, LinearLayout.LayoutParams(MATCH, 0, 1f))
 
         // Header
         stickyHeader.addView(makeHeaderRow(
@@ -241,37 +276,33 @@ class HomeScreen(private val context: Context) {
         }
 
         if (games.isEmpty()) {
-            content.addView(spacer(dp(48)))
-            content.addView(TextView(context).apply {
-                text = "No games yet"; setTextColor(MUTED); textSize = 16f; gravity = Gravity.CENTER
-            })
-            content.addView(TextView(context).apply {
-                text = "Tap + ADD to get started"; setTextColor(MUTED_DIM); textSize = 12f; gravity = Gravity.CENTER
-                setPadding(0, dp(4), 0, 0)
-            })
-        } else {
-            when (uiMode) {
-                UIMode.CAROUSEL_3D -> {
-                    scroll.visibility = View.GONE
-                    root.addView(renderCarousel3D(
-                        games = games,
-                        onPlay = onPlay,
-                        onManage = onManage,
-                    ), FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                    ))
-                }
-                UIMode.LIST -> {
-                    content.addView(renderListLayout(games, onPlay, onManage))
-                }
-                UIMode.TILES -> {
-                    content.addView(renderTileLayout(games, onPlay, onManage))
-                }
-                else -> {
-                    content.addView(renderHeroGrid(games, cardLayout, onPlay, onManage, ::deselectCurrent, selectedCard, showGameName, onLongPress))
-                }
+            val emptyCard = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                minimumHeight = context.resources.displayMetrics.heightPixels / 2
+                addView(spacer(dp(48)))
+                addView(TextView(context).apply {
+                    text = "No games yet"; setTextColor(MUTED); textSize = 16f; gravity = Gravity.CENTER
+                })
+                addView(TextView(context).apply {
+                    text = "Tap + ADD to get started"; setTextColor(MUTED_DIM); textSize = 12f; gravity = Gravity.CENTER
+                    setPadding(0, dp(4), 0, 0)
+                })
             }
+            prebuiltCards.add(emptyCard)
+        } else if (uiMode == UIMode.LIST) {
+            prebuiltCards.clear()
+            prebuiltCards.add(renderListLayout(games, onPlay, onManage) as LinearLayout)
+        } else if (uiMode == UIMode.CAROUSEL_3D) {
+            prebuiltCards.clear()
+            root.addView(renderCarousel3D(
+                games = games,
+                onPlay = onPlay,
+                onManage = onManage,
+            ), FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ))
         }
 
         // RESUME bar — side by side STOP + RESUME
@@ -1798,6 +1829,7 @@ class HomeScreen(private val context: Context) {
     private companion object {
         val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
+        val VERT = LinearLayout.VERTICAL
         val TEXT = Color.rgb(232, 229, 220)
         val MUTED = Color.rgb(140, 130, 112)
         val MUTED_DIM = Color.rgb(120, 112, 104)
@@ -1806,3 +1838,31 @@ class HomeScreen(private val context: Context) {
 }
 
 enum class SortMode { NAME_ASC, NAME_DESC, RECENT, DATE_ADDED }
+
+/**
+ * RecyclerView adapter that hosts pre-built game card views.
+ * Cards are built once by HomeScreen.create() (reusing all existing
+ * hero-card rendering code) and placed into RecyclerView ViewHolders.
+ */
+class PrebuiltCardAdapter(
+    private val cards: List<LinearLayout>,
+) : RecyclerView.Adapter<PrebuiltCardAdapter.Holder>() {
+
+    class Holder(val container: LinearLayout) : RecyclerView.ViewHolder(container)
+
+    override fun getItemCount() = cards.size
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder =
+        Holder(LinearLayout(parent.context))
+
+    override fun onBindViewHolder(holder: Holder, position: Int) {
+        val newCard = cards[position]
+        holder.container.removeAllViews()
+        while (newCard.childCount > 0) {
+            val child = newCard.getChildAt(0)
+            newCard.removeViewAt(0)
+            holder.container.addView(child)
+        }
+        holder.container.layoutParams = newCard.layoutParams
+    }
+}
