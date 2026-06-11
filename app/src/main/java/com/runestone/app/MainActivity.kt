@@ -217,7 +217,6 @@ class MainActivity : Activity() {
                     .getString("homeCardLayout", HomeCardLayout.GRID_2.name).orEmpty(),
             )
         }.getOrDefault(HomeCardLayout.GRID_2)
-        refreshGames()
         createNotificationChannel()
         requestNotificationPermissionIfNeeded()
         registerDownloadReceiver()
@@ -251,6 +250,7 @@ class MainActivity : Activity() {
         }
         setContentView(rootContainer)
         showSplash()
+        rootContainer.post { refreshGames() }
         persistentDock = HomeScreen(this).createDockBar(
             onHome = { dismissOverlay() },
             onAdd = { startFolderImport() },
