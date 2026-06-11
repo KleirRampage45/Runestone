@@ -41,6 +41,7 @@ class SettingsStore(context: Context) {
             hapticsEnabled = prefs.getBoolean("hapticsEnabled", defaults.hapticsEnabled),
             hapticIntensity = prefs.getFloat("hapticIntensity", defaults.hapticIntensity),
             showExtraButtons = prefs.getBoolean("showExtraButtons", defaults.showExtraButtons),
+            controllerPreset = prefs.getString("controllerPreset", defaults.controllerPreset) ?: defaults.controllerPreset,
             hideVirtualGamepad = prefs.getBoolean("hideVirtualGamepad", if (migratedGamepad) true else defaults.hideVirtualGamepad),
             diagonalMovement = prefs.getBoolean("diagonalMovement", defaults.diagonalMovement),
             leftButtonKey = prefs.getString("leftButtonKey", defaults.leftButtonKey) ?: defaults.leftButtonKey,
@@ -127,6 +128,7 @@ class SettingsStore(context: Context) {
             .putBoolean("hapticsEnabled", settings.hapticsEnabled)
             .putFloat("hapticIntensity", settings.hapticIntensity)
             .putBoolean("showExtraButtons", settings.showExtraButtons)
+            .putString("controllerPreset", settings.controllerPreset)
             .putBoolean("hideVirtualGamepad", settings.hideVirtualGamepad)
             .putBoolean("diagonalMovement", settings.diagonalMovement)
             .putString("leftButtonKey", settings.leftButtonKey)

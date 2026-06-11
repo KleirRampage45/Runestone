@@ -42,6 +42,7 @@ data class RunnerSettings(
     val hapticsEnabled: Boolean = true,
     val hapticIntensity: Float = 0.55f,
     val showExtraButtons: Boolean = false,
+    val controllerPreset: String = "SIMPLIFIED",
     val hideVirtualGamepad: Boolean = false,
     val diagonalMovement: Boolean = false,
     val leftButtonKey: String = "ENTER",

@@ -338,28 +338,59 @@ class GameActivity : Activity() {
             }
             splitLayout.addView(controlPanel)
 
-            setupTouchOverlay(controlPanel, engine)
+            setupTouchOverlay(controlPanel, engine, 0f, 0f, 0f, 0f)
         } else if (isPortraitConsole && hideOverlay) {
             root.addView(engine, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
             ))
         } else {
-            root.addView(engine, FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-            ))
+            if (isLandscape) {
+                // Landscape: 4:3 centered game viewport with side gutters for controls
+                val targetGameRatio = 4f / 3f
+                val screenW = root.width.coerceAtLeast(1)
+                val screenH = root.height.coerceAtLeast(1)
+                val gameH = screenH
+                val gameW = minOf(screenW, (gameH * targetGameRatio).toInt())
+                val marginLeft = (screenW - gameW) / 2
+                val marginRight = marginLeft
 
-            if (isLandscape && !hideOverlay) {
-                val overlayContainer = FrameLayout(this).apply {
-                    setBackgroundColor(Color.TRANSPARENT)
-                    layoutParams = FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                    )
+                root.addView(engine, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ).apply {
+                    leftMargin = marginLeft
+                    rightMargin = marginRight
+                })
+
+                if (!hideOverlay) {
+                    val overlayContainer = FrameLayout(this).apply {
+                        setBackgroundColor(Color.TRANSPARENT)
+                        layoutParams = FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                        )
+                    }
+                    root.addView(overlayContainer)
+                    setupTouchOverlay(overlayContainer, engine, marginLeft.toFloat(), 0f, (screenW - marginRight).toFloat(), screenH.toFloat())
                 }
-                root.addView(overlayContainer)
-                setupTouchOverlay(overlayContainer, engine)
+            } else {
+                root.addView(engine, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ))
+
+                if (!hideOverlay) {
+                    val overlayContainer = FrameLayout(this).apply {
+                        setBackgroundColor(Color.TRANSPARENT)
+                        layoutParams = FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                        )
+                    }
+                    root.addView(overlayContainer)
+                    setupTouchOverlay(overlayContainer, engine, 0f, 0f, 0f, 0f)
+                }
             }
         }
 
@@ -429,7 +460,7 @@ class GameActivity : Activity() {
         root.addView(menuBtn)
     }
 
-    private fun setupTouchOverlay(container: ViewGroup, engine: WebViewEngine) {
+    private fun setupTouchOverlay(container: ViewGroup, engine: WebViewEngine, gameLeft: Float, gameTop: Float, gameRight: Float, gameBottom: Float) {
         val overlay = TouchOverlayView(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -439,9 +470,15 @@ class GameActivity : Activity() {
             scale = settings.touchScale
             hapticsEnabled = settings.hapticsEnabled
             hapticIntensity = settings.hapticIntensity
-            showExtraButtons = settings.showExtraButtons
+            controllerPreset = runCatching {
+                TouchOverlayView.ControllerPreset.valueOf(settings.controllerPreset)
+            }.getOrDefault(TouchOverlayView.ControllerPreset.SIMPLIFIED)
             diagonalMovement = settings.diagonalMovement
             controlsOnly = (settings.layoutMode == LayoutMode.PORTRAIT_CONSOLE)
+            gameViewportLeft = gameLeft
+            gameViewportTop = gameTop
+            gameViewportRight = gameRight
+            gameViewportBottom = gameBottom
             onToggleControls = { setVirtualControlsVisible(false) }
             onRotateLayout = { rotateRuntimeLayout() }
             onProfileLayoutChanged = { buttons ->
@@ -466,14 +503,22 @@ class GameActivity : Activity() {
                     pressed && zone == TouchOverlayView.Zone.DPAD_DOWN -> "if(TouchInput&&TouchInput._onDown)TouchInput._onDown('down');"
                     pressed && zone == TouchOverlayView.Zone.DPAD_LEFT -> "if(TouchInput&&TouchInput._onDown)TouchInput._onDown('left');"
                     pressed && zone == TouchOverlayView.Zone.DPAD_RIGHT -> "if(TouchInput&&TouchInput._onDown)TouchInput._onDown('right');"
-                    pressed && zone == TouchOverlayView.Zone.BTN_A -> "if(TouchInput&&TouchInput._onOk)TouchInput._onOk();"
-                    pressed && zone == TouchOverlayView.Zone.BTN_B -> "if(TouchInput&&TouchInput._onCancel)TouchInput._onCancel();"
-                    pressed && zone == TouchOverlayView.Zone.BTN_X -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:33});"
-                    pressed && zone == TouchOverlayView.Zone.BTN_Y -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:34});"
+                    pressed && zone == TouchOverlayView.Zone.BTN_CONFIRM -> "if(TouchInput&&TouchInput._onOk)TouchInput._onOk();"
+                    pressed && zone == TouchOverlayView.Zone.BTN_BACK -> "if(TouchInput&&TouchInput._onCancel)TouchInput._onCancel();"
+                    pressed && zone == TouchOverlayView.Zone.BTN_DASH -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:16});"
+                    pressed && zone == TouchOverlayView.Zone.BTN_EXTRA_A -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:65});"
+                    pressed && zone == TouchOverlayView.Zone.BTN_EXTRA_S -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:83});"
+                    pressed && zone == TouchOverlayView.Zone.BTN_EXTRA_D -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:68});"
+                    pressed && zone == TouchOverlayView.Zone.BTN_EXTRA_Z -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:90});"
+                    pressed && zone == TouchOverlayView.Zone.BTN_EXTRA_X -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:88});"
+                    pressed && zone == TouchOverlayView.Zone.BTN_EXTRA_C -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:67});"
+                    pressed && zone == TouchOverlayView.Zone.BTN_CTRL -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:17});"
+                    pressed && zone == TouchOverlayView.Zone.BTN_ALT -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:18});"
+                    pressed && zone == TouchOverlayView.Zone.BTN_SHIFT -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:16});"
                     pressed && zone == TouchOverlayView.Zone.SELECT -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:27});"
                     pressed && zone == TouchOverlayView.Zone.START -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:13});"
-                    pressed && zone == TouchOverlayView.Zone.L1 -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:81});"
-                    pressed && zone == TouchOverlayView.Zone.R1 -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:87});"
+                    pressed && zone == TouchOverlayView.Zone.L1 -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:33});"
+                    pressed && zone == TouchOverlayView.Zone.R1 -> "if(Input&&Input._onKeyDown)Input._onKeyDown({which:34});"
                     else -> ""
                 }
                 if (js.isNotEmpty()) {
@@ -1063,17 +1108,30 @@ class GameActivity : Activity() {
         TouchOverlayView.Zone.DPAD_DOWN -> KeyEvent.KEYCODE_DPAD_DOWN
         TouchOverlayView.Zone.DPAD_LEFT -> KeyEvent.KEYCODE_DPAD_LEFT
         TouchOverlayView.Zone.DPAD_RIGHT -> KeyEvent.KEYCODE_DPAD_RIGHT
-        TouchOverlayView.Zone.BTN_A -> keyNameToCode(settings.firstButtonKey)
-        TouchOverlayView.Zone.BTN_B -> keyNameToCode(settings.secondButtonKey)
-        TouchOverlayView.Zone.BTN_X -> keyNameToCode(settings.thirdButtonKey)
-        TouchOverlayView.Zone.BTN_Y -> keyNameToCode(settings.fourthButtonKey)
-        TouchOverlayView.Zone.SELECT -> keyNameToCode(settings.leftButtonKey)
-        TouchOverlayView.Zone.START -> keyNameToCode(settings.rightButtonKey)
-        TouchOverlayView.Zone.MENU -> keyNameToCode(settings.leftMButtonKey)
-        TouchOverlayView.Zone.SETTINGS -> keyNameToCode(settings.rightMButtonKey)
+        TouchOverlayView.Zone.BTN_CONFIRM -> KeyEvent.KEYCODE_ENTER
+        TouchOverlayView.Zone.BTN_BACK -> KeyEvent.KEYCODE_ESCAPE
+        TouchOverlayView.Zone.BTN_DASH -> KeyEvent.KEYCODE_SHIFT_LEFT
+        TouchOverlayView.Zone.BTN_EXTRA_A -> KeyEvent.KEYCODE_A
+        TouchOverlayView.Zone.BTN_EXTRA_S -> KeyEvent.KEYCODE_S
+        TouchOverlayView.Zone.BTN_EXTRA_D -> KeyEvent.KEYCODE_D
+        TouchOverlayView.Zone.BTN_EXTRA_Z -> KeyEvent.KEYCODE_Z
+        TouchOverlayView.Zone.BTN_EXTRA_X -> KeyEvent.KEYCODE_X
+        TouchOverlayView.Zone.BTN_EXTRA_C -> KeyEvent.KEYCODE_C
+        TouchOverlayView.Zone.BTN_CTRL -> KeyEvent.KEYCODE_CTRL_LEFT
+        TouchOverlayView.Zone.BTN_ALT -> KeyEvent.KEYCODE_ALT_LEFT
+        TouchOverlayView.Zone.BTN_SHIFT -> KeyEvent.KEYCODE_SHIFT_LEFT
+        TouchOverlayView.Zone.SELECT -> KeyEvent.KEYCODE_ESCAPE
+        TouchOverlayView.Zone.START -> KeyEvent.KEYCODE_ENTER
+        TouchOverlayView.Zone.MENU -> KeyEvent.KEYCODE_F2
+        TouchOverlayView.Zone.SETTINGS -> KeyEvent.KEYCODE_F8
         TouchOverlayView.Zone.HOME -> KeyEvent.KEYCODE_HOME
-        TouchOverlayView.Zone.L1 -> keyNameToCode(settings.fifthButtonKey)
-        TouchOverlayView.Zone.R1 -> keyNameToCode(settings.sixthButtonKey)
+        TouchOverlayView.Zone.L1 -> KeyEvent.KEYCODE_PAGE_UP
+        TouchOverlayView.Zone.R1 -> KeyEvent.KEYCODE_PAGE_DOWN
+        TouchOverlayView.Zone.OVERLAY_MENU -> KeyEvent.KEYCODE_MENU
+        TouchOverlayView.Zone.BTN_A -> KeyEvent.KEYCODE_ENTER
+        TouchOverlayView.Zone.BTN_B -> KeyEvent.KEYCODE_ESCAPE
+        TouchOverlayView.Zone.BTN_X -> KeyEvent.KEYCODE_Q
+        TouchOverlayView.Zone.BTN_Y -> KeyEvent.KEYCODE_W
     }
 
     private fun keyNameToCode(name: String): Int = when (name) {
