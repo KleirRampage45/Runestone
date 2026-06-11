@@ -1154,6 +1154,16 @@ class TouchOverlayView(context: Context) : View(context) {
         editing = true
         selectedControl = null
         activeZones.clear()
+        // Position editor buttons at top center
+        val btnW = (120f * scale).coerceAtLeast(100f)
+        val btnH = (48f * scale).coerceAtLeast(40f)
+        val gap = (16f * scale).coerceAtLeast(10f)
+        val totalW = btnW * 3f + gap * 2f
+        val startX = (width - totalW) / 2f
+        val btnY = (40f * scale).coerceAtLeast(24f)
+        doneRect.set(startX, btnY, startX + btnW, btnY + btnH)
+        revertRect.set(startX + btnW + gap, btnY, startX + btnW * 2f + gap, btnY + btnH)
+        presetRect.set(startX + (btnW + gap) * 2f, btnY, startX + (btnW + gap) * 2f + btnW, btnY + btnH)
         invalidate()
     }
 
@@ -1338,8 +1348,16 @@ class TouchOverlayView(context: Context) : View(context) {
         dpadRadius = radius(Control.DPAD) / scale
         dpadInnerRadius = dpadRadius * 0.42f
 
-        point(Control.L1).also { l1Rect.set(it.x - l1Rect.width() / 2f, it.y - l1Rect.height() / 2f, it.x + l1Rect.width() / 2f, it.y + l1Rect.height() / 2f) }
-        point(Control.R1).also { r1Rect.set(it.x - r1Rect.width() / 2f, it.y - r1Rect.height() / 2f, it.x + r1Rect.width() / 2f, it.y + r1Rect.height() / 2f) }
+        point(Control.L1).also {
+            val h = layout.getValue(Control.L1).size * shortSide
+            val w = h * 1.6f
+            l1Rect.set(it.x - w / 2f, it.y - h / 2f, it.x + w / 2f, it.y + h / 2f)
+        }
+        point(Control.R1).also {
+            val h = layout.getValue(Control.R1).size * shortSide
+            val w = h * 1.6f
+            r1Rect.set(it.x - w / 2f, it.y - h / 2f, it.x + w / 2f, it.y + h / 2f)
+        }
 
         point(Control.CONFIRM).also { btnConfirm.x = it.x; btnConfirm.y = it.y }
         point(Control.BACK).also { btnBack.x = it.x; btnBack.y = it.y }

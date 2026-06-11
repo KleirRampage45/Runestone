@@ -71,6 +71,7 @@ class GameActivity : Activity() {
     private val pressedControllerKeys = mutableSetOf<Int>()
     private var triggerHomeComboDown = false
     private var runtimeActionsOverlay: View? = null
+    private var menuBtn: TextView? = null
     private var immersiveDecorConfigured = false
     private var lastImmersiveApplyAt = 0L
     private var lastAppliedCutoutMode: DisplayCutoutMode? = null
@@ -457,6 +458,7 @@ class GameActivity : Activity() {
                 topMargin = dp(8)
             }
         }
+        this@GameActivity.menuBtn = menuBtn
         root.addView(menuBtn)
     }
 
@@ -540,8 +542,12 @@ class GameActivity : Activity() {
         runtimeActionsOverlay?.let {
             root.removeView(it)
             runtimeActionsOverlay = null
+            // Rotate arrow back to original
+            menuBtn?.rotation = 0f
             return
         }
+        // Rotate arrow 180 degrees
+        menuBtn?.rotation = 180f
 
         val overlay = FrameLayout(this).apply {
             setBackgroundColor(Color.argb(95, 0, 0, 0))
@@ -559,11 +565,11 @@ class GameActivity : Activity() {
         }
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(12))
+            setPadding(dp(10), dp(8), dp(10), dp(10))
             background = GradientDrawable().apply {
-                setColor(Color.argb(218, 12, 11, 16))
-                setStroke(dp(1), Color.argb(80, 200, 180, 140))
-                cornerRadius = dp(14).toFloat()
+                setColor(Color.argb(222, 12, 11, 16))
+                setStroke(dp(1), Color.argb(85, 200, 180, 140))
+                cornerRadius = dp(12).toFloat()
             }
             isClickable = true
         }
@@ -584,29 +590,40 @@ class GameActivity : Activity() {
             dismissRuntimeActions()
         })
 
-        val actionRow = LinearLayout(this).apply {
+        // Controller mode toggle row
+        val modeRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
-        actionRow.addView(runtimeActionButton(
+        val isFull = overlayView?.controllerPreset == TouchOverlayView.ControllerPreset.FULL
+        modeRow.addView(runtimeActionButton(
+            if (isFull) "BASIC MODE" else "FULL MODE",
+            com.runestone.app.R.drawable.ic_runtime_edit,
+        ) {
+            dismissRuntimeActions()
+            toggleControllerPreset()
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+            rightMargin = dp(6)
+        })
+        modeRow.addView(runtimeActionButton(
             if (settings.layoutMode == LayoutMode.LANDSCAPE) "PORTRAIT" else "LANDSCAPE",
             com.runestone.app.R.drawable.ic_runtime_rotate,
         ) {
             dismissRuntimeActions()
             rotateRuntimeLayout()
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(6) })
-        actionRow.addView(runtimeActionButton("EDIT", com.runestone.app.R.drawable.ic_runtime_edit) {
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6); rightMargin = dp(6) })
+        modeRow.addView(runtimeActionButton("EDIT", com.runestone.app.R.drawable.ic_runtime_edit) {
             dismissRuntimeActions()
             openControlLayoutEditor()
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6); rightMargin = dp(6) })
-        actionRow.addView(runtimeActionButton("KEYBOARD", com.runestone.app.R.drawable.ic_runtime_keyboard) {
+        modeRow.addView(runtimeActionButton("KEYBOARD", com.runestone.app.R.drawable.ic_runtime_keyboard) {
             dismissRuntimeActions()
             toggleKeyboard()
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(6) })
-        panel.addView(actionRow)
+        panel.addView(modeRow)
 
         overlay.addView(panel, FrameLayout.LayoutParams(
-            (resources.displayMetrics.widthPixels * 0.54f).toInt().coerceIn(dp(300), dp(560)),
+            (resources.displayMetrics.widthPixels * 0.72f).toInt().coerceIn(dp(260), dp(480)),
             ViewGroup.LayoutParams.WRAP_CONTENT,
             Gravity.CENTER,
         ))
@@ -616,6 +633,22 @@ class GameActivity : Activity() {
         ))
         runtimeActionsOverlay = overlay
         overlay.requestFocus()
+    }
+
+    private fun toggleControllerPreset() {
+        val overlay = overlayView
+        if (overlay == null) return
+        val next = if (overlay.controllerPreset == TouchOverlayView.ControllerPreset.SIMPLIFIED)
+            TouchOverlayView.ControllerPreset.FULL
+        else
+            TouchOverlayView.ControllerPreset.SIMPLIFIED
+        overlay.setPreset(next)
+        settings = settings.copy(
+            controllerPreset = next.name,
+            showExtraButtons = (next == TouchOverlayView.ControllerPreset.FULL)
+        )
+        persistRuntimeInputSettings()
+        Toast.makeText(this, "Controller: ${next.name}", Toast.LENGTH_SHORT).show()
     }
 
     private fun setVirtualControlsVisible(visible: Boolean) {
@@ -898,6 +931,7 @@ class GameActivity : Activity() {
         val overlay = runtimeActionsOverlay ?: return
         rootView?.removeView(overlay)
         runtimeActionsOverlay = null
+        menuBtn?.rotation = 0f
     }
 
     private fun runtimeActionButton(label: String, iconRes: Int, action: () -> Unit): TextView =
