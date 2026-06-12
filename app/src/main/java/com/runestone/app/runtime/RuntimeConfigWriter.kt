@@ -46,7 +46,7 @@ class RuntimeConfigWriter {
         rtpManager: RtpManager,
     ): File {
         val mkxpDir = File(
-            context.getExternalFilesDir(null) ?: context.filesDir,
+            context.filesDir,
             "./$gameTitle",
         ).apply { mkdirs() }
         val config = File(mkxpDir, "mkxp.json")

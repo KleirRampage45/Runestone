@@ -1202,6 +1202,32 @@ class GameActivity : Activity() {
     private fun launchRgssGame(gameDir: File) {
         Log.i(TAG, "launchRgssGame: $gameDir (engine=$engineType)")
 
+        // Merge RTP content into game directory — PHYSFS on Android can't
+        // enumerate directories mounted via internal paths, so mkxp-z
+        // won't find RTP files through the mkxp.json config alone.
+        // Files already present in the game dir are never overwritten.
+        try {
+            val rtpManager = com.runestone.app.rtp.RtpManager(this)
+            for (id in rtpManager.installedIds()) {
+                val pack = com.runestone.app.rtp.RtpPack.forId(id) ?: continue
+                val rtpDir = rtpManager.packDir(pack)
+                if (!rtpDir.isDirectory) continue
+                rtpDir.walkTopDown()
+                    .filter { it.isFile }
+                    .forEach { file ->
+                        val relative = file.toRelativeString(rtpDir)
+                        val target = File(gameDir, relative)
+                        if (!target.exists()) {
+                            target.parentFile!!.mkdirs()
+                            file.copyTo(target)
+                        }
+                    }
+            }
+            Log.i(TAG, "RTP merge complete for ${gameDir.name}")
+        } catch (e: Exception) {
+            Log.w(TAG, "RTP merge failed; launching without RTP", e)
+        }
+
         // Write a per-game mkxp.json that lists all installed RTPs as
         // additional search paths. mkxp-z reads this from its customDataPath
         // (= SDL_GetPrefPath on Android) at startup. Without this, a game
