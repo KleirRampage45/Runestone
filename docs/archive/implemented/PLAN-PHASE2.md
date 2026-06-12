@@ -1,5 +1,12 @@
 # Phase 2 — Download & Install System
 
+> **STATUS (2026-06-12): ARCHIVED — IMPLEMENTED.** This plan describes the
+> download and install pipeline that landed in `feat/patch-system`,
+> `feat/provider-catalogue-settings`, and `feat/patch-hardening-save-backups`.
+> The actual implementation diverged from this exact file list (services are
+> split across `provider/`, `download/`, and `import/` packages), but every
+> item under "What to build" shipped. Kept for traceability.
+
 > Branch: `feature/phase12-game-provider`
 > Build on top of Phase 1
 

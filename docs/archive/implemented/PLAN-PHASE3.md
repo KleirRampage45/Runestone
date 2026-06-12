@@ -1,5 +1,9 @@
 # Phase 3 — Static Game Catalogue Integration
 
+> **STATUS (2026-06-12): ARCHIVED — IMPLEMENTED.** Static catalogue
+> integration shipped via `feat/provider-catalogue-settings` (June 2026).
+> The `ProviderSettingsScreen` rewrite happened as part of that branch.
+
 Branch: feature/phase12-game-provider
 Catalogue URL: https://raw.githubusercontent.com/KleirRampage45/runestone-catalogue/main/games.json
 

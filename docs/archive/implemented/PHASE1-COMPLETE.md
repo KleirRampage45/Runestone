@@ -1,5 +1,11 @@
 # Phase 1 — Game Provider System (✅ Complete)
 
+> **STATUS (2026-06-12): ARCHIVED — SUPERSEDED.** This snapshot is from the
+> end of Phase 1 (2026-05-28). Many of the limitations listed under
+> "Limitations (Phase 1)" were addressed in Phases 2 and 3 and the subsequent
+> `feat/patch-system` and `feat/provider-catalogue-settings` work. Read the
+> root `VISION-ROADMAP.md` for the current state.
+
 > Branch: `feature/phase12-game-provider`
 > Date: 2026-05-28
 > Commit: `3333066`

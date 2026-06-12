@@ -1,5 +1,12 @@
 # Layout, Controls, and Dual Viewport Roadmap
 
+> **STATUS (2026-06-12): ARCHIVED — IMPLEMENTED.** Sections 1–4 of this roadmap
+> have been implemented through the `feat/phase-a-layout-simplification` …
+> `feat/phase-d-control-layout-editor` chain (now merged). The runtime
+> customization portions are still in active development on
+> `fix/runtime-menu-native-layout-polish`. This file is kept for design
+> history only. See `VISION-ROADMAP.md` for current status.
+
 ## 1. Simplify Layout Modes
 
 Runestone should treat screen layout and input visibility as separate concepts.

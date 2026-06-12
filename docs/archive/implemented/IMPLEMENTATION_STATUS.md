@@ -1,5 +1,10 @@
 # Runestone Implementation Status — v0.6.0
 
+> **STATUS (2026-06-12): ARCHIVED.** This status snapshot is from v0.6.0 (May
+> 2026) and refers to `feature/phase0` through `feature/phase7` branches, all
+> of which have since been merged or superseded. The current state is
+> v0.8.2.2d; see `CHANGELOG.md` and `VISION-ROADMAP.md` for live status.
+
 > Updated: 2026-05-28 — Phase 7 complete
 > 21 of 27 JoiPlay gaps resolved. 7 branches pushed. Master untouched.
 

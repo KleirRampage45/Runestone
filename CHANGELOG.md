@@ -1,22 +1,25 @@
 # Runestone Changelog
 
-## v0.8.2 (2026-06-10) — fix/rtp-innoextract
-### Fixed
-- **SSL cert trust issue** — switched download URL back to archive.org (GoDaddy cert) because dl.komodo.jp uses Sectigo which isn't trusted on some Android devices (OPPO, etc.)
-### Changed
-- EULA text updated for archive.org source
+All notable changes to Runestone are documented in this file. Versions are
+tagged `MAJOR.MINOR.PATCH.N` where the trailing `.N` distinguishes
+re-spin-of-the-same-NDK-build revisions (e.g. v0.8.2.2c and v0.8.2.2d rebuild
+`libmkxp-z.so` against newer NDK / boost combinations without changing
+features).
 
-## v0.8.1 (2026-06-10) — fix/rtp-innoextract
+## v0.8.2.2d (2026-06-10) — fix/help-about-copy
 ### Fixed
-- **RTP extraction pipeline** — official RPG Maker VX Ace RTP installer (ZIP containing Setup.exe + Setup-1.bin) is now properly extracted. The app downloads the official ZIP from dl.komodo.jp, unzips it, then runs a bundled innoextract ARM64 binary to extract the 780 actual RTP assets (Graphics/, Audio/, Fonts/) from the Inno Setup installer.
-  - Marker file corrected: `Graphics/Tilesets/World_Tileset.png` → `Graphics/Tilesets/World_A1.png`
-  - Bundled innoextract v1.9 + shared libraries (Boost, liblzma, libiconv) compiled for ARM64 Android API 24+
-  - EULA text updated to reference the official source
-### Added
-- **InnoextractHelper.kt** — manages the bundled innoextract JNI library
-- **RtpInstaller.kt** — updated install pipeline: download official ZIP → unzip → innoextract → move assets → verify marker
-- **innoextract assets** — `assets/innoextract/innoextract` binary + `assets/innoextract/lib/*.so` libraries
-- versionCode 27
+- **Boost / libc++ ABI mismatch** — rebuilt `libmkxp-z.so` against NDK r27 with
+  a fully static libc++ and bundled boost dependencies. Resolves intermittent
+  `std::__ndk1` symbol clashes on devices that ship a different NDK
+  toolchain's libc++_shared.
+
+## v0.8.2.2c (2026-06-10) — fix/help-about-copy
+### Fixed
+- **Static libc++ linkage** — `libmkxp-z.so` and its boost deps now link
+  libc++ statically. SONAME collisions with system `libc++_shared.so` are
+  gone.
+- **SONAME fixes** — explicit `DT_SONAME` entries on bundled shared objects
+  so `dlopen` resolves them deterministically.
 
 ## v0.8.2.2 (2026-06-10) — fix/rtp-innoextract
 ### Changed
@@ -29,25 +32,62 @@
 - Added `jniLibs/arm64-v8a/libinnoextract_jni.so` + deps
 - versionCode 30
 
+## v0.8.2 (2026-06-10) — fix/rtp-innoextract
+### Fixed
+- **SSL cert trust issue** — switched download URL back to archive.org
+  (GoDaddy cert) because dl.komodo.jp uses Sectigo which isn't trusted on
+  some Android devices (OPPO, etc.)
+### Changed
+- EULA text updated for archive.org source
+
+## v0.8.1 (2026-06-10) — fix/rtp-innoextract
+### Fixed
+- **RTP extraction pipeline** — official RPG Maker VX Ace RTP installer (ZIP
+  containing Setup.exe + Setup-1.bin) is now properly extracted. The app
+  downloads the official ZIP, unzips it, then runs a bundled innoextract ARM64
+  binary to extract the 780 actual RTP assets (Graphics/, Audio/, Fonts/) from
+  the Inno Setup installer.
+  - Marker file corrected: `Graphics/Tilesets/World_Tileset.png` →
+    `Graphics/Tilesets/World_A1.png`
+  - Bundled innoextract v1.9 + shared libraries (Boost, liblzma, libiconv)
+    compiled for ARM64 Android API 24+
+  - EULA text updated to reference the official source
+### Added
+- **InnoextractHelper.kt** — manages the bundled innoextract JNI library
+- **RtpInstaller.kt** — updated install pipeline: download official ZIP →
+  unzip → innoextract → move assets → verify marker
+- **innoextract assets** — `assets/innoextract/innoextract` binary +
+  `assets/innoextract/lib/*.so` libraries
+- versionCode 27
+
 ## v0.8.0 (2026-06-10) — fix/help-about-copy
 ### Fixed
-- **MkxpZEngine detection for unencrypted RGSS games** — added Game.ini + Data/ fallback so games like NTRPG2 v1.14 (no .rgss3a, no .rvproj2) are recognized as VX Ace. Previously only hit when the folder contained `Game.rgss3a` or `Game.rvproj2` archives.
+- **MkxpZEngine detection for unencrypted RGSS games** — added Game.ini +
+  Data/ fallback so games like NTRPG2 v1.14 (no .rgss3a, no .rvproj2) are
+  recognized as VX Ace. Previously only hit when the folder contained
+  `Game.rgss3a` or `Game.rvproj2` archives.
   - canRun() now also matches `Game.ini` + non-empty `Data/` directory
-  - detectRgssVersion() reads .rvdata2 / .rvdata / .rxdata inside Data/ to pick the right RGSS version label
+  - detectRgssVersion() reads .rvdata2 / .rvdata / .rxdata inside Data/ to
+    pick the right RGSS version label
 - **versionCode bumped 24→25** for install upgrade
 
 ## v0.6.13 (2026-06-01) — feat/asuka-gap-closure
 ### Added
-- **L1/R1 shoulder buttons** in TouchOverlayView — small pill buttons at top of control panel
+- **L1/R1 shoulder buttons** in TouchOverlayView — small pill buttons at top
+  of control panel
   - L1 maps to KEYCODE_BUTTON_L1, R1 maps to KEYCODE_BUTTON_R1
   - JS dispatch: Q(81) for L1, W(87) for R1 (WebView MV/MZ games)
   - Fixed position (not part of layout editor)
 - **ONScripter (NScripter) engine — WORKING**
-  - 5 Java JNI bridge files from onscripter-engine-android (ONScripterView, DemoGLSurfaceView, GLSurfaceView_SDL, Audio, NativeONSException)
-  - OnscripterActivity.kt — thin activity wrapper with font detection, save dir, HQ audio
+  - 5 Java JNI bridge files from onscripter-engine-android
+    (ONScripterView, DemoGLSurfaceView, GLSurfaceView_SDL, Audio,
+    NativeONSException)
+  - OnscripterActivity.kt — thin activity wrapper with font detection,
+    save dir, HQ audio
   - Registered in AndroidManifest, wired to NScripterEngine launch
 - **Per-game settings system** (merged from feature/phase1-pergame-config)
-  - PerGameConfig.kt: JSON-based layered config (game, input, video, audio, performance, cheats, fonts sections)
+  - PerGameConfig.kt: JSON-based layered config (game, input, video, audio,
+    performance, cheats, fonts sections)
   - GameConfigService.kt: Load/save/apply/merge per-game configs
   - No extra dependencies — uses org.json
 - **Optional Addons system** — SharedPreferences-based engine toggles
@@ -59,25 +99,31 @@
 
 ### Changed
 - **APK size: 225MB → 82MB** — removed Godot .so from default build
-  - libgodot_android.so (142MB) and libc++_shared_godot.so (1.4MB) moved to optional-libs/godot/
+  - libgodot_android.so (142MB) and libc++_shared_godot.so (1.4MB) moved to
+    optional-libs/godot/
   - Re-enable by copying back to jniLibs or via Addons download (future)
-- **Gap analysis fully rewritten** — RUNESTONE-vs-JOIPLAY-GAP-ANALYSIS.md now reflects v0.6.13 reality
-- **Documentation overhaul** — AGENTS.md expanded, README.md updated, DESIGN.md updated
+- **Gap analysis fully rewritten** — RUNESTONE-vs-JOIPLAY-GAP-ANALYSIS.md now
+  reflects v0.6.13 reality (since archived; see docs/archive/)
+- **Documentation overhaul** — AGENTS.md expanded, README.md updated,
+  DESIGN.md updated
 
 ### Fixed
 - Build now correctly excludes optional .so files from APK packaging
 
 ## v0.6.12 (2026-05-31)
 ### Changed
-- Replaced custom 3D carousel layout with standard LinearLayoutManager + PagerSnapHelper
+- Replaced custom 3D carousel layout with standard LinearLayoutManager +
+  PagerSnapHelper
 - Carousel cards lowered to 59% screen height
 - PLAY/SETTINGS actions standardized to 150dp width
 - Carousel metadata anchored above bottom dock clearance
 
 ### Fixed
 - Canonical EasyRPG command-line arguments for RM2000/2003 games
-- Unavailable Godot/Ren'Py/ONScripter wrappers show coming-soon dialogs instead of crashes
-- Store installs normalize flat/single-root ZIP archives into complete original/ workspaces
+- Unavailable Godot/Ren'Py/ONScripter wrappers show coming-soon dialogs
+  instead of crashes
+- Store installs normalize flat/single-root ZIP archives into complete
+  original/ workspaces
 - Download cleanup after URL-resolution failures
 - Paused store downloads resume correctly after worker stop
 - MediaFire legacy URL conversion + redirect fallback handling
@@ -89,40 +135,65 @@
   - Slide-up card animation with OvershootInterpolator
   - DONE button moved to title row
   - Clear (X) button in search input — clears text and resets filter
-  - REVERT button now restores ALL initial state (filter, sort, AND search text)
+  - REVERT button now restores ALL initial state (filter, sort, AND search
+    text)
   - Sort rows now show checkmark ✓ on selection
   - Animated transitions when switching sort modes (slide + fade)
   - Glass styling on engine chips (transparent bg, subtle border)
   - Backdrop tap or Done applies and closes
-- **STOP confirmation dialog** — replaced Android AlertDialog with a custom glass overlay:
+- **STOP confirmation dialog** — replaced Android AlertDialog with a custom
+  glass overlay:
   - Dark blurred backdrop (RenderEffect)
   - Centered glass card with slide-up entrance animation
   - "STOP GAME" button in red glass styling
   - "CANCEL" button in muted glass styling
   - Both buttons have dismiss animations (fade + scale)
   - No more blue screen on STOP — uses showHome() instead of finish()
-- **STOP no longer causes blue screen** — uses showHome() to refresh the home screen without finishing MainActivity. Game stays running underneath but resume bar disappears entirely.
+- **STOP no longer causes blue screen** — uses showHome() to refresh the home
+  screen without finishing MainActivity. Game stays running underneath but
+  resume bar disappears entirely.
 
 ## v0.6.6 (2026-05-28)
 ### Added
-- **STOP button** in resume bar — red button alongside green RESUME. Shows confirmation dialog: "Any unsaved progress will be lost. Save data on disk is NOT affected." On confirm, clears pause state and returns to game, which detects the STOP flag and finishes itself
-- **Shared-preference stop_game flag** — both mkxp-z and EasyRPG engines check for this in `onResume()`. When the launcher sets it, the game finishes cleanly on next resume
+- **STOP button** in resume bar — red button alongside green RESUME. Shows
+  confirmation dialog: "Any unsaved progress will be lost. Save data on disk
+  is NOT affected." On confirm, clears pause state and returns to game, which
+  detects the STOP flag and finishes itself
+- **Shared-preference stop_game flag** — both mkxp-z and EasyRPG engines
+  check for this in `onResume()`. When the launcher sets it, the game
+  finishes cleanly on next resume
 
 ### Fixed
-- **Multi-game launch**: launching a new game while the previous one is paused now uses `FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_CLEAR_TASK` and finishes MainActivity — old game is removed from the stack instead of staying underneath
-- **Keyboard for ALL engines**: mkxp-z MainActivity's KBD button now calls `SDLActivity.showTextInput()` instead of `toggleSoftInput()` — same fix as EasyRPG in v0.6.5. Properly creates `mTextEdit`, requests focus, and shows IME so text input works in Blacksouls too
-- **Keyboard icon**: KBD button text changed from "KBD" to "⌨" in both mkxp-z and EasyRPG
-- **OFF crash**: added `mkdirs()` for config path directory — EasyRPG native code couldn't write `config.ini` if the `/easyrpg/` dir didn't exist
-- **Config path dirs**: ensured `mkdirs()` is called for both config and save paths
+- **Multi-game launch**: launching a new game while the previous one is
+  paused now uses `FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_CLEAR_TASK` and
+  finishes MainActivity — old game is removed from the stack instead of
+  staying underneath
+- **Keyboard for ALL engines**: mkxp-z MainActivity's KBD button now calls
+  `SDLActivity.showTextInput()` instead of `toggleSoftInput()` — same fix
+  as EasyRPG in v0.6.5. Properly creates `mTextEdit`, requests focus, and
+  shows IME so text input works in Blacksouls too
+- **Keyboard icon**: KBD button text changed from "KBD" to keyboard glyph
+  in both mkxp-z and EasyRPG
+- **OFF crash**: added `mkdirs()` for config path directory — EasyRPG native
+  code couldn't write `config.ini` if the `/easyrpg/` dir didn't exist
+- **Config path dirs**: ensured `mkdirs()` is called for both config and
+  save paths
 
 ### Changed
 - Version bump: 0.6.5 → 0.6.6 (code 12)
 
 ## v0.6.5 (2026-05-28)
 ### Fixed
-- **Portrait mode**: `launchEasyRpgGame()` now passes `EXTRA_LAYOUT_MODE`, `GAME_PATH`, and all touch/haptic extras to the EasyRPG activity — game respects your chosen layout mode
-- **Config warning**: added `--config-path` and `--save-path` CLI arguments pointing to app's private data dir — eliminates "Could not determine config path" startup noise
-- **Keyboard input**: replaced mkxp-z KBD button behavior — now calls `SDLActivity.showTextInput()` which properly creates `mTextEdit`, requests focus, and shows the IME. Previously just called `toggleSoftInput()` with no text input target
+- **Portrait mode**: `launchEasyRpgGame()` now passes `EXTRA_LAYOUT_MODE`,
+  `GAME_PATH`, and all touch/haptic extras to the EasyRPG activity — game
+  respects your chosen layout mode
+- **Config warning**: added `--config-path` and `--save-path` CLI arguments
+  pointing to app's private data dir — eliminates "Could not determine
+  config path" startup noise
+- **Keyboard input**: replaced mkxp-z KBD button behavior — now calls
+  `SDLActivity.showTextInput()` which properly creates `mTextEdit`, requests
+  focus, and shows the IME. Previously just called `toggleSoftInput()` with
+  no text input target
 - `getRtpPath()`: returned null → SIGABRT in `FileFinder_RTP` constructor
 
 ### Changed
@@ -130,14 +201,17 @@
 
 ## v0.6.4 (2026-05-28)
 ### Fixed
-- EasyRPG crash: missing `getRtpPath()` instance method → `NoSuchMethodError` → SIGABRT in `Scene_Logo::DetectGame()` → app restart loop
+- EasyRPG crash: missing `getRtpPath()` instance method → `NoSuchMethodError`
+  → SIGABRT in `Scene_Logo::DetectGame()` → app restart loop
 
 ### Changed
 - Version bump: 0.6.3 → 0.6.4 (code 10)
 
 ## v0.6.3 (2026-05-28)
 ### Fixed
-- EasyRPG crash: game path passed as raw `argv[0]` but skipped per Unix convention — now passes `--project-path <dir>` which `ParseCommandLine()` properly handles
+- EasyRPG crash: game path passed as raw `argv[0]` but skipped per Unix
+  convention — now passes `--project-path <dir>` which `ParseCommandLine()`
+  properly handles
 - Config dialog showing "Invalid --project-path" instead of crashing
 
 ### Changed
@@ -145,8 +219,10 @@
 
 ## v0.6.2 (2026-05-28)
 ### Fixed
-- EasyRPG crash: `getAssetManager()` missing static JNI method → `NoSuchMethodError` → `SIGABRT` in `filesystem_apk.cpp`
-- EasyRPG crash: `getHandleForPath()` missing static JNI method → `NoSuchMethodError` → `SIGABRT` in `filesystem_saf.cpp`
+- EasyRPG crash: `getAssetManager()` missing static JNI method →
+  `NoSuchMethodError` → `SIGABRT` in `filesystem_apk.cpp`
+- EasyRPG crash: `getHandleForPath()` missing static JNI method →
+  `NoSuchMethodError` → `SIGABRT` in `filesystem_saf.cpp`
 
 ### Changed
 - Version bump: 0.6.1 → 0.6.2 (code 8)
@@ -155,7 +231,8 @@
 ### Fixed
 - Single-selection UI: tapping a game card now deselects the previous card
 - Tapping the same card again deselects it (toggle behavior)
-- EasyRPG wrapper: added `getArguments()` override to pass game path as CLI args
+- EasyRPG wrapper: added `getArguments()` override to pass game path as CLI
+  args
 - EasyRPG wrapper: added `save_path` intent extra support
 
 ### Changed
@@ -163,13 +240,19 @@
 
 ## v0.6.0 (2026-05-28)
 ### Fixed
-- **Critical**: EasyRPG `libSDL2.so` (GNU libstdc++) was overwriting mkxp-z `libSDL2.so` (NDK libc++), causing dual C++ runtime load → SIGABRT in mkxp-z
-- EasyRPG crash: `ClassNotFoundException: org.easyrpg.player.GameActivity` — Java sources not compiled
-- EasyRPG crash: activity name mismatch (GameActivity → EasyRpgPlayerActivity)
-- Manifest missing `android:icon` and `android:roundIcon` — adaptive icon not displayed
+- **Critical**: EasyRPG `libSDL2.so` (GNU libstdc++) was overwriting mkxp-z
+  `libSDL2.so` (NDK libc++), causing dual C++ runtime load → SIGABRT in
+  mkxp-z
+- EasyRPG crash: `ClassNotFoundException: org.easyrpg.player.GameActivity` —
+  Java sources not compiled
+- EasyRPG crash: activity name mismatch (GameActivity →
+  EasyRpgPlayerActivity)
+- Manifest missing `android:icon` and `android:roundIcon` — adaptive icon
+  not displayed
 
 ### Added
-- EasyRPG JNI wrapper (`EasyRpgPlayerActivity`) — minimal surface for `libeasyrpg_android.so`
+- EasyRPG JNI wrapper (`EasyRpgPlayerActivity`) — minimal surface for
+  `libeasyrpg_android.so`
 - Godot `libgodot_android.so` (142MB) bundled
 - Ren'Py `librenpython.so` (55MB) bundled
 - ONScripter `libonscripter.so` (2.3MB) + `libsdl.so` bundled
@@ -192,8 +275,8 @@
 - RuffleEngine (Flash, MIT)
 - WebEngines (HTML5/Twine/VN Maker/NScripter/Electron)
 - GodotEngine detection (project.godot/.pck)
-- LICENSE-BUNDLING-STRATEGY.md
-- IMPLEMENTATION_STATUS.md
+- LICENSE-BUNDLING-STRATEGY.md (since archived into docs/archive/research/)
+- IMPLEMENTATION_STATUS.md (since archived into docs/archive/implemented/)
 
 ### Changed
 - EasyRPG launch code: Toast → bundled native Intent
