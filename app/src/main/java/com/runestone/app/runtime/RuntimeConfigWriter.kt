@@ -53,9 +53,24 @@ class RuntimeConfigWriter {
 
         val installed = rtpManager.installedIds().toList()
         val rtps = JSONArray()
+        val gameAbs = gameDir.absolutePath
         for (id in installed) {
             val pack = RtpPack.forId(id) ?: continue
-            rtps.put(rtpManager.packDir(pack).absolutePath)
+            val rtpAbs = rtpManager.packDir(pack).absolutePath
+            // Use relative paths so PHYSFS's DIR archiver works
+            // (Android internal absolute paths may fail to enumerate)
+            val relative = try {
+                val gameParts = gameAbs.split("/").drop(1).dropLastWhile { it.isEmpty() }
+                val rtpParts = rtpAbs.split("/").drop(1).dropLastWhile { it.isEmpty() }
+                // Find common prefix length
+                val commonLen = gameParts.zip(rtpParts)
+                    .takeWhile { (a, b) -> a == b }.count()
+                // Go up from game to common ancestor, then down to rtp
+                val up = gameParts.drop(commonLen).map { ".." }
+                val down = rtpParts.drop(commonLen)
+                (up + down).joinToString("/")
+            } catch (_: Exception) { rtpAbs }
+            rtps.put(relative)
         }
 
         val json = JSONObject().apply {
