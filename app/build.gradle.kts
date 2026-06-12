@@ -6,14 +6,14 @@ plugins {
 android {
     namespace = "com.runestone.app"
     compileSdk = 35
-    ndkVersion = "23.1.7779620"
+    ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "com.runestone.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 30
-        versionName = "0.8.2.2"
+        versionCode = 35
+        versionName = "0.8.7"
 
         ndk {
             abiFilters += "arm64-v8a"

@@ -50,9 +50,6 @@ import com.runestone.app.ui.SortMode
 import com.runestone.app.importer.SafGameImporter
 import com.runestone.app.importer.SafImportResult
 import com.runestone.app.importer.SafStorageBrowser
-import com.runestone.app.rtp.RtpInstaller
-import com.runestone.app.rtp.RtpManager
-import com.runestone.app.rtp.RtpPack
 import com.runestone.app.ui.AvailableGamesScreen
 import com.runestone.app.ui.GameFolderBrowserScreen
 import com.runestone.app.ui.GameCardInfo
@@ -110,6 +107,7 @@ class MainActivity : Activity() {
     private var pendingPatchCallback: ((String) -> Unit)? = null
     private var pendingSaveExportStorage: String? = null
     private var pendingSaveImportStorage: String? = null
+    private var splashView: FrameLayout? = null
     private val importBrowserStack = mutableListOf<SafStorageBrowser.Folder>()
     private var importBrowserShowLocations = false
     private var downloadProgressMap = mutableMapOf<String, DownloadManager.DownloadProgress>()
@@ -198,18 +196,10 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "onCreate")
         applyImmersiveMode()
-        // Check for paused game from SharedPreferences — load for display,
-        // then clear immediately since the game activity is dead after fresh onCreate
-        pausedGamePath = getSharedPreferences("runestone", MODE_PRIVATE)
-            .getString("paused_game", null)
-        if (getSharedPreferences("runestone", MODE_PRIVATE).getBoolean("game_minimized", false)) {
-            Log.i(TAG, "onCreate preserving minimized game path=$pausedGamePath")
-        } else {
-            finalizeActivePlaySession(reason = "fresh_on_create")
-            getSharedPreferences("runestone", MODE_PRIVATE).edit()
-                .remove("paused_game").apply()
-            pausedGamePath = null // game process died with the app
-        }
+        // A fresh MainActivity means there is no live GameActivity to resume.
+        // Resume state is only valid when GameActivity intentionally returns
+        // to an already-running hub through goHomePaused().
+        clearRuntimeResumeState(reason = "fresh_on_create")
         settingsStore = SettingsStore(this)
         workspaceManager = WorkspaceManager(this)
         installStateStore = InstallStateStore(workspaceManager)
@@ -228,7 +218,6 @@ class MainActivity : Activity() {
                     .getString("homeCardLayout", HomeCardLayout.GRID_2.name).orEmpty(),
             )
         }.getOrDefault(HomeCardLayout.GRID_2)
-        refreshGames()
         createNotificationChannel()
         requestNotificationPermissionIfNeeded()
         registerDownloadReceiver()
@@ -262,6 +251,7 @@ class MainActivity : Activity() {
         }
         setContentView(rootContainer)
         showSplash()
+        rootContainer.post { refreshGames() }
         persistentDock = HomeScreen(this).createDockBar(
             onHome = { dismissOverlay() },
             onAdd = { startFolderImport() },
@@ -302,6 +292,7 @@ class MainActivity : Activity() {
     private fun refreshGames() {
         games = workspaceManager.scanInstalledGames()
         Log.i(TAG, "refreshGames: found ${games.size} games")
+        dismissSplash()
     }
 
     private fun startPlaySession(storageName: String, gamePath: String) {
@@ -311,7 +302,8 @@ class MainActivity : Activity() {
             .putString("active_game_path", gamePath)
             .putLong("active_game_started_at", now)
             .putLong("active_game_last_seen_at", now)
-            .putString("paused_game", gamePath)
+            .remove("paused_game")
+            .remove("game_minimized")
             .apply()
 
         getSharedPreferences("play_stats", MODE_PRIVATE).edit()
@@ -344,6 +336,18 @@ class MainActivity : Activity() {
             .remove("active_game_started_at")
             .remove("active_game_last_seen_at")
             .remove("paused_game")
+            .remove("game_minimized")
+            .remove("kill_game")
+            .apply()
+        pausedGamePath = null
+    }
+
+    private fun clearRuntimeResumeState(reason: String) {
+        finalizeActivePlaySession(reason)
+        getSharedPreferences("runestone", MODE_PRIVATE).edit()
+            .remove("paused_game")
+            .remove("game_minimized")
+            .remove("kill_game")
             .apply()
         pausedGamePath = null
     }
@@ -995,16 +999,21 @@ class MainActivity : Activity() {
             alpha = 0f
         }
         rootContainer.addView(splash, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        splashView = splash
 
-        // Fade in quickly, hold, then fade out and show home
-        splash.animate().alpha(1f).setDuration(400).withEndAction {
-            splash.postDelayed({
-                splash.animate().alpha(0f).setDuration(400).withEndAction {
-                    rootContainer.removeView(splash)
-                    showHome()
-                }.start()
-            }, 600)
-        }.start()
+        // Fade in quickly, stay visible as loading mask
+        splash.animate().alpha(1f).setDuration(300).start()
+    }
+
+    private fun dismissSplash() {
+        val splash = splashView ?: return
+        splashView = null
+        splash.post {
+            splash.animate().alpha(0f).setDuration(300).withEndAction {
+                rootContainer.removeView(splash)
+                showHome()
+            }.start()
+        }
     }
 
     // ═══════════════════════════════════════════════════════
@@ -1255,16 +1264,6 @@ class MainActivity : Activity() {
                 onClearRuntimeCache = {
                     clearRuntimeCache()
                 },
-                onInstallRtp = {
-                    dismissOverlay()
-                    val vxace = com.runestone.app.rtp.RtpPack.VX_ACE
-                    val rtpManager = com.runestone.app.rtp.RtpManager(this)
-                    if (!rtpManager.isInstalled(vxace)) {
-                        startRtpInstallForImport(vxace)
-                    } else {
-                        android.widget.Toast.makeText(this, "VX Ace RTP is already installed.", android.widget.Toast.LENGTH_SHORT).show()
-                    }
-                },
             ),
         )
     }
@@ -1514,7 +1513,9 @@ class MainActivity : Activity() {
     private fun playGame(storageName: String) {
         val game = games.find { it.storageName == storageName } ?: return
 
-        if (pausedGamePath != null && pausedGamePath == game.originalPath) {
+        val isMinimized = getSharedPreferences("runestone", MODE_PRIVATE)
+            .getBoolean("game_minimized", false)
+        if (isMinimized && pausedGamePath != null && pausedGamePath == game.originalPath) {
             Log.i(TAG, "RESUME: $storageName")
             pausedGamePath = null
             getSharedPreferences("runestone", MODE_PRIVATE).edit()
@@ -1532,7 +1533,7 @@ class MainActivity : Activity() {
 
         val effectiveSettings = com.runestone.app.data.GameConfigService(this, workspaceManager)
             .resolveRunnerSettings(storageName)
-        GameActivity.start(this, game.originalPath, game.engineType.name, effectiveSettings)
+        GameActivity.start(this, game.originalPath, game.engineType.name, effectiveSettings, storageName)
     }
 
     private fun startFolderImport(requestedName: String? = null) {
@@ -1622,6 +1623,7 @@ class MainActivity : Activity() {
             val importer = SafGameImporter(
                 contentResolver = contentResolver,
                 workspaceManager = workspaceManager,
+                rtpManager = com.runestone.app.rtp.RtpManager(this@MainActivity),
                 onProgress = { msg ->
                     runOnUiThread {
                         Log.d(TAG, "import progress: $msg")
@@ -1649,27 +1651,14 @@ class MainActivity : Activity() {
                         importMessage = null
                         saveManager.restoreToActive(result.storageName)
                         activeImportProgressView = null
+                        workspaceManager.invalidateGameScanCache()
                         refreshGames()
-
-                        // Check if this game needs RTP
-                        val gameDir = workspaceManager.gameDir(result.storageName)
-                        val originalDir = java.io.File(gameDir, "original")
-                        val iniFile = java.io.File(originalDir, "Game.ini")
-                        if ((result.engineType == EngineType.RGSS_VX_ACE ||
-                             result.engineType == EngineType.RGSS_VX ||
-                             result.engineType == EngineType.RGSS_XP) && iniFile.exists()) {
-                            val rtpManager = RtpManager(this@MainActivity)
-                            val rtpPack = rtpManager.detectRequiredPack(iniFile)
-                            if (rtpPack != null) {
-                                val rtpInstaller = RtpInstaller(this@MainActivity)
-                                if (!rtpInstaller.isInstalled(rtpPack)) {
-                                    startRtpInstallForImport(result.storageName, rtpPack)
-                                    return@runOnUiThread
-                                }
+                        dismissOverlay {
+                            showHome()
+                            if (result.missingRtps.isNotEmpty()) {
+                                showRtpDownloadDialog(result.storageName, result.missingRtps)
                             }
                         }
-
-                        dismissOverlay { showHome() }
                     }
                     is SafImportResult.Failure -> {
                         Log.e(TAG, "Import FAILED: ${result.reason}")
@@ -1686,154 +1675,130 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    private fun startRtpInstallForImport(storageName: String, rtpPack: RtpPack) {
-        val rtpInstaller = RtpInstaller(this)
-        Log.i(TAG, "RTP needed for $storageName: ${rtpPack.label}")
+    private fun showRtpDownloadDialog(storageName: String, missing: List<com.runestone.app.rtp.RtpPack>) {
+        if (missing.isEmpty()) return
 
-        // If EULA already accepted, start install directly
-        if (rtpInstaller.hasAcceptedEula(rtpPack)) {
-            doRtpInstall(storageName, rtpPack)
-            return
+        val pack = missing.first()
+        val totalBytes = pack.approxBytes
+        val sizeMb = totalBytes / 1024 / 1024
+
+        val eulaMessage = buildString {
+            append("This game uses the ").append(pack.displayName).append(",\n")
+            append("which isn't installed on your device.\n\n")
+            append("Size: ~").append(sizeMb).append(" MB (downloaded once, shared with all games)\n\n")
+            append("By tapping DOWNLOAD, you confirm that you have read and agree to the ")
+                .append("Enterbrain/Kadokawa End User License Agreement for the ")
+                .append("RPG Maker Runtime Packages.\n\n")
+            append("Source: ").append(pack.sourceAttribution).append("\n")
+            append("URL: ").append(pack.sourceUrl)
         }
 
-        // Show EULA dialog first
-        rtpInstaller.showEulaDialog(rtpPack,
-            onAccepted = { doRtpInstall(storageName, rtpPack) },
-            onRejected = { dismissOverlay { showHome() } }
-        )
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("Runtime Package Required")
+            .setMessage(eulaMessage)
+            .setPositiveButton("DOWNLOAD") { _, _ ->
+                startRtpDownload(storageName, pack)
+            }
+            .setNegativeButton("LATER") { d, _ ->
+                d.dismiss()
+                showHome()
+            }
+            .setCancelable(true)
+            .create()
+        dialog.show()
     }
 
-    private fun startRtpInstallForImport(rtpPack: RtpPack) {
-        // Manual RTP install from settings — no game context
-        val rtpInstaller = RtpInstaller(this)
+    private fun startRtpDownload(storageName: String, pack: com.runestone.app.rtp.RtpPack) {
+        Log.i(TAG, "Starting RTP download: ${pack.id} for game=$storageName")
+        val installer = com.runestone.app.rtp.RtpInstaller(this@MainActivity)
+        showRtpDownloadProgressOverlay(pack)
+        installer.install(pack, object : com.runestone.app.rtp.RtpInstaller.Listener {
+            override fun onStatus(status: com.runestone.app.rtp.RtpInstaller.Status) {
+                runOnUiThread { handleRtpStatus(pack, status) }
+            }
+        })
+    }
 
-        if (rtpInstaller.hasAcceptedEula(rtpPack)) {
-            doRtpInstall(rtpPack)
-            return
+    private fun handleRtpStatus(pack: com.runestone.app.rtp.RtpPack, status: com.runestone.app.rtp.RtpInstaller.Status) {
+        when (status) {
+            is com.runestone.app.rtp.RtpInstaller.Status.Downloading -> {
+                val pct = if (status.total > 0) (status.bytes.toFloat() / status.total * 100).toInt() else 0
+                rtpOverlayStatusText?.text = "Downloading ${pack.displayName}\n${pct}%  (${status.bytes / 1024 / 1024} MB / ${status.total / 1024 / 1024} MB)"
+                rtpOverlayProgressBar?.progress = pct
+            }
+            is com.runestone.app.rtp.RtpInstaller.Status.Extracting -> {
+                rtpOverlayStatusText?.text = "Extracting ${pack.displayName}..."
+                rtpOverlayProgressBar?.progress = 100
+            }
+            is com.runestone.app.rtp.RtpInstaller.Status.Installed -> {
+                rtpOverlayStatusText?.text = "${pack.displayName} ready."
+                rtpOverlayProgressBar?.progress = 100
+                android.widget.Toast.makeText(
+                    this,
+                    "RTP installed. You can now launch the game.",
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+                dismissRtpDownloadOverlay()
+            }
+            is com.runestone.app.rtp.RtpInstaller.Status.Error -> {
+                rtpOverlayStatusText?.text = "RTP download failed:\n${status.message}"
+                rtpOverlayProgressBar?.progress = 0
+                android.widget.Toast.makeText(
+                    this,
+                    "RTP download failed: ${status.message}",
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            }
+            else -> Unit
         }
-
-        rtpInstaller.showEulaDialog(rtpPack,
-            onAccepted = { doRtpInstall(rtpPack) },
-            onRejected = {}
-        )
     }
 
-    private fun doRtpInstall(rtpPack: RtpPack) {
-        Log.i(TAG, "Starting RTP install (manual): ${rtpPack.label}")
-        val rtpInstaller = RtpInstaller(this)
-        showImportProgress("Downloading ${rtpPack.label}...")
-        Thread {
-            rtpInstaller.install(rtpPack, object : RtpInstaller.InstallCallback {
-                override fun onProgress(progress: RtpInstaller.InstallProgress) {
-                    runOnUiThread {
-                        val pv = activeImportProgressView
-                        if (pv != null) {
-                            when (progress.state) {
-                                RtpInstaller.InstallState.DOWNLOADING -> {
-                                    pv.phaseView.text = "Downloading ${rtpPack.label}..."
-                                    val pct = if (progress.totalBytes > 0)
-                                        "${progress.bytesDownloaded * 100 / progress.totalBytes}%"
-                                    else "${progress.bytesDownloaded / 1024} KB"
-                                    pv.fileView.text = pct
-                                }
-                                RtpInstaller.InstallState.EXTRACTING -> {
-                                    pv.phaseView.text = "Extracting ${rtpPack.label}..."
-                                    pv.fileView.text = "${progress.filesExtracted} files"
-                                }
-                                RtpInstaller.InstallState.COMPLETED -> {
-                                    pv.phaseView.text = "RTP ready!"
-                                    pv.fileView.text = ""
-                                }
-                                else -> {}
-                            }
-                        }
-                    }
-                }
+    private var rtpOverlayStatusText: android.widget.TextView? = null
+    private var rtpOverlayProgressBar: android.widget.ProgressBar? = null
 
-                override fun onComplete() {
-                    runOnUiThread {
-                        activeImportProgressView = null
-                        android.widget.Toast.makeText(
-                            this@MainActivity,
-                            "${rtpPack.label} installed successfully",
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
-                        dismissOverlay { showHome() }
-                    }
-                }
+    private fun showRtpDownloadProgressOverlay(pack: com.runestone.app.rtp.RtpPack) {
+        // Tear down any existing overlay
+        dismissRtpDownloadOverlay()
 
-                override fun onError(message: String) {
-                    runOnUiThread {
-                        activeImportProgressView = null
-                        android.app.AlertDialog.Builder(this@MainActivity)
-                            .setTitle("RTP Install Failed")
-                            .setMessage(message)
-                            .setPositiveButton("OK") { _, _ -> showHome() }
-                            .show()
-                    }
-                }
-            })
-        }.start()
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(40, 40, 40, 40)
+        }
+        val title = android.widget.TextView(this).apply {
+            text = "Runtime Package"
+            textSize = 18f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }
+        val status = android.widget.TextView(this).apply {
+            text = "Downloading ${pack.displayName}..."
+            setPadding(0, 16, 0, 16)
+        }
+        val progress = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            isIndeterminate = false
+            max = 100
+        }
+        container.addView(title)
+        container.addView(status)
+        container.addView(progress)
+        rtpOverlayStatusText = status
+        rtpOverlayProgressBar = progress
+
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setView(container)
+            .setCancelable(false)
+            .setNegativeButton("HIDE") { d, _ -> d.dismiss() }
+            .create()
+        dialog.show()
+        activeRtpDialog = dialog
     }
 
-    private fun doRtpInstall(storageName: String, rtpPack: RtpPack) {
-        Log.i(TAG, "Starting RTP install for $storageName: ${rtpPack.label}")
-        val rtpInstaller = RtpInstaller(this)
+    private var activeRtpDialog: android.app.AlertDialog? = null
 
-        // Show progress overlay
-        showImportProgress("Downloading ${rtpPack.label}...")
-
-        Thread {
-            rtpInstaller.install(rtpPack, object : RtpInstaller.InstallCallback {
-                override fun onProgress(progress: RtpInstaller.InstallProgress) {
-                    runOnUiThread {
-                        val pv = activeImportProgressView
-                        if (pv != null) {
-                            when (progress.state) {
-                                RtpInstaller.InstallState.DOWNLOADING -> {
-                                    pv.phaseView.text = "Downloading ${rtpPack.label}..."
-                                    val pct = if (progress.totalBytes > 0)
-                                        "${progress.bytesDownloaded * 100 / progress.totalBytes}%"
-                                    else "${progress.bytesDownloaded / 1024} KB"
-                                    pv.fileView.text = pct
-                                }
-                                RtpInstaller.InstallState.EXTRACTING -> {
-                                    pv.phaseView.text = "Extracting ${rtpPack.label}..."
-                                    pv.fileView.text = "${progress.filesExtracted} files"
-                                }
-                                RtpInstaller.InstallState.COMPLETED -> {
-                                    pv.phaseView.text = "RTP ready!"
-                                    pv.fileView.text = ""
-                                }
-                                else -> {}
-                            }
-                        }
-                    }
-                }
-
-                override fun onComplete() {
-                    runOnUiThread {
-                        activeImportProgressView = null
-                        android.widget.Toast.makeText(
-                            this@MainActivity,
-                            "${rtpPack.label} installed successfully",
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
-                        dismissOverlay { showHome() }
-                    }
-                }
-
-                override fun onError(message: String) {
-                    runOnUiThread {
-                        android.app.AlertDialog.Builder(this@MainActivity)
-                            .setTitle("RTP Install Failed")
-                            .setMessage(message)
-                            .setPositiveButton("OK") { _, _ -> dismissOverlay { showHome() } }
-                            .show()
-                    }
-                }
-            })
-        }.start()
+    private fun dismissRtpDownloadOverlay() {
+        activeRtpDialog?.dismiss()
+        activeRtpDialog = null
+        rtpOverlayStatusText = null
+        rtpOverlayProgressBar = null
     }
 
     private fun confirmRemoveGameData(storageName: String) {
@@ -2081,7 +2046,11 @@ class MainActivity : Activity() {
                 }
             }
             val count = saveManager.importSavesZip(storageName, destFile)
-            Toast.makeText(this, "Imported $count save files", Toast.LENGTH_LONG).show()
+            if (count > 0) {
+                Toast.makeText(this, "Imported $count save files", Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(this, "No save files found in the selected archive", Toast.LENGTH_LONG).show()
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to import saves", e)
             Toast.makeText(this, "Failed to import saves", Toast.LENGTH_SHORT).show()
@@ -2341,7 +2310,15 @@ class MainActivity : Activity() {
         if (activeOverlay != null) return
         val runestonePrefs = getSharedPreferences("runestone", MODE_PRIVATE)
         if (runestonePrefs.getBoolean("game_minimized", false)) {
-            pausedGamePath = runestonePrefs.getString("paused_game", null)
+            val minimizedPath = runestonePrefs.getString("paused_game", null)
+            val activePath = runestonePrefs.getString("active_game_path", null)
+            if (minimizedPath != null && minimizedPath == activePath) {
+                pausedGamePath = minimizedPath
+                refreshGames()
+                showHome()
+                return
+            }
+            clearRuntimeResumeState(reason = "invalid_minimized_state")
             refreshGames()
             showHome()
             return

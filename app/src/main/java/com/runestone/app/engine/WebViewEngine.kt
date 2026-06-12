@@ -13,8 +13,10 @@ package com.runestone.app.engine
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.Build
 import android.util.Log
 import android.view.MotionEvent
+import android.view.View
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -51,6 +53,7 @@ class WebViewEngine(context: Context) : WebView(context) {
     private var localStorageShim: LocalStorageInterface? = null
     private var gameDir: File? = null
     private var config: WebViewGameConfig = WebViewGameConfig()
+    private val externalHostCache = mutableMapOf<String, Boolean>()
 
     data class WebViewGameConfig(
         val fixLocalStorage: Boolean = true,
@@ -79,6 +82,9 @@ class WebViewEngine(context: Context) : WebView(context) {
     private fun configure() {
         setBackgroundColor(android.graphics.Color.BLACK)
 
+        // Force hardware layer for GPU compositing
+        setLayerType(View.LAYER_TYPE_HARDWARE, null)
+
         val webSettings = settings
         webSettings.javaScriptEnabled = true
         webSettings.javaScriptCanOpenWindowsAutomatically = true
@@ -92,13 +98,19 @@ class WebViewEngine(context: Context) : WebView(context) {
         webSettings.allowFileAccessFromFileURLs = true
         webSettings.allowUniversalAccessFromFileURLs = true
         webSettings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-        webSettings.cacheMode = WebSettings.LOAD_DEFAULT
+        webSettings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
         webSettings.textZoom = (config.textScale * 100).toInt().coerceIn(50, 200)
         webSettings.setSupportZoom(false)
+        webSettings.setOffscreenPreRaster(true)
         isVerticalScrollBarEnabled = false
         isHorizontalScrollBarEnabled = false
         overScrollMode = OVER_SCROLL_NEVER
         isNestedScrollingEnabled = false
+
+        // API 31+: renderer priority
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            setRendererPriorityPolicy(RENDERER_PRIORITY_IMPORTANT, true)
+        }
     }
 
     override fun scrollTo(x: Int, y: Int) {
@@ -153,18 +165,17 @@ class WebViewEngine(context: Context) : WebView(context) {
             ): WebResourceResponse? {
                 val url = request.url.toString()
 
-                // Block external modules if not allowed
+                // Block external modules if not allowed (cached per host)
                 if (!config.allowExternalModules) {
                     val host = request.url.host ?: ""
-                    val isExternal = host.isNotEmpty() &&
-                        !url.startsWith("file://") &&
-                        host != "localhost" &&
-                        host != "127.0.0.1" &&
-                        !isPrivateIp(host) &&
-                        host !in config.allowedExternalHosts
-                    if (isExternal) {
-                        return WebResourceResponse("text/plain", "utf-8",
-                            ByteArrayInputStream("".toByteArray()))
+                    if (host.isNotEmpty()) {
+                        val isExternal = externalHostCache.getOrPut(host) {
+                            host != "localhost" && host != "127.0.0.1" && !isPrivateIp(host) && host !in config.allowedExternalHosts
+                        }
+                        if (isExternal) {
+                            return WebResourceResponse("text/plain", "utf-8",
+                                ByteArrayInputStream("".toByteArray()))
+                        }
                     }
                 }
 

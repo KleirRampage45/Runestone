@@ -46,6 +46,7 @@ import com.runestone.app.ui.carousel.BloomOverlay
 import com.runestone.app.ui.carousel.GameColorExtractor
 import com.runestone.app.ui.carousel.ItemTouchHelperCallback
 import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.PagerSnapHelper
 import androidx.recyclerview.widget.RecyclerView
@@ -150,8 +151,7 @@ class HomeScreen(private val context: Context) {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
             setPadding(dp(10), dp(8), dp(10), dp(18))
         }
-        scroll.addView(content, ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        scroll.addView(content, ViewGroup.LayoutParams(MATCH, WRAP))
 
         // Header
         stickyHeader.addView(makeHeaderRow(
@@ -253,24 +253,13 @@ class HomeScreen(private val context: Context) {
             when (uiMode) {
                 UIMode.CAROUSEL_3D -> {
                     scroll.visibility = View.GONE
-                    root.addView(renderCarousel3D(
-                        games = games,
-                        onPlay = onPlay,
-                        onManage = onManage,
-                    ), FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                    ))
+                    root.addView(renderCarousel3D(games, onPlay, onManage),
+                        FrameLayout.LayoutParams(MATCH, MATCH))
                 }
-                UIMode.LIST -> {
-                    content.addView(renderListLayout(games, onPlay, onManage))
-                }
-                UIMode.TILES -> {
-                    content.addView(renderTileLayout(games, onPlay, onManage))
-                }
-                else -> {
-                    content.addView(renderHeroGrid(games, cardLayout, onPlay, onManage, ::deselectCurrent, selectedCard, showGameName, onLongPress))
-                }
+                UIMode.LIST -> content.addView(renderListLayout(games, onPlay, onManage))
+                UIMode.TILES -> content.addView(renderTileLayout(games, onPlay, onManage))
+                else -> content.addView(renderHeroGrid(games, cardLayout, onPlay, onManage,
+                    ::deselectCurrent, selectedCard, showGameName, onLongPress))
             }
         }
 
@@ -1798,6 +1787,7 @@ class HomeScreen(private val context: Context) {
     private companion object {
         val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
+        val VERT = LinearLayout.VERTICAL
         val TEXT = Color.rgb(232, 229, 220)
         val MUTED = Color.rgb(140, 130, 112)
         val MUTED_DIM = Color.rgb(120, 112, 104)

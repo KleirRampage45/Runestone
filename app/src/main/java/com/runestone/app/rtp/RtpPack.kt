@@ -11,54 +11,33 @@
 package com.runestone.app.rtp
 
 /**
- * Supported RPG Maker RTP (Run-Time Package) packs.
- *
- * Each pack is a set of shared assets (tilesets, characters, etc.)
- * required by games made with that engine version. mkxp-z loads them
- * via a `RTP` array in `mkxp.json`.
- *
- * Currently only VX Ace is supported. XP and VX can be added later
- * when games needing them turn up in the wild.
+ * A run-time package (RTP) that mkxp-z or WebView engines need to play
+ * some RPG Maker games. The mapping [id] -> expected folder under
+ * filesDir/rtp/<id>/ is fixed; do not rename ids once shipped because
+ * existing installations use them as the on-disk path.
  */
 enum class RtpPack(
-    /** Human-readable label shown in the install dialog. */
-    val label: String,
-    /** Short directory slug under the RTP root. */
-    val slug: String,
-    /** RGSS version string that appears in Game.ini [Game] RTP= */
-    val iniName: String,
-    /** Engine types that can require this pack. */
-    val engineTags: List<String>,
-    /** Direct download URL for the ZIP. */
-    val zipUrl: String,
-    /** Expected top-level prefix inside the ZIP to strip (e.g. "RTP100/"). */
-    val zipPrefix: String,
-    /** Check file under the install dir that confirms this pack was extracted. */
-    val markerFile: String,
+    val id: String,
+    val displayName: String,
+    val rtpIniToken: String,
+    val approxBytes: Long,
+    val sourceUrl: String,
+    val sourceAttribution: String,
 ) {
-    VX_ACE(
-        label = "RPG Maker VX Ace RTP",
-        slug = "vx_ace",
-        iniName = "RPGVXAce",
-        engineTags = listOf("rgss3", "vxace", "vx_ace", "rgss_vx_ace"),
-        zipUrl = "https://archive.org/download/RPG_Maker_RTP_Collection/English/RTP%20VX%20Ace%20%28RGSS3%29.zip",
-        zipPrefix = "RTP100/",
-        markerFile = "Graphics/Tilesets/World_A1.png",
+    RPG_VX_ACE(
+        id = "vx_ace",
+        displayName = "RPG Maker VX Ace Runtime Package",
+        rtpIniToken = "RPGVXAce",
+        approxBytes = 195_000_000L,
+        sourceUrl = "https://archive.org/download/RPG_Maker_RTP_Collection/English/RTP%20VX%20Ace%20(RGSS3).zip",
+        sourceAttribution = "Internet Archive mirror of the official Enterbrain/Kadokawa RPG Maker VX Ace RTP",
     );
 
     companion object {
-        /** Map from [iniName] to pack for quick lookup after parsing Game.ini. */
-        private val byIniName = entries.associateBy { it.iniName }
+        fun forToken(token: String?): RtpPack? =
+            values().firstOrNull { it.rtpIniToken.equals(token, ignoreCase = true) }
 
-        /** Map from engine tag to pack for quick lookup from engine detection. */
-        private val byEngineTag = entries.flatMap { pack ->
-            pack.engineTags.map { it to pack }
-        }.toMap()
-
-        /** Resolve a pack by its [iniName] (e.g. `"RPGVXAce"`). */
-        fun fromIniName(name: String): RtpPack? = byIniName[name]
-
-        /** Resolve a pack by an engine tag string. */
-        fun fromEngineTag(tag: String): RtpPack? = byEngineTag[tag.lowercase()]
+        fun forId(id: String): RtpPack? =
+            values().firstOrNull { it.id == id }
     }
 }

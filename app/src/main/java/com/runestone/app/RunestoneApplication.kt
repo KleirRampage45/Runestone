@@ -11,7 +11,11 @@
 package com.runestone.app
 
 import android.app.Application
+import android.os.Build
+import android.os.PerformanceHintManager
+import android.os.Process
 import android.util.Log
+import android.content.Context
 import com.runestone.app.engine.EngineRegistry
 
 /**
@@ -21,6 +25,8 @@ import com.runestone.app.engine.EngineRegistry
  */
 class RunestoneApplication : Application() {
 
+    private var performanceHintSession: PerformanceHintManager.Session? = null
+
     companion object {
         private const val TAG = "Runestone"
     }
@@ -29,6 +35,20 @@ class RunestoneApplication : Application() {
         super.onCreate()
         
         Log.i(TAG, "Runestone starting up...")
+        
+        // Boost app startup performance on API 31+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                val manager = getSystemService(Context.PERFORMANCE_HINT_SERVICE) as PerformanceHintManager
+                val tid = Process.myTid()
+                val session = manager.createHintSession(intArrayOf(tid), 2_000_000_000L)
+                session?.reportActualWorkDuration(1_000_000L)
+                performanceHintSession = session
+                Log.i(TAG, "PerformanceHintManager boost activated")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to create PerformanceHintManager session: ${e.message}")
+            }
+        }
         
         // Initialize all built-in engine plugins
         EngineRegistry.initDefaults(this)

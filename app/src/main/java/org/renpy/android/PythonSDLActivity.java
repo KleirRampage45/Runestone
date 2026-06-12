@@ -244,8 +244,8 @@ public class PythonSDLActivity extends SDLActivity {
             dpadCx = clamp(dpadCx, dpadRadius + dp(8f), getWidth() - dpadRadius - dp(8f));
             dpadCy = clamp(dpadCy, dpadRadius + dp(8f), getHeight() - dpadRadius - dp(8f));
             dpadBounds.set(dpadCx - dpadRadius, dpadCy - dpadRadius, dpadCx + dpadRadius, dpadCy + dpadRadius);
-            float handleW = dp(40f);
-            float handleH = dp(24f);
+            float handleW = dp(48f);
+            float handleH = dp(28f);
             handleRect.set(getWidth() / 2f - handleW / 2f, dp(8f), getWidth() / 2f + handleW / 2f, dp(8f) + handleH);
             float settingsW = Math.min(getWidth() - dp(24f), dp(620f));
             settingsRect.set(getWidth() / 2f - settingsW / 2f, dp(36f), getWidth() / 2f + settingsW / 2f, dp(124f));
@@ -261,13 +261,10 @@ public class PythonSDLActivity extends SDLActivity {
         }
 
         private void drawHandle(Canvas canvas) {
-            fillPaint.setStyle(Paint.Style.FILL);
-            fillPaint.setColor(Color.argb(95, 0, 0, 0));
-            canvas.drawRoundRect(handleRect, dp(12f), dp(12f), fillPaint);
             Path caret = new Path();
             float cx = handleRect.centerX();
             float cy = handleRect.centerY();
-            float s = dp(6f);
+            float s = dp(7f);
             if (settingsOpen) {
                 caret.moveTo(cx - s, cy + s / 2f); caret.lineTo(cx, cy - s / 2f); caret.lineTo(cx + s, cy + s / 2f);
             } else {

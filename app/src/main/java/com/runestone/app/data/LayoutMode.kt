@@ -12,6 +12,22 @@ package com.runestone.app.data
 
 enum class LayoutMode(val displayName: String) {
     LANDSCAPE("Landscape"),
-    PORTRAIT_CONSOLE("Portrait Console"),
+    PORTRAIT_CONSOLE("Portrait"),
     GAMEPAD("Gamepad"),
+    ;
+
+    fun normalized(): LayoutMode =
+        if (this == GAMEPAD) LANDSCAPE else this
+
+    companion object {
+        val visibleModes: List<LayoutMode> = listOf(PORTRAIT_CONSOLE, LANDSCAPE)
+
+        fun parse(value: String?, fallback: LayoutMode = PORTRAIT_CONSOLE): LayoutMode {
+            val normalized = value.orEmpty().trim().replace('-', '_').replace(' ', '_')
+            return values().firstOrNull {
+                it.name.equals(normalized, ignoreCase = true) ||
+                    it.displayName.equals(value.orEmpty(), ignoreCase = true)
+            } ?: fallback
+        }
+    }
 }

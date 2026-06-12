@@ -867,7 +867,7 @@ class PerGameSettingsScreen(private val context: Context) {
                 setPadding(0, dp(3), 0, dp(10))
             })
 
-            var selected = parseLayoutMode(selectedValue)
+            var selected = parseLayoutMode(selectedValue).normalized()
             val buttons = mutableListOf<Pair<LayoutMode, TextView>>()
             fun styleButton(view: TextView, mode: LayoutMode) {
                 val active = mode == selected
@@ -890,7 +890,7 @@ class PerGameSettingsScreen(private val context: Context) {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
             }
-            LayoutMode.values().forEachIndexed { index, mode ->
+            LayoutMode.visibleModes.forEachIndexed { index, mode ->
                 row.addView(TextView(context).apply {
                     text = mode.displayName
                     gravity = Gravity.CENTER
@@ -913,11 +913,7 @@ class PerGameSettingsScreen(private val context: Context) {
         }
 
     private fun parseLayoutMode(value: String): LayoutMode {
-        val normalized = value.trim().replace('-', '_')
-        return LayoutMode.values().firstOrNull {
-            it.name.equals(normalized, ignoreCase = true) ||
-                it.displayName.equals(value, ignoreCase = true)
-        } ?: LayoutMode.PORTRAIT_CONSOLE
+        return LayoutMode.parse(value, LayoutMode.PORTRAIT_CONSOLE)
     }
 
     private fun metadataEditRow(label: String, value: String, onChange: (String) -> Unit): LinearLayout =

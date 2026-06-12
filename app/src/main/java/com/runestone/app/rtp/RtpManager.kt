@@ -12,97 +12,92 @@ package com.runestone.app.rtp
 
 import android.content.Context
 import android.util.Log
+import org.json.JSONObject
 import java.io.File
-import java.io.FileInputStream
 
 /**
- * Manages RTP install state: directory layout, marker checks, Game.ini parsing.
+ * Tracks which RTPs are installed on disk. Each pack's on-disk root is
+ * `filesDir/rtp/<id>/`. A pack is "installed" when its root directory
+ * exists AND contains a marker file written after successful extraction.
  *
- * RTP packs are stored under `context.getExternalFilesDir("rtp")/<slug>/`.
- * A pack is considered "installed" when its [RtpPack.markerFile] exists on disk.
+ * State is also persisted in SharedPreferences so the UI can show
+ * "installed" state even if a marker file is somehow missing.
  */
 class RtpManager(private val context: Context) {
 
     companion object {
         private const val TAG = "RtpManager"
-        private const val DIR_NAME = "rtp"
+        private const val PREFS = "runestone_rtps"
+        private const val MARKER_NAME = ".runestone_rtp_ready"
     }
 
-    /** Root directory where all RTP packs live. */
-    val rtpRoot: File
-        get() = File(context.getExternalFilesDir(null), DIR_NAME)
+    private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    /** Directory for a specific pack. */
-    fun packDir(pack: RtpPack): File = File(rtpRoot, pack.slug)
+    fun rootDir(): File = File(context.filesDir, "rtp").apply { mkdirs() }
 
-    /** Whether this pack is fully installed on disk. */
+    fun packDir(pack: RtpPack): File {
+        val internal = File(rootDir(), pack.id)
+        if (internal.isUsableRtpPack())
+            return internal
+
+        // Check external files dir (legacy installs)
+        val external = File(context.getExternalFilesDir(null) ?: context.filesDir, "rtp/${pack.id}")
+        if (external.isUsableRtpPack())
+            return external
+
+        return internal // fallback
+    }
+
     fun isInstalled(pack: RtpPack): Boolean {
-        val marker = File(packDir(pack), pack.markerFile)
-        return marker.exists() && marker.isFile
+        val dir = packDir(pack)
+        if (!dir.isDirectory) return false
+        if (File(dir, MARKER_NAME).exists()) return true
+        return dir.isUsableRtpPack()
+    }
+
+    fun installedIds(): Set<String> =
+        RtpPack.values().filter { isInstalled(it) }.map { it.id }.toSet()
+
+    fun markInstalled(pack: RtpPack) {
+        val dir = packDir(pack)
+        dir.mkdirs()
+        File(dir, MARKER_NAME).writeText(
+            JSONObject(mapOf(
+                "pack" to pack.id,
+                "installedAt" to System.currentTimeMillis(),
+            )).toString(),
+        )
+        prefs.edit().putLong("installed_${pack.id}", System.currentTimeMillis()).apply()
+        Log.i(TAG, "Marked ${pack.id} as installed at ${dir.absolutePath}")
+    }
+
+    fun markUninstalled(pack: RtpPack) {
+        val dir = packDir(pack)
+        if (dir.exists()) dir.deleteRecursively()
+        prefs.edit().remove("installed_${pack.id}").apply()
+        Log.i(TAG, "Removed ${pack.id} from ${dir.absolutePath}")
     }
 
     /**
-     * Parse a Game.ini file and return the RTP line value, or null if absent.
-     *
-     * Format: `RTP=RPGVXAce` in the `[Game]` section.
+     * Returns the list of [RtpPack]s whose `rtpIniToken` matches one of the
+     * `RTP=` lines in the given `Game.ini` content. Used to decide which
+     * RTPs are required for a game.
      */
-    fun parseRtpFromIni(iniFile: File): String? {
-        if (!iniFile.exists()) return null
-        try {
-            val text = FileInputStream(iniFile).bufferedReader().use { it.readText() }
-            val gameSection = text.substringAfter("[Game]", "")
-                .substringBefore("[")
-            val rtpLine = gameSection.lines()
-                .firstOrNull { it.trimStart().startsWith("RTP=", ignoreCase = true) }
-                ?: return null
-            val value = rtpLine.substringAfter("=").trim()
-            return value.ifBlank { null }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to parse Game.ini: ${e.message}")
-            return null
-        }
+    fun requiredPacksForIni(iniContent: String): List<RtpPack> {
+        val tokens = iniContent.lineSequence()
+            .map { it.trim() }
+            .filter { it.startsWith("RTP=", ignoreCase = true) }
+            .map { it.substring(4).trim() }
+            .filter { it.isNotEmpty() }
+            .toList()
+        return tokens.mapNotNull { RtpPack.forToken(it) }.distinct()
     }
 
-    /**
-     * Parse a Game.ini and return the [RtpPack] it requires, or null.
-     */
-    fun detectRequiredPack(iniFile: File): RtpPack? {
-        val iniName = parseRtpFromIni(iniFile) ?: return null
-        return RtpPack.fromIniName(iniName)
-    }
-
-    /**
-     * Detect whether a game folder needs an RTP pack, based on
-     * Game.ini content + whether required asset directories are missing.
-     *
-     * Returns the pack if one is needed and not already installed.
-     */
-    fun missingPackForGame(gameDir: File): RtpPack? {
-        val iniFile = File(gameDir, "Game.ini")
-        if (!iniFile.exists()) return null
-
-        val pack = detectRequiredPack(iniFile) ?: return null
-        if (isInstalled(pack)) return null
-
-        // Check if the game ships its own RTP assets (no external need)
-        val graphicsDir = File(gameDir, "Graphics")
-        val tilesetsDir = File(graphicsDir, "Tilesets")
-        if (tilesetsDir.exists() && (tilesetsDir.listFiles()?.isNotEmpty() == true)) {
-            Log.i(TAG, "${gameDir.name} already has Graphics/Tilesets — no RTP needed")
-            return null
-        }
-
-        return pack
-    }
-
-    /** Write a `.nomedia` file in the RTP root to keep media scanners out. */
-    fun ensureNoMedia(dir: File) {
-        runCatching {
-            if (!dir.exists()) dir.mkdirs()
-            if (dir.isDirectory) {
-                val marker = File(dir, ".nomedia")
-                if (!marker.exists()) marker.writeText("")
-            }
-        }
-    }
+    private fun File.isUsableRtpPack(): Boolean =
+        isDirectory && (
+            File(this, MARKER_NAME).exists() ||
+                File(this, "Graphics/Tilesets/World_A1.png").isFile ||
+                File(this, "Audio").isDirectory ||
+                File(this, "RTP100").isDirectory
+            )
 }

@@ -21,11 +21,11 @@ class SettingsStore(context: Context) {
     private val prefs = context.getSharedPreferences("runestone-settings-v1", Context.MODE_PRIVATE)
     private val defaults = RunnerSettings()
 
-    fun load(): RunnerSettings =
-        RunnerSettings(
-            layoutMode = runCatching {
-                LayoutMode.valueOf(prefs.getString("layoutMode", defaults.layoutMode.name).orEmpty())
-            }.getOrDefault(defaults.layoutMode),
+    fun load(): RunnerSettings {
+        val storedLayout = LayoutMode.parse(prefs.getString("layoutMode", defaults.layoutMode.name), defaults.layoutMode)
+        val migratedGamepad = storedLayout == LayoutMode.GAMEPAD
+        return RunnerSettings(
+            layoutMode = storedLayout.normalized(),
             uiMode = runCatching {
                 UIMode.valueOf(prefs.getString("uiMode", defaults.uiMode.name).orEmpty())
             }.getOrDefault(defaults.uiMode),
@@ -41,7 +41,8 @@ class SettingsStore(context: Context) {
             hapticsEnabled = prefs.getBoolean("hapticsEnabled", defaults.hapticsEnabled),
             hapticIntensity = prefs.getFloat("hapticIntensity", defaults.hapticIntensity),
             showExtraButtons = prefs.getBoolean("showExtraButtons", defaults.showExtraButtons),
-            hideVirtualGamepad = prefs.getBoolean("hideVirtualGamepad", defaults.hideVirtualGamepad),
+            controllerPreset = prefs.getString("controllerPreset", defaults.controllerPreset) ?: defaults.controllerPreset,
+            hideVirtualGamepad = prefs.getBoolean("hideVirtualGamepad", if (migratedGamepad) true else defaults.hideVirtualGamepad),
             diagonalMovement = prefs.getBoolean("diagonalMovement", defaults.diagonalMovement),
             leftButtonKey = prefs.getString("leftButtonKey", defaults.leftButtonKey) ?: defaults.leftButtonKey,
             rightButtonKey = prefs.getString("rightButtonKey", defaults.rightButtonKey) ?: defaults.rightButtonKey,
@@ -111,6 +112,7 @@ class SettingsStore(context: Context) {
             rawgApiKey = prefs.getString("rawgApiKey", defaults.rawgApiKey) ?: defaults.rawgApiKey,
             reduceMotion = prefs.getBoolean("reduceMotion", defaults.reduceMotion),
         )
+    }
 
     fun save(settings: RunnerSettings) {
         prefs.edit()
@@ -126,6 +128,7 @@ class SettingsStore(context: Context) {
             .putBoolean("hapticsEnabled", settings.hapticsEnabled)
             .putFloat("hapticIntensity", settings.hapticIntensity)
             .putBoolean("showExtraButtons", settings.showExtraButtons)
+            .putString("controllerPreset", settings.controllerPreset)
             .putBoolean("hideVirtualGamepad", settings.hideVirtualGamepad)
             .putBoolean("diagonalMovement", settings.diagonalMovement)
             .putString("leftButtonKey", settings.leftButtonKey)

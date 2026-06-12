@@ -10,121 +10,146 @@
 
 package com.runestone.app.rtp
 
+import android.content.Context
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Simple one-shot HTTP downloader for RTP ZIP files.
+ * Downloads an RTP ZIP from the configured mirror into the app's
+ * private files dir, with progress reporting and cancellation.
  *
- * Kept separate from [com.runestone.app.provider.DownloadManager] because
- * RTP downloads have different semantics: no pause/resume, no retry queue,
- * no game-ID state tracking. Just a single file from archive.org.
+ * Designed to be safe to call from the UI thread via a [Thread]; the
+ * callback is invoked on the calling thread. For UI updates, post from
+ * there to the main looper.
  */
-class RtpDownloader {
+class RtpDownloader(private val context: Context) {
 
     companion object {
-        private const val TAG = "RtpDL"
-        private const val CONNECT_TIMEOUT = 15000
-        private const val READ_TIMEOUT = 30000
-        private const val BUFFER_SIZE = 8192
+        private const val TAG = "RtpDownloader"
+        private const val CONNECT_TIMEOUT_MS = 30_000
+        private const val READ_TIMEOUT_MS = 60_000
+        private const val BUFFER_SIZE = 32 * 1024
+        private const val PROGRESS_INTERVAL_MS = 250L
     }
 
-    /** Callback for download progress and completion. */
+    enum class State { IDLE, DOWNLOADING, COMPLETED, FAILED, CANCELLED }
+
+    data class Progress(
+        val bytesDownloaded: Long,
+        val totalBytes: Long,
+        val state: State,
+        val error: String? = null,
+    ) {
+        val fraction: Float
+            get() = if (totalBytes > 0) (bytesDownloaded.toFloat() / totalBytes).coerceIn(0f, 1f) else 0f
+    }
+
     interface Callback {
-        fun onProgress(bytesDownloaded: Long, totalBytes: Long)
-        fun onComplete(file: File)
-        fun onError(message: String)
+        fun onProgress(pack: RtpPack, progress: Progress) {}
+        fun onComplete(pack: RtpPack, stagingFile: File) {}
+        fun onError(pack: RtpPack, message: String) {}
     }
 
-    private var cancelFlag = false
+    private val activeThreads = ConcurrentHashMap<String, Thread>()
+    private val cancelFlags = ConcurrentHashMap<String, Boolean>()
 
-    fun cancel() {
-        cancelFlag = true
+    fun isDownloading(pack: RtpPack): Boolean = activeThreads.containsKey(pack.id)
+
+    fun cancel(pack: RtpPack) {
+        cancelFlags[pack.id] = true
     }
 
-    /**
-     * Download a ZIP from [urlStr] to [outputFile] on a background thread.
-     * Reports progress and completion via [callback].
-     */
-    fun download(urlStr: String, outputFile: File, callback: Callback) {
-        Thread {
-            var conn: HttpURLConnection? = null
-            var input: InputStream? = null
-            var output: FileOutputStream? = null
+    fun start(pack: RtpPack, callback: Callback) {
+        if (isDownloading(pack)) {
+            callback.onError(pack, "Already downloading ${pack.id}")
+            return
+        }
+        cancelFlags[pack.id] = false
 
+        val stagingFile = File(context.filesDir, "rtp/${pack.id}.zip.part")
+        stagingFile.parentFile?.mkdirs()
+        if (stagingFile.exists()) stagingFile.delete()
+
+        val thread = Thread({
             try {
-                outputFile.parentFile?.mkdirs()
-                if (outputFile.exists()) outputFile.delete()
-
-                val url = URL(urlStr)
-                conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = CONNECT_TIMEOUT
-                conn.readTimeout = READ_TIMEOUT
-                conn.setRequestProperty("User-Agent", "Runestone/1.0 (Android RTP installer)")
-                conn.connect()
-
-                val responseCode = conn.responseCode
-                if (responseCode != 200) {
-                    throw RuntimeException("HTTP $responseCode — server returned error")
-                }
-
-                val totalBytes = conn.contentLength.toLong()
-                input = conn.inputStream
-                output = FileOutputStream(outputFile)
-
-                val buffer = ByteArray(BUFFER_SIZE)
-                var downloaded = 0L
-                var bytesRead: Int
-                var lastProgressTime = System.currentTimeMillis()
-
-                while (true) {
-                    if (cancelFlag) {
-                        Log.i(TAG, "Download cancelled")
-                        break
-                    }
-                    bytesRead = input.read(buffer)
-                    if (bytesRead == -1) break
-
-                    output.write(buffer, 0, bytesRead)
-                    downloaded += bytesRead
-
-                    val now = System.currentTimeMillis()
-                    if (now - lastProgressTime >= 500) {
-                        lastProgressTime = now
-                        callback.onProgress(downloaded, totalBytes)
-                    }
-                }
-
-                output.flush()
-                output.close()
-                output = null
-
-                if (cancelFlag) {
-                    outputFile.delete()
-                    return@Thread
-                }
-
-                val fileSize = outputFile.length()
-                if (fileSize < 1024L * 1024L) {
-                    throw RuntimeException("Downloaded file is too small ($fileSize bytes) — may be an error page")
-                }
-
-                Log.i(TAG, "Download complete: ${outputFile.name} ($fileSize bytes)")
-                callback.onComplete(outputFile)
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Download failed: ${e.message}", e)
-                if (outputFile.exists()) outputFile.delete()
-                callback.onError(e.message ?: "Download failed")
+                downloadInternal(pack, stagingFile, callback)
+            } catch (t: Throwable) {
+                Log.e(TAG, "Download thread crashed for ${pack.id}", t)
+                callback.onError(pack, t.message ?: "Unknown error")
             } finally {
-                try { output?.close() } catch (_: Exception) {}
-                try { input?.close() } catch (_: Exception) {}
-                conn?.disconnect()
+                activeThreads.remove(pack.id)
             }
-        }.start()
+        }, "rtp-dl-${pack.id}").also { it.isDaemon = true }
+
+        activeThreads[pack.id] = thread
+        thread.start()
+    }
+
+    private fun downloadInternal(pack: RtpPack, stagingFile: File, callback: Callback) {
+        val url = URL(pack.sourceUrl)
+        Log.i(TAG, "Starting ${pack.id} download from ${pack.sourceUrl}")
+
+        val conn = (url.openConnection() as HttpURLConnection).apply {
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            instanceFollowRedirects = true
+            requestMethod = "GET"
+        }
+
+        val totalBytes = runCatching { conn.contentLengthLong }.getOrDefault(-1L)
+        if (totalBytes > 0 && totalBytes < pack.approxBytes / 2) {
+            conn.disconnect()
+            callback.onError(pack, "Download truncated: got $totalBytes, expected ~${pack.approxBytes}")
+            return
+        }
+
+        callback.onProgress(pack, Progress(0, totalBytes, State.DOWNLOADING))
+
+        var downloaded = 0L
+        var lastReport = 0L
+
+        try {
+            conn.inputStream.use { input: InputStream ->
+                FileOutputStream(stagingFile).use { output ->
+                    val buffer = ByteArray(BUFFER_SIZE)
+                    while (true) {
+                        if (cancelFlags[pack.id] == true) {
+                            output.close()
+                            stagingFile.delete()
+                            conn.disconnect()
+                            callback.onProgress(pack, Progress(downloaded, totalBytes, State.CANCELLED))
+                            return
+                        }
+
+                        val read = input.read(buffer)
+                        if (read <= 0) break
+                        output.write(buffer, 0, read)
+                        downloaded += read
+
+                        val now = System.currentTimeMillis()
+                        if (now - lastReport >= PROGRESS_INTERVAL_MS) {
+                            lastReport = now
+                            callback.onProgress(pack, Progress(downloaded, totalBytes, State.DOWNLOADING))
+                        }
+                    }
+                    output.flush()
+                }
+            }
+        } catch (e: Exception) {
+            stagingFile.delete()
+            conn.disconnect()
+            callback.onError(pack, "Network error: ${e.message ?: e.javaClass.simpleName}")
+            return
+        }
+
+        conn.disconnect()
+        Log.i(TAG, "Downloaded ${pack.id}: $downloaded bytes")
+        callback.onProgress(pack, Progress(downloaded, downloaded, State.COMPLETED))
+        callback.onComplete(pack, stagingFile)
     }
 }

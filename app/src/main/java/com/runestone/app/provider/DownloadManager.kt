@@ -26,7 +26,7 @@ class DownloadManager(private val context: Context) {
         private const val PREFS = "runestone_downloads"
         private const val CONNECT_TIMEOUT = 15000
         private const val READ_TIMEOUT = 30000
-        private const val BUFFER_SIZE = 8192
+        private const val BUFFER_SIZE = 65536
     }
 
     enum class DownloadState { IDLE, DOWNLOADING, PAUSED, COMPLETED, FAILED }

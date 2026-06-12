@@ -30,7 +30,7 @@
         <!-- mkxp-z native engine (RPG Maker XP/VX/VX Ace) -->
         <activity
             android:name="com.hatkid.mkxpz.MainActivity"
-            android:screenOrientation="sensorLandscape"
+            android:screenOrientation="unspecified"
             android:exported="false"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
@@ -38,7 +38,7 @@
         <!-- EasyRPG Player (RPG Maker 2000/2003) — GPLv3, bundled native -->
         <activity
             android:name="org.easyrpg.player.player.EasyRpgPlayerActivity"
-            android:screenOrientation="sensorLandscape"
+            android:screenOrientation="unspecified"
             android:exported="false"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />

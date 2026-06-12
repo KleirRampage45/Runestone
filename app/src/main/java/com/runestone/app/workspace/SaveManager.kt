@@ -269,7 +269,11 @@ class SaveManager(private val workspaceManager: WorkspaceManager) {
 
     fun importSavesZip(storageName: String, zipFile: File): Int {
         val gameDir = workspaceManager.originalDir(storageName)
-        if (!gameDir.isDirectory || !zipFile.isFile) return 0
+        if (!gameDir.isDirectory) {
+            android.util.Log.w("SaveMgr", "Cannot import saves: game directory $gameDir does not exist")
+            return 0
+        }
+        if (!zipFile.isFile) return 0
 
         backupSaves(storageName, "before_save_import")
 

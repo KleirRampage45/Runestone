@@ -47,16 +47,18 @@ class GameConfigService(
 
         val json = runCatching { JSONObject(configFile.readText()) }.getOrNull() ?: return result
         json.optJSONObject("input")?.let { input ->
+            val parsedLayout = if (input.has("layoutMode")) {
+                parseLayoutMode(input.optString("layoutMode"), result.layoutMode)
+            } else result.layoutMode
+            val migratedGamepad = parsedLayout == LayoutMode.GAMEPAD
             result = result.copy(
-                layoutMode = if (input.has("layoutMode")) {
-                    parseLayoutMode(input.optString("layoutMode"), result.layoutMode)
-                } else result.layoutMode,
+                layoutMode = parsedLayout.normalized(),
                 touchOpacity = if (input.has("buttonOpacity")) input.optDouble("buttonOpacity", result.touchOpacity.toDouble()).toFloat() else result.touchOpacity,
                 touchScale = if (input.has("buttonScale")) input.optDouble("buttonScale", result.touchScale.toDouble()).toFloat() else result.touchScale,
                 hapticsEnabled = if (input.has("hapticsEnabled")) input.optBoolean("hapticsEnabled", result.hapticsEnabled) else result.hapticsEnabled,
                 hapticIntensity = if (input.has("hapticIntensity")) input.optDouble("hapticIntensity", result.hapticIntensity.toDouble()).toFloat() else result.hapticIntensity,
                 showExtraButtons = if (input.has("showExtraButtons")) input.optBoolean("showExtraButtons", result.showExtraButtons) else result.showExtraButtons,
-                hideVirtualGamepad = if (input.has("hideVirtualGamepad")) input.optBoolean("hideVirtualGamepad", result.hideVirtualGamepad) else result.hideVirtualGamepad,
+                hideVirtualGamepad = if (input.has("hideVirtualGamepad")) input.optBoolean("hideVirtualGamepad", result.hideVirtualGamepad) else if (migratedGamepad) true else result.hideVirtualGamepad,
                 diagonalMovement = if (input.has("diagonalMovement")) input.optBoolean("diagonalMovement", result.diagonalMovement) else result.diagonalMovement,
             )
         }
@@ -219,10 +221,6 @@ class GameConfigService(
     }
 
     private fun parseLayoutMode(value: String, fallback: LayoutMode): LayoutMode {
-        val normalized = value.trim().replace('-', '_')
-        return LayoutMode.values().firstOrNull {
-            it.name.equals(normalized, ignoreCase = true) ||
-                it.displayName.equals(value, ignoreCase = true)
-        } ?: fallback
+        return LayoutMode.parse(value, fallback)
     }
 }
