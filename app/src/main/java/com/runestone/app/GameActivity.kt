@@ -959,6 +959,17 @@ class GameActivity : Activity() {
         val configWriter = com.runestone.app.runtime.RuntimeConfigWriter(rtpInstaller)
         configWriter.writeConfig(gameDir.name, gameDir, this.settings, rtpPacks)
 
+        // Write filter config for visual post-processing
+        try {
+            val perGameConfig = com.runestone.app.data.PerGameConfig.load(
+                java.io.File(gameDir, "runestone.json")
+            )
+            com.runestone.app.filters.FilterConfigWriter.write(gameDir, perGameConfig.video)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to write filter config: ${e.message}")
+            com.runestone.app.filters.FilterConfigWriter.writeDisabled(gameDir)
+        }
+
         val intent = Intent().apply {
             setClassName(this@GameActivity, "com.hatkid.mkxpz.MainActivity")
             putExtra("com.runestone.app.extra.GAME_PATH", gameDir.absolutePath)

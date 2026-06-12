@@ -24,6 +24,7 @@ import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
 import com.runestone.app.data.*
+import com.runestone.app.filters.FilterManager
 import com.runestone.app.workspace.PatchManager
 import java.io.File
 
@@ -214,6 +215,56 @@ class PerGameSettingsScreen(private val context: Context) {
         // ── Video Section ──
         content.addView(sectionTitle("Video", "Display and rendering"))
 
+        // Visual Filter Preset Picker
+        val presetOptions = FilterManager.getAllPresets().map { it.id to it.displayName }
+        val currentPresetId = current.video.screenFilter
+        val currentPresetDisplay = presetOptions.find { it.first == currentPresetId }?.second ?: "Off / Original"
+
+        content.addView(settingsPanel {
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            row.addView(TextView(context).apply {
+                text = "Visual Filter"
+                setTextColor(Theme.TEXT); textSize = 14f
+                typeface = Typeface.DEFAULT_BOLD
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val valueLabel = TextView(context).apply {
+                text = currentPresetDisplay
+                setTextColor(ACCENT); textSize = 13f
+                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.END
+                setPadding(dp(8), dp(4), dp(8), dp(4))
+                background = glassBg(8, alpha = 80)
+                makeLiquid(this)
+                setOnClickListener {
+                    if (!Theme.isReducedMotion(context)) {
+                        scaleX = 0.93f; scaleY = 0.93f
+                        animate().scaleX(1f).scaleY(1f).setDuration(180)
+                            .setInterpolator(OvershootInterpolator(2f)).start()
+                    }
+                    val currentIdx = presetOptions.indexOfFirst { it.first == current.video.screenFilter }
+                    val nextIdx = (currentIdx + 1) % presetOptions.size
+                    val (newId, newDisplay) = presetOptions[nextIdx]
+                    text = newDisplay
+                    current = current.copy(video = current.video.copy(screenFilter = newId))
+                    onConfigChanged(current)
+                }
+            }
+            row.addView(valueLabel)
+            addView(row)
+            // Preset description
+            val desc = FilterManager.getPreset(currentPresetId)?.description ?: ""
+            if (desc.isNotEmpty()) {
+                addView(TextView(context).apply {
+                    text = desc
+                    setTextColor(MUTED); textSize = 11f
+                    setPadding(0, dp(4), 0, 0)
+                })
+            }
+        })
+        content.addView(spacer(10))
+
         content.addView(switchPanel("Show FPS", "Display frame rate counter",
             current.video.showFps) { checked ->
             current = current.copy(video = current.video.copy(showFps = checked))
@@ -257,6 +308,37 @@ class PerGameSettingsScreen(private val context: Context) {
             slider(200, (current.video.contrast * 100).toInt().coerceIn(0, 200)) { progress ->
                 current = current.copy(video = current.video.copy(contrast = progress / 100f))
                 label.text = "${(current.video.contrast * 100).toInt()}%"
+                onConfigChanged(current)
+            }
+        })
+        content.addView(spacer(10))
+
+        content.addView(sliderPanel("Gamma",
+            "${"%.2f".format(current.video.gamma)}") { label ->
+            slider(200, ((current.video.gamma - 0.5f) / 1.0f * 100).toInt().coerceIn(0, 200)) { progress ->
+                val gamma = 0.5f + (progress / 100f)
+                current = current.copy(video = current.video.copy(gamma = gamma))
+                label.text = "${"%.2f".format(gamma)}"
+                onConfigChanged(current)
+            }
+        })
+        content.addView(spacer(10))
+
+        content.addView(sliderPanel("Saturation",
+            "${(current.video.saturation * 100).toInt()}%") { label ->
+            slider(200, (current.video.saturation * 100).toInt().coerceIn(0, 200)) { progress ->
+                current = current.copy(video = current.video.copy(saturation = progress / 100f))
+                label.text = "${(current.video.saturation * 100).toInt()}%"
+                onConfigChanged(current)
+            }
+        })
+        content.addView(spacer(10))
+
+        content.addView(sliderPanel("Sharpness",
+            "${(current.video.sharpness * 100).toInt()}%") { label ->
+            slider(100, (current.video.sharpness * 100).toInt().coerceIn(0, 100)) { progress ->
+                current = current.copy(video = current.video.copy(sharpness = progress / 100f))
+                label.text = "${(current.video.sharpness * 100).toInt()}%"
                 onConfigChanged(current)
             }
         })

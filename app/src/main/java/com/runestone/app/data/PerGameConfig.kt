@@ -214,6 +214,10 @@ data class VideoSection(
     val resolutionScale: Float = 1.0f,
     val brightness: Float = 1.0f,
     val contrast: Float = 1.0f,
+    val gamma: Float = 1.0f,
+    val saturation: Float = 1.0f,
+    val sharpness: Float = 0.0f,
+    val aspectMode: String = "fit_4_3",
 ) {
     companion object {
         fun fromJson(j: JSONObject?): VideoSection {
@@ -227,6 +231,10 @@ data class VideoSection(
                 resolutionScale = j.optDouble("resolutionScale", 1.0).toFloat(),
                 brightness = j.optDouble("brightness", 1.0).toFloat(),
                 contrast = j.optDouble("contrast", 1.0).toFloat(),
+                gamma = j.optDouble("gamma", 1.0).toFloat(),
+                saturation = j.optDouble("saturation", 1.0).toFloat(),
+                sharpness = j.optDouble("sharpness", 0.0).toFloat(),
+                aspectMode = j.optString("aspectMode", "fit_4_3"),
             )
         }
     }
@@ -239,6 +247,10 @@ data class VideoSection(
         put("resolutionScale", resolutionScale.toDouble())
         put("brightness", brightness.toDouble())
         put("contrast", contrast.toDouble())
+        put("gamma", gamma.toDouble())
+        put("saturation", saturation.toDouble())
+        put("sharpness", sharpness.toDouble())
+        put("aspectMode", aspectMode)
     }
 }
 
