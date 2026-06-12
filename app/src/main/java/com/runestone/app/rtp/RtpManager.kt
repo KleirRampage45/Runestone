@@ -33,15 +33,23 @@ class RtpManager(private val context: Context) {
 
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun rootDir(): File = File(context.getExternalFilesDir(null) ?: context.filesDir, "rtp").apply { mkdirs() }
+    fun rootDir(): File = File(context.filesDir, "rtp").apply { mkdirs() }
 
-    fun packDir(pack: RtpPack): File = File(rootDir(), pack.id)
+    fun packDir(pack: RtpPack): File {
+        val internal = File(rootDir(), pack.id)
+        if (internal.isDirectory && (File(internal, "Audio").isDirectory || File(internal, "RTP100").isDirectory))
+            return internal
+        // Check external files dir (legacy installs)
+        val external = File(context.getExternalFilesDir(null) ?: context.filesDir, "rtp/${pack.id}")
+        if (external.isDirectory && (File(external, "Audio").isDirectory || File(external, "RTP100").isDirectory))
+            return external
+        return internal // fallback
+    }
 
     fun isInstalled(pack: RtpPack): Boolean {
         val dir = packDir(pack)
         if (!dir.isDirectory) return false
         if (File(dir, MARKER_NAME).exists()) return true
-        // No marker — check for actual RTP content (direct layout or RTP100 wrapper)
         return File(dir, "Audio").isDirectory || File(dir, "RTP100").isDirectory
     }
 
