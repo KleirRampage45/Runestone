@@ -33,7 +33,7 @@ class RtpManager(private val context: Context) {
 
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun rootDir(): File = File(context.filesDir, "rtp").apply { mkdirs() }
+    fun rootDir(): File = File(context.getExternalFilesDir(null) ?: context.filesDir, "rtp").apply { mkdirs() }
 
     fun packDir(pack: RtpPack): File = File(rootDir(), pack.id)
 
