@@ -2046,7 +2046,11 @@ class MainActivity : Activity() {
                 }
             }
             val count = saveManager.importSavesZip(storageName, destFile)
-            Toast.makeText(this, "Imported $count save files", Toast.LENGTH_LONG).show()
+            if (count > 0) {
+                Toast.makeText(this, "Imported $count save files", Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(this, "No save files found in the selected archive", Toast.LENGTH_LONG).show()
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to import saves", e)
             Toast.makeText(this, "Failed to import saves", Toast.LENGTH_SHORT).show()

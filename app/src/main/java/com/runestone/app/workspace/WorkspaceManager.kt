@@ -250,7 +250,7 @@ class WorkspaceManager(private val context: Context) {
     }
 
     fun isInstalled(gameName: String): Boolean {
-        return File(gamesBaseDir, gameName).exists()
+        return File(gamesBaseDir, gameName).isDirectory && File(gamesBaseDir, gameName).resolve("original").isDirectory
     }
 
     fun allocateGameDir(baseName: String): File {
@@ -321,6 +321,7 @@ class WorkspaceManager(private val context: Context) {
         } else {
             dir.deleteRecursively()
         }
+        invalidateGameScanCache()
     }
 
     private fun formatDisplayName(dirName: String): String {
