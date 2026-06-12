@@ -40,10 +40,9 @@ class RtpManager(private val context: Context) {
     fun isInstalled(pack: RtpPack): Boolean {
         val dir = packDir(pack)
         if (!dir.isDirectory) return false
-        if (!File(dir, MARKER_NAME).exists()) return false
-        // Sanity check: the official VX Ace RTP extracts to RTP100/Graphics, etc.
-        // If the marker says ready but the expected subdir is gone, treat as not installed.
-        return File(dir, "RTP100").isDirectory
+        if (File(dir, MARKER_NAME).exists()) return true
+        // No marker — check for actual RTP content (direct layout or RTP100 wrapper)
+        return File(dir, "Audio").isDirectory || File(dir, "RTP100").isDirectory
     }
 
     fun installedIds(): Set<String> =

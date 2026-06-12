@@ -519,6 +519,68 @@ Core runtimes: SDL2, mkxp-z, EasyRPG, Ruby, OpenAL, WebView
         }
 
         // ────────────────────────────────────────────────
+        //  RTP Status
+        // ────────────────────────────────────────────────
+        content.addView(spacer(height = 14))
+        content.addView(TextView(context).apply {
+            text = "RTP Packages"; setTextColor(TEXT); textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD; setPadding(0, 0, 0, dp(4))
+        })
+        content.addView(TextView(context).apply {
+            text = "Runtime packages for game engines"
+            setTextColor(MUTED); textSize = 11f; setPadding(0, 0, 0, dp(8))
+        })
+
+        val rtpManager = com.runestone.app.rtp.RtpManager(context)
+        val vxAcePack = com.runestone.app.rtp.RtpPack.forId("vx_ace")
+        if (vxAcePack != null && rtpManager.isInstalled(vxAcePack)) {
+            content.addView(settingsPanel {
+                addView(TextView(context).apply {
+                    text = "✅  VX Ace RTP — Installed"
+                    setTextColor(Color.rgb(120, 200, 120)); textSize = 13f
+                    typeface = Typeface.DEFAULT_BOLD; setPadding(0, dp(4), 0, dp(4))
+                })
+            })
+        } else {
+            content.addView(settingsPanel {
+                addView(TextView(context).apply {
+                    text = "❌  VX Ace RTP — Not installed"
+                    setTextColor(Color.rgb(220, 140, 120)); textSize = 13f
+                    typeface = Typeface.DEFAULT_BOLD
+                })
+                addView(TextView(context).apply {
+                    text = "Tap INSTALL to download (~200 MB, one-time)"
+                    setTextColor(MUTED); textSize = 11f
+                    setPadding(0, dp(4), 0, dp(8))
+                })
+                addView(TextView(context).apply {
+                    text = "INSTALL VX ACE RTP"
+                    setTextColor(Color.rgb(100, 180, 220)); textSize = 12f
+                    typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    background = GradientDrawable().apply {
+                        setColor(Color.argb(50, 80, 160, 200))
+                        cornerRadius = dp(10).toFloat()
+                        setStroke(dp(1), Color.argb(70, 100, 180, 220))
+                    }
+                    setOnClickListener {
+                        // Delegate to MainActivity's import flow
+                        android.widget.Toast.makeText(context,
+                            "Go to ADD → Import a VX Ace game to trigger RTP download",
+                            android.widget.Toast.LENGTH_LONG).show()
+                    }
+                })
+            })
+        }
+        content.addView(spacer(10))
+        content.addView(View(context).apply {
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(1)).apply {
+                setMargins(dp(16), 0, dp(16), 0)
+            }
+            setBackgroundColor(Color.argb(30, 100, 90, 80))
+        })
+
+        // ────────────────────────────────────────────────
         //  BOTTOM ACTIONS
         // ────────────────────────────────────────────────
         content.addView(spacer(height = 14))
