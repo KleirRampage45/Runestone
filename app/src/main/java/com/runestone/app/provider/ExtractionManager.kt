@@ -14,7 +14,9 @@ import android.content.Context
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
-import java.util.zip.ZipFile
+import java.nio.charset.Charset
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
 
 class ExtractionManager(private val context: Context) {
 
@@ -71,37 +73,52 @@ class ExtractionManager(private val context: Context) {
         var total = 0
         var extractedBytes = 0L
 
-        ZipFile(zipFile).use { zip ->
-            val entries = zip.entries()
-            val entryList = generateSequence { if (entries.hasMoreElements()) entries.nextElement() else null }.toList()
-            total = entryList.size
-            require(total > 0) { "Archive contains no files" }
-            require(total <= MAX_FILES) { "Archive contains more than $MAX_FILES entries" }
+        val charset = Charset.forName("ISO-8859-1")
 
-            for (entry in entryList) {
+        // Pass 1: count entries
+        ZipInputStream(zipFile.inputStream().buffered(), charset).use { zis ->
+            while (true) {
+                val entry = zis.nextEntry ?: break
+                total++
+                require(total <= MAX_FILES) { "Archive contains more than $MAX_FILES entries" }
+                entry // touch
+            }
+        }
+        require(total > 0) { "Archive contains no files" }
+
+        // Pass 2: extract
+        ZipInputStream(zipFile.inputStream().buffered(), charset).use { zis ->
+            var entry: ZipEntry? = zis.nextEntry
+            while (entry != null) {
                 val name = entry.name
 
-                if (shouldSkip(name)) continue
+                if (shouldSkip(name)) {
+                    zis.closeEntry()
+                    entry = zis.nextEntry
+                    continue
+                }
 
                 val outFile = sanitizePath(outputDir, name)
-                if (outFile == null) continue
+                if (outFile == null) {
+                    zis.closeEntry()
+                    entry = zis.nextEntry
+                    continue
+                }
 
                 if (entry.isDirectory) {
                     outFile.mkdirs()
                 } else {
                     outFile.parentFile?.mkdirs()
-                    zip.getInputStream(entry).use { input ->
-                        FileOutputStream(outFile).use { fos ->
-                            val buffer = ByteArray(BUFFER_SIZE)
-                            var len: Int
-                            var entryBytes = 0L
-                            while (input.read(buffer).also { len = it } > 0) {
-                                entryBytes += len
-                                extractedBytes += len
-                                require(entryBytes <= MAX_ENTRY_BYTES) { "Archive entry is too large: $name" }
-                                require(extractedBytes <= MAX_EXTRACTED_BYTES) { "Archive expands beyond the allowed size" }
-                                fos.write(buffer, 0, len)
-                            }
+                    FileOutputStream(outFile).use { fos ->
+                        val buffer = ByteArray(BUFFER_SIZE)
+                        var len: Int
+                        var entryBytes = 0L
+                        while (zis.read(buffer).also { len = it } > 0) {
+                            entryBytes += len
+                            extractedBytes += len
+                            require(entryBytes <= MAX_ENTRY_BYTES) { "Archive entry is too large: $name" }
+                            require(extractedBytes <= MAX_EXTRACTED_BYTES) { "Archive expands beyond the allowed size" }
+                            fos.write(buffer, 0, len)
                         }
                     }
                 }
@@ -112,6 +129,9 @@ class ExtractionManager(private val context: Context) {
                     totalFiles = total,
                     currentFile = name,
                 ))
+
+                zis.closeEntry()
+                entry = zis.nextEntry
             }
         }
         require(extracted > 0) { "Archive did not extract any files" }
