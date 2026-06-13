@@ -51,6 +51,7 @@ import com.runestone.app.importer.SafGameImporter
 import com.runestone.app.importer.SafImportResult
 import com.runestone.app.importer.SafStorageBrowser
 import com.runestone.app.ui.AvailableGamesScreen
+import com.runestone.app.ui.GameDetailOverlay
 import com.runestone.app.ui.GameFolderBrowserScreen
 import com.runestone.app.ui.GameCardInfo
 import com.runestone.app.ui.HomeCardLayout
@@ -124,6 +125,7 @@ class MainActivity : Activity() {
     // Overlay navigation - root container set once, overlays added on top
     private lateinit var rootContainer: FrameLayout
     private var activeOverlay: View? = null
+    private var detailOverlay: GameDetailOverlay? = null
     private var homeContentView: View? = null
     private lateinit var persistentDock: View
 
@@ -189,6 +191,15 @@ class MainActivity : Activity() {
                 StoreDownloadService.ACTION_ERROR -> showErrorNotification(gameId, progress.error ?: "Download failed")
             }
             renderAvailableGamesProgress("download:$gameId", progressPercent(progress.bytesDownloaded, progress.totalBytes), force = state != DownloadManager.DownloadState.DOWNLOADING)
+            detailOverlay?.let { overlay ->
+                val game = availableGames.firstOrNull { it.id == gameId } ?: return@let
+                overlay.update(
+                    game = game,
+                    progress = downloadProgressMap[gameId],
+                    installProgress = installProgressMap[gameId],
+                    installedGameTitles = installedStoreKeys(),
+                )
+            }
         }
     }
 
@@ -229,7 +240,7 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setBackgroundColor(Color.rgb(3, 3, 4))
+            setBackgroundColor(Color.argb(255, 3, 3, 4))
         }
         ViewCompat.setOnApplyWindowInsetsListener(rootContainer) { v, insets ->
             if (settings.displayCutoutMode == DisplayCutoutMode.SAFE_AREA) {
@@ -238,7 +249,7 @@ class MainActivity : Activity() {
                 val left = maxOf(bars.left, cutout.left)
                 val top = maxOf(bars.top, cutout.top)
                 val right = maxOf(bars.right, cutout.right)
-                val bottom = maxOf(0, cutout.bottom)
+                val bottom = maxOf(bars.bottom, cutout.bottom)
                 if (v.paddingLeft != left || v.paddingTop != top || v.paddingRight != right || v.paddingBottom != bottom) {
                     v.setPadding(left, top, right, bottom)
                 }
@@ -458,6 +469,7 @@ class MainActivity : Activity() {
         val outputDir = workspaceManager.allocateGameDir(game.title)
         installProgressMap[gameId] = InstallProgress(0, 0, "Preparing archive")
         renderAvailableGamesProgress("install:$gameId", 0, force = true)
+        pushDetailOverlayUpdate(gameId)
 
         extractionManager.extract(zipPath, outputDir, object : ExtractionManager.ExtractionCallback {
             override fun onProgress(progress: ExtractionManager.ExtractionProgress) {
@@ -472,6 +484,7 @@ class MainActivity : Activity() {
                         key = "install:$gameId",
                         percent = progressPercent(progress.filesExtracted.toLong(), progress.totalFiles.toLong()),
                     )
+                    pushDetailOverlayUpdate(gameId)
                     val notification = Notification.Builder(this@MainActivity, NOTIFICATION_CHANNEL)
                         .setSmallIcon(android.R.drawable.stat_sys_download)
                         .setContentTitle("Extracting ${game.title}")
@@ -498,6 +511,7 @@ class MainActivity : Activity() {
                         downloadProgressMap.remove(gameId)
                         installProgressMap.remove(gameId)
                         clearStoreProgress(gameId)
+                        workspaceManager.invalidateGameScanCache()
                         refreshGames()
                         dismissOverlay { showHome() }
                         val zipStatus = if (settings.preserveFiles) "ZIP kept" else "ZIP deleted"
@@ -615,6 +629,7 @@ class MainActivity : Activity() {
             state = DownloadManager.DownloadState.DOWNLOADING
         )
         renderAvailableGamesProgress("download:${game.id}", 0, force = true)
+        pushDetailOverlayUpdate(game.id)
     }
 
     private fun progressPercent(done: Long, total: Long): Int {
@@ -776,13 +791,7 @@ class MainActivity : Activity() {
         // Remove any existing overlay
         activeOverlay?.let { rootContainer.removeView(it); activeOverlay = null }
         if (android.os.Build.VERSION.SDK_INT >= 31) {
-            homeContentView?.setRenderEffect(
-                android.graphics.RenderEffect.createBlurEffect(
-                    10f,
-                    10f,
-                    android.graphics.Shader.TileMode.CLAMP,
-                ),
-            )
+            homeContentView?.setRenderEffect(null)
         }
 
         val wrapper = FrameLayout(this).apply {
@@ -829,9 +838,6 @@ class MainActivity : Activity() {
             overlay.animate().alpha(0f).translationY(resources.displayMetrics.heightPixels * 0.08f).setDuration(200).withEndAction {
                 rootContainer.removeView(overlay)
                 activeOverlay = null
-                if (android.os.Build.VERSION.SDK_INT >= 31) {
-                    homeContentView?.setRenderEffect(null)
-                }
                 onDismissed()
             }.start()
         }
@@ -1029,6 +1035,9 @@ class MainActivity : Activity() {
         activeOverlay?.let {
             rootContainer.removeView(it)
             activeOverlay = null
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            homeContentView?.setRenderEffect(null)
         }
 
         // Remove old home content
@@ -1442,7 +1451,36 @@ class MainActivity : Activity() {
                 onDownload = { handleDownload(it) },
                 onPauseDownload = { handlePauseDownload(it) },
                 onBack = { dismissOverlay() },
+                onOpenDetail = { game -> showGameDetail(game) },
             ),
+        )
+    }
+
+    private fun showGameDetail(game: AvailableGame) {
+        val titles = installedStoreKeys()
+        detailOverlay = GameDetailOverlay.show(
+            context = this,
+            game = game,
+            progress = downloadProgressMap[game.id],
+            installProgress = installProgressMap[game.id],
+            installedGameTitles = titles,
+            onDownload = { handleDownload(it) },
+            onPauseDownload = { handlePauseDownload(it) },
+            onClose = { _ ->
+                detailOverlay = null
+                refreshGames()
+            },
+        )
+    }
+
+    private fun pushDetailOverlayUpdate(gameId: String) {
+        val overlay = detailOverlay ?: return
+        val game = availableGames.firstOrNull { it.id == gameId } ?: return
+        overlay.update(
+            game = game,
+            progress = downloadProgressMap[gameId],
+            installProgress = installProgressMap[gameId],
+            installedGameTitles = installedStoreKeys(),
         )
     }
 
