@@ -56,6 +56,7 @@ class AvailableGamesScreen(private val context: Context) {
         onDownload: (AvailableGame) -> Unit,
         onPauseDownload: (String) -> Unit,
         onBack: () -> Unit,
+        onOpenDetail: (AvailableGame) -> Unit = {},
     ): FrameLayout {
         val root = FrameLayout(context).apply {
             setBackgroundColor(Color.argb(220, 8, 8, 10))
@@ -150,7 +151,7 @@ class AvailableGamesScreen(private val context: Context) {
                     ) &&
                         (engineFilter == null || game.engine.equals(engineFilter, ignoreCase = true))
                 }
-                renderGameList(gamesContainer, filtered, downloadStates, installStates, onDownload, onPauseDownload, installedGameTitles)
+                renderGameList(gamesContainer, filtered, downloadStates, installStates, onDownload, onPauseDownload, installedGameTitles, onOpenDetail)
             }
 
             val searchRow = makeSearchBar { query ->
@@ -227,6 +228,7 @@ class AvailableGamesScreen(private val context: Context) {
         onDownload: (AvailableGame) -> Unit,
         onPauseDownload: (String) -> Unit,
         installedGameTitles: Set<String> = emptySet(),
+        onOpenDetail: (AvailableGame) -> Unit = {},
     ) {
         container.removeAllViews()
         val screenW = context.resources.displayMetrics.widthPixels
@@ -245,6 +247,7 @@ class AvailableGamesScreen(private val context: Context) {
                         onDownload,
                         onPauseDownload,
                         installedGameTitles,
+                        onOpenDetail,
                         cardW,
                     ),
                     LinearLayout.LayoutParams(cardW, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
@@ -393,6 +396,7 @@ class AvailableGamesScreen(private val context: Context) {
         onDownload: (AvailableGame) -> Unit,
         onPauseDownload: (String) -> Unit,
         installedGameTitles: Set<String> = emptySet(),
+        onOpenDetail: (AvailableGame) -> Unit = {},
         forcedCardWidth: Int? = null,
     ): LinearLayout {
         val screenW = context.resources.displayMetrics.widthPixels
@@ -407,6 +411,9 @@ class AvailableGamesScreen(private val context: Context) {
                 setStroke(dp(1), Color.argb(60, 207, 174, 126))
             }
             gravity = Gravity.CENTER_HORIZONTAL
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { onOpenDetail(game) }
         }
 
         if (game.coverUrl != null) {
