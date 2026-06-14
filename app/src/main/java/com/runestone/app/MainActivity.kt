@@ -1334,6 +1334,15 @@ class MainActivity : Activity() {
                     }
                     startActivityForResult(intent, REQUEST_PATCH_ZIP)
                 },
+                onDeleteGame = { keepSaves ->
+                    dismissOverlay {
+                        workspaceManager.removeGame(storageName, keepSaves = keepSaves)
+                        workspaceManager.invalidateGameScanCache()
+                        refreshGames()
+                        val msg = if (keepSaves) "${game.displayName} reinstalled. Saves kept." else "${game.displayName} deleted."
+                        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                    }
+                },
             ),
         )
     }

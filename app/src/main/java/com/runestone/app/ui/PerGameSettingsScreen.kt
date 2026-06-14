@@ -38,6 +38,7 @@ class PerGameSettingsScreen(private val context: Context) {
         onPickCover: ((pathCallback: (String) -> Unit) -> Unit) = {},
         onFetchMetadata: ((Boolean) -> Unit) -> Unit = {},
         onInstallPatch: ((zipCallback: (String) -> Unit) -> Unit) = {},
+        onDeleteGame: ((keepSaves: Boolean) -> Unit)? = null,
     ): LinearLayout {
         var current = config
 
@@ -257,6 +258,43 @@ class PerGameSettingsScreen(private val context: Context) {
             slider(200, (current.video.contrast * 100).toInt().coerceIn(0, 200)) { progress ->
                 current = current.copy(video = current.video.copy(contrast = progress / 100f))
                 label.text = "${(current.video.contrast * 100).toInt()}%"
+                onConfigChanged(current)
+            }
+        })
+        content.addView(spacer(10))
+
+        // ── Visual Filter Preset ──
+        content.addView(filterPresetPanel(current.video.screenFilter) { presetId ->
+            current = current.copy(video = current.video.copy(screenFilter = presetId))
+            onConfigChanged(current)
+        })
+        content.addView(spacer(10))
+
+        content.addView(sliderPanel("Gamma",
+            "${(current.video.gamma * 100).toInt()}%") { label ->
+            slider(200, (current.video.gamma * 100).toInt().coerceIn(0, 200)) { progress ->
+                current = current.copy(video = current.video.copy(gamma = progress / 100f))
+                label.text = "${(current.video.gamma * 100).toInt()}%"
+                onConfigChanged(current)
+            }
+        })
+        content.addView(spacer(10))
+
+        content.addView(sliderPanel("Saturation",
+            "${(current.video.saturation * 100).toInt()}%") { label ->
+            slider(200, (current.video.saturation * 100).toInt().coerceIn(0, 200)) { progress ->
+                current = current.copy(video = current.video.copy(saturation = progress / 100f))
+                label.text = "${(current.video.saturation * 100).toInt()}%"
+                onConfigChanged(current)
+            }
+        })
+        content.addView(spacer(10))
+
+        content.addView(sliderPanel("Sharpness",
+            "${(current.video.sharpness * 100).toInt()}%") { label ->
+            slider(200, (current.video.sharpness * 100).toInt().coerceIn(0, 200)) { progress ->
+                current = current.copy(video = current.video.copy(sharpness = progress / 100f))
+                label.text = "${(current.video.sharpness * 100).toInt()}%"
                 onConfigChanged(current)
             }
         })
@@ -678,6 +716,14 @@ class PerGameSettingsScreen(private val context: Context) {
         refreshPatchList = { buildPatchList() }
         content.addView(spacer(h = 14))
 
+        // ── Danger Zone ──
+        if (onDeleteGame != null) {
+            content.addView(sectionTitle("Danger Zone", "Irreversible actions for this game"))
+            content.addView(deleteGamePanel(gameTitle) { keepSaves ->
+                onDeleteGame(keepSaves)
+            })
+        }
+
         content.animate().alpha(1f).setDuration(300).setInterpolator(OvershootInterpolator(1.1f)).start()
         return root
     }
@@ -819,6 +865,61 @@ class PerGameSettingsScreen(private val context: Context) {
             addView(row)
         }
 
+    private fun filterPresetPanel(currentId: String, onChange: (String) -> Unit): LinearLayout =
+        settingsPanel {
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            row.addView(
+                TextView(context).apply {
+                    text = "Filter Preset"
+                    setTextColor(TEXT)
+                    textSize = 15f
+                    typeface = Typeface.DEFAULT_BOLD
+                },
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+            )
+
+            // Simple tap-to-cycle for Phase 1: Off <-> Clean Sharp
+            // Build list of available presets
+            val presets = com.runestone.app.filters.FilterManager.getAllPresets()
+            val currentIndex = presets.indexOfFirst { it.id == currentId }
+                .coerceAtLeast(0)
+
+            val valueLabel = TextView(context).apply {
+                text = presets.getOrNull(currentIndex)?.displayName ?: "Off"
+                setTextColor(ACCENT)
+                textSize = 13f
+                gravity = Gravity.END
+            }
+            row.addView(valueLabel)
+
+            addView(row)
+
+            // Tap label to cycle
+            setOnClickListener {
+                val idx = presets.indexOfFirst { it.id == currentId }
+                val next = if (idx < 0 || idx >= presets.size - 1) 0 else idx + 1
+                val nextPreset = presets[next]
+                valueLabel.text = nextPreset.displayName
+                onChange(nextPreset.id)
+            }
+
+            // Show description
+            val desc = presets.getOrNull(currentIndex)?.description ?: ""
+            if (desc.isNotEmpty()) {
+                addView(
+                    TextView(context).apply {
+                        text = desc
+                        setTextColor(MUTED)
+                        textSize = 11f
+                        setPadding(0, dp(4), 0, 0)
+                    },
+                )
+            }
+        }
+
     private fun resetRuntimePanel(onReset: () -> Unit): LinearLayout =
         settingsPanel {
             addView(TextView(context).apply {
@@ -851,6 +952,61 @@ class PerGameSettingsScreen(private val context: Context) {
                 }
             })
         }
+
+    private fun deleteGamePanel(gameTitle: String, onConfirm: (keepSaves: Boolean) -> Unit): LinearLayout =
+        settingsPanel {
+            addView(TextView(context).apply {
+                text = "Delete Game"
+                setTextColor(Color.rgb(220, 160, 160))
+                textSize = 15f
+                typeface = Typeface.DEFAULT_BOLD
+            })
+            addView(TextView(context).apply {
+                text = "Removes all installed files for $gameTitle from your device. You can keep your save games or wipe everything."
+                setTextColor(MUTED)
+                textSize = 11f
+                setPadding(0, dp(3), 0, dp(10))
+            })
+            addView(TextView(context).apply {
+                text = "DELETE GAME"
+                setTextColor(Color.rgb(255, 200, 200))
+                textSize = 12f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setPadding(dp(16), dp(9), dp(16), dp(9))
+                background = GradientDrawable().apply {
+                    setColor(Color.argb(60, 200, 60, 60))
+                    cornerRadius = dp(8).toFloat()
+                    setStroke(dp(1), Color.argb(90, 220, 80, 80))
+                }
+                makeLiquid(this)
+                setOnClickListener { v ->
+                    if (Theme.isReducedMotion(context)) {
+                        v.performClick()
+                    } else {
+                        v.animate().scaleX(0.97f).scaleY(0.97f).setDuration(80).withEndAction {
+                            v.animate().scaleX(1f).scaleY(1f).setInterpolator(OvershootInterpolator(2f)).setDuration(140).start()
+                            showDeleteGameDialog(gameTitle, onConfirm)
+                        }.start()
+                    }
+                }
+            })
+        }
+
+    private fun showDeleteGameDialog(gameTitle: String, onConfirm: (keepSaves: Boolean) -> Unit) {
+        val overlay = android.app.AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Delete $gameTitle?")
+            .setMessage("This removes all installed game files. What about your save games?")
+            .setPositiveButton("Keep saves") { _, _ -> onConfirm(true) }
+            .setNegativeButton("Delete fully") { _, _ -> onConfirm(false) }
+            .setNeutralButton("Cancel", null)
+            .show()
+
+        val red = Color.rgb(220, 80, 80)
+        overlay.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.setTextColor(Color.rgb(120, 200, 130))
+        overlay.getButton(android.app.AlertDialog.BUTTON_NEGATIVE)?.setTextColor(red)
+        overlay.getButton(android.app.AlertDialog.BUTTON_NEUTRAL)?.setTextColor(MUTED)
+    }
 
     private fun layoutModePanel(selectedValue: String, onChange: (LayoutMode) -> Unit): LinearLayout =
         settingsPanel {
