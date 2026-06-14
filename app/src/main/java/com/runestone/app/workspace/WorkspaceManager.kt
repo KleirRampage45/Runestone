@@ -338,7 +338,12 @@ class WorkspaceManager(private val context: Context) {
 
     fun removeGame(storageName: String, keepSaves: Boolean = false) {
         val dir = gameDir(storageName)
-        if (!dir.exists()) return
+        android.util.Log.i("Runestone", "removeGame: storageName=$storageName dir=${dir.absolutePath} exists=${dir.exists()} keepSaves=$keepSaves")
+        if (!dir.exists()) {
+            android.util.Log.w("Runestone", "removeGame: dir does not exist, nothing to do")
+            invalidateGameScanCache()
+            return
+        }
 
         if (keepSaves) {
             val saves = savesDir(storageName)
@@ -346,14 +351,16 @@ class WorkspaceManager(private val context: Context) {
             if (saves.exists()) {
                 saves.copyRecursively(preservedSaves, overwrite = true)
             }
-            dir.deleteRecursively()
+            val deleted = dir.deleteRecursively()
+            android.util.Log.i("Runestone", "removeGame: keepSaves deleteRecursively=$deleted")
             dir.mkdirs()
             if (preservedSaves.exists()) {
                 preservedSaves.copyRecursively(File(dir, "saves"), overwrite = true)
                 preservedSaves.deleteRecursively()
             }
         } else {
-            dir.deleteRecursively()
+            val deleted = dir.deleteRecursively()
+            android.util.Log.i("Runestone", "removeGame: full delete deleteRecursively=$deleted, existsAfter=${dir.exists()}")
         }
         invalidateGameScanCache()
     }

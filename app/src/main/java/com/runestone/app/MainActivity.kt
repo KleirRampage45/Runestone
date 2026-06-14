@@ -1448,11 +1448,20 @@ class MainActivity : Activity() {
     }
 
     private fun performDeleteGame(storageName: String, gameTitle: String, keepSaves: Boolean) {
-        // The per-game settings overlay was already dismissed by the dialog button.
-        // Now do the actual work and rebuild the home screen with the new list.
+        Log.i(TAG, "performDeleteGame: storageName=$storageName keepSaves=$keepSaves")
+        // Run the actual delete and the home refresh sequentially inside the
+        // dismiss callback. The per-game settings overlay is already gone.
         dismissOverlay {
-            workspaceManager.removeGame(storageName, keepSaves = keepSaves)
-            workspaceManager.invalidateGameScanCache()
+            try {
+                workspaceManager.removeGame(storageName, keepSaves = keepSaves)
+                Log.i(TAG, "performDeleteGame: removeGame returned for $storageName")
+            } catch (e: Exception) {
+                Log.e(TAG, "performDeleteGame: removeGame threw", e)
+            }
+            // Always refresh the in-memory game list from disk before
+            // rebuilding the home, otherwise the home view will redraw
+            // the deleted game from the stale list.
+            refreshGames()
             showHome()
             val msg = if (keepSaves) "$gameTitle reinstalled. Saves kept." else "$gameTitle deleted."
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
