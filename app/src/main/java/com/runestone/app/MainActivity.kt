@@ -29,6 +29,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import android.app.Notification
@@ -1334,17 +1335,128 @@ class MainActivity : Activity() {
                     }
                     startActivityForResult(intent, REQUEST_PATCH_ZIP)
                 },
-                onDeleteGame = { keepSaves ->
-                    dismissOverlay {
-                        workspaceManager.removeGame(storageName, keepSaves = keepSaves)
-                        workspaceManager.invalidateGameScanCache()
-                        refreshGames()
-                        val msg = if (keepSaves) "${game.displayName} reinstalled. Saves kept." else "${game.displayName} deleted."
-                        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-                    }
+                onDeleteGame = {
+                    showDeleteGameConfirmDialog(storageName, game.displayName)
                 },
             ),
         )
+    }
+
+    private fun showDeleteGameConfirmDialog(storageName: String, gameTitle: String) {
+        val wrapper = FrameLayout(this).apply {
+            setBackgroundColor(Color.argb(218, 0, 0, 0))
+            isClickable = true
+            isFocusable = true
+        }
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = dp(20)
+            setPadding(pad, pad, pad, pad)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.argb(248, 18, 17, 22))
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), Color.argb(80, 220, 80, 80))
+            }
+            elevation = dp(8).toFloat()
+        }
+        val cardLp = FrameLayout.LayoutParams(
+            (resources.displayMetrics.widthPixels * 0.86f).toInt(),
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+        )
+        cardLp.gravity = android.view.Gravity.CENTER
+
+        card.addView(android.widget.TextView(this).apply {
+            text = "Delete $gameTitle?"
+            setTextColor(Color.rgb(232, 229, 220))
+            textSize = 17f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(0, 0, 0, dp(8))
+        })
+
+        card.addView(android.widget.TextView(this).apply {
+            text = "This removes all installed game files. What about your save games?"
+            setTextColor(Color.rgb(170, 160, 145))
+            textSize = 13f
+            setPadding(0, 0, 0, dp(20))
+        })
+
+        fun makeButton(label: String, bg: Int, stroke: Int, fg: Int, onClick: () -> Unit) {
+            val btn = android.widget.TextView(this).apply {
+                text = label
+                setTextColor(fg)
+                textSize = 13f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                gravity = android.view.Gravity.CENTER
+                setPadding(dp(16), dp(11), dp(16), dp(11))
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(bg)
+                    cornerRadius = dp(10).toFloat()
+                    setStroke(dp(1), stroke)
+                }
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    animate().scaleX(0.97f).scaleY(0.97f).setDuration(60).withEndAction {
+                        animate().scaleX(1f).scaleY(1f).setDuration(100).start()
+                        dismissOverlay { onClick() }
+                    }.start()
+                }
+            }
+            val lp = LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+            lp.topMargin = dp(8)
+            card.addView(btn, lp)
+        }
+
+        val redSoft = Color.argb(45, 220, 80, 80)
+        val redStroke = Color.argb(90, 220, 80, 80)
+        val greenSoft = Color.argb(40, 110, 180, 120)
+        val greenStroke = Color.argb(85, 110, 180, 120)
+        val neutralSoft = Color.argb(35, 140, 130, 112)
+        val neutralStroke = Color.argb(70, 140, 130, 112)
+
+        makeButton("KEEP SAVES", greenSoft, greenStroke, Color.rgb(180, 230, 190)) {
+            performDeleteGame(storageName, gameTitle, keepSaves = true)
+        }
+        makeButton("DELETE FULLY", redSoft, redStroke, Color.rgb(255, 200, 200)) {
+            performDeleteGame(storageName, gameTitle, keepSaves = false)
+        }
+        makeButton("Cancel", neutralSoft, neutralStroke, Color.rgb(200, 195, 180)) {
+            // Cancel: just dismiss the confirmation. The per-game settings
+            // overlay stays underneath so the user lands back where they were.
+        }
+
+        wrapper.addView(card, cardLp)
+
+        card.alpha = 0f
+        card.translationY = dp(20).toFloat()
+        wrapper.alpha = 0f
+        card.animate().alpha(1f).translationY(0f).setDuration(200).start()
+        wrapper.animate().alpha(1f).setDuration(180).start()
+
+        activeOverlay?.let { rootContainer.removeView(it); activeOverlay = null }
+        rootContainer.addView(
+            wrapper,
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+        )
+        persistentDock.bringToFront()
+        activeOverlay = wrapper
+    }
+
+    private fun performDeleteGame(storageName: String, gameTitle: String, keepSaves: Boolean) {
+        // The per-game settings overlay was already dismissed by the dialog button.
+        // Now do the actual work and rebuild the home screen with the new list.
+        dismissOverlay {
+            workspaceManager.removeGame(storageName, keepSaves = keepSaves)
+            workspaceManager.invalidateGameScanCache()
+            showHome()
+            val msg = if (keepSaves) "$gameTitle reinstalled. Saves kept." else "$gameTitle deleted."
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun showAvailableGames() {

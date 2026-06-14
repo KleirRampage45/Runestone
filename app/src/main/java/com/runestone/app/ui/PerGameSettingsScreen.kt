@@ -38,7 +38,7 @@ class PerGameSettingsScreen(private val context: Context) {
         onPickCover: ((pathCallback: (String) -> Unit) -> Unit) = {},
         onFetchMetadata: ((Boolean) -> Unit) -> Unit = {},
         onInstallPatch: ((zipCallback: (String) -> Unit) -> Unit) = {},
-        onDeleteGame: ((keepSaves: Boolean) -> Unit)? = null,
+        onDeleteGame: (() -> Unit)? = null,
     ): LinearLayout {
         var current = config
 
@@ -719,8 +719,8 @@ class PerGameSettingsScreen(private val context: Context) {
         // ── Danger Zone ──
         if (onDeleteGame != null) {
             content.addView(sectionTitle("Danger Zone", "Irreversible actions for this game"))
-            content.addView(deleteGamePanel(gameTitle) { keepSaves ->
-                onDeleteGame(keepSaves)
+            content.addView(deleteGamePanel(gameTitle) {
+                onDeleteGame()
             })
         }
 
@@ -953,7 +953,7 @@ class PerGameSettingsScreen(private val context: Context) {
             })
         }
 
-    private fun deleteGamePanel(gameTitle: String, onConfirm: (keepSaves: Boolean) -> Unit): LinearLayout =
+    private fun deleteGamePanel(gameTitle: String, onRequestDelete: () -> Unit): LinearLayout =
         settingsPanel {
             addView(TextView(context).apply {
                 text = "Delete Game"
@@ -962,7 +962,7 @@ class PerGameSettingsScreen(private val context: Context) {
                 typeface = Typeface.DEFAULT_BOLD
             })
             addView(TextView(context).apply {
-                text = "Removes all installed files for $gameTitle from your device. You can keep your save games or wipe everything."
+                text = "Removes all installed files for $gameTitle from your device. You'll be asked whether to keep your save games."
                 setTextColor(MUTED)
                 textSize = 11f
                 setPadding(0, dp(3), 0, dp(10))
@@ -986,27 +986,12 @@ class PerGameSettingsScreen(private val context: Context) {
                     } else {
                         v.animate().scaleX(0.97f).scaleY(0.97f).setDuration(80).withEndAction {
                             v.animate().scaleX(1f).scaleY(1f).setInterpolator(OvershootInterpolator(2f)).setDuration(140).start()
-                            showDeleteGameDialog(gameTitle, onConfirm)
+                            onRequestDelete()
                         }.start()
                     }
                 }
             })
         }
-
-    private fun showDeleteGameDialog(gameTitle: String, onConfirm: (keepSaves: Boolean) -> Unit) {
-        val overlay = android.app.AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("Delete $gameTitle?")
-            .setMessage("This removes all installed game files. What about your save games?")
-            .setPositiveButton("Keep saves") { _, _ -> onConfirm(true) }
-            .setNegativeButton("Delete fully") { _, _ -> onConfirm(false) }
-            .setNeutralButton("Cancel", null)
-            .show()
-
-        val red = Color.rgb(220, 80, 80)
-        overlay.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.setTextColor(Color.rgb(120, 200, 130))
-        overlay.getButton(android.app.AlertDialog.BUTTON_NEGATIVE)?.setTextColor(red)
-        overlay.getButton(android.app.AlertDialog.BUTTON_NEUTRAL)?.setTextColor(MUTED)
-    }
 
     private fun layoutModePanel(selectedValue: String, onChange: (LayoutMode) -> Unit): LinearLayout =
         settingsPanel {
