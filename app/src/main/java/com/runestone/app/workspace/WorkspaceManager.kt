@@ -11,6 +11,7 @@
 package com.runestone.app.workspace
 
 import android.content.Context
+import android.util.Log
 import com.runestone.app.data.EngineType
 import com.runestone.app.engine.EngineDetector
 import org.json.JSONArray
@@ -38,6 +39,11 @@ import java.io.File
  * ```
  */
 class WorkspaceManager(private val context: Context) {
+
+    private companion object {
+        private const val TAG = "WSMGR"
+    }
+
 
     data class GameInfo(
         val storageName: String,
@@ -254,15 +260,43 @@ class WorkspaceManager(private val context: Context) {
     }
 
     fun allocateGameDir(baseName: String): File {
-        var dirName = sanitizeName(baseName)
+        val sanitized = sanitizeName(baseName)
+        cleanupOrphanInstalls(sanitized)
+        var dirName = sanitized
         var dir = File(gamesBaseDir, dirName)
         var counter = 1
         while (dir.exists()) {
-            dirName = "${sanitizeName(baseName)}-$counter"
+            dirName = "$sanitized-$counter"
             dir = File(gamesBaseDir, dirName)
             counter++
         }
         return dir
+    }
+
+    /**
+     * Remove any directory matching `<sanitizedBase>` or `<sanitizedBase>-N` that is not
+     * a complete install (i.e. has no `manifest.json`). These are leftovers from installs
+     * killed before discardFailedInstall could wipe them — most commonly because the
+     * extraction thread was still running when the app was force-stopped.
+     *
+     * Directories whose name starts with `<sanitizedBase>` but contains a real
+     * `manifest.json` are kept (they're real installs, possibly older copies of the
+     * same game the user wants to keep).
+     */
+    private fun cleanupOrphanInstalls(sanitizedBase: String) {
+        val baseDir = gamesBaseDir
+        if (!baseDir.isDirectory) return
+        val prefix = "$sanitizedBase"
+        val matcher = Regex("^" + Regex.escape(prefix) + "(?:-\\d+)?$")
+        baseDir.listFiles()?.forEach { child ->
+            if (!child.isDirectory) return@forEach
+            if (!matcher.matches(child.name)) return@forEach
+            val manifest = File(child, "manifest.json")
+            if (!manifest.isFile) {
+                Log.w(TAG, "Removing orphan install dir: ${child.name} (no manifest.json)")
+                child.deleteRecursively()
+            }
+        }
     }
 
     fun gameDir(storageName: String): File = File(gamesBaseDir, storageName)
