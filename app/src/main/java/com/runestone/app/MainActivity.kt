@@ -1449,23 +1449,24 @@ class MainActivity : Activity() {
 
     private fun performDeleteGame(storageName: String, gameTitle: String, keepSaves: Boolean) {
         Log.i(TAG, "performDeleteGame: storageName=$storageName keepSaves=$keepSaves")
-        // Run the actual delete and the home refresh sequentially inside the
-        // dismiss callback. The per-game settings overlay is already gone.
-        dismissOverlay {
-            try {
-                workspaceManager.removeGame(storageName, keepSaves = keepSaves)
-                Log.i(TAG, "performDeleteGame: removeGame returned for $storageName")
-            } catch (e: Exception) {
-                Log.e(TAG, "performDeleteGame: removeGame threw", e)
-            }
-            // Always refresh the in-memory game list from disk before
-            // rebuilding the home, otherwise the home view will redraw
-            // the deleted game from the stale list.
-            refreshGames()
-            showHome()
-            val msg = if (keepSaves) "$gameTitle reinstalled. Saves kept." else "$gameTitle deleted."
-            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        // The dialog has already been dismissed by the button's onClick
+        // (makeButton wraps every tap in dismissOverlay { onClick() }).
+        // We must NOT call dismissOverlay again, because by the time this
+        // runs activeOverlay is already null and the inner dismiss is a
+        // no-op that would silently skip the entire lambda below.
+        try {
+            workspaceManager.removeGame(storageName, keepSaves = keepSaves)
+            Log.i(TAG, "performDeleteGame: removeGame returned for $storageName")
+        } catch (e: Exception) {
+            Log.e(TAG, "performDeleteGame: removeGame threw", e)
         }
+        // Always refresh the in-memory game list from disk before
+        // rebuilding the home, otherwise the home view will redraw
+        // the deleted game from the stale list.
+        refreshGames()
+        showHome()
+        val msg = if (keepSaves) "$gameTitle reinstalled. Saves kept." else "$gameTitle deleted."
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
     }
 
     private fun showAvailableGames() {
