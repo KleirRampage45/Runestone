@@ -208,6 +208,26 @@ class WebViewEngine(context: Context) : WebView(context) {
                     }
                 }
 
+                // Intercept .wasm asset requests — serve from the game
+                // directory with the correct MIME type. Some WebView builds
+                // (and some games' own fetch() code paths) fail to load
+                // .wasm via fetch() on file:// URLs, which silently hangs
+                // the game's main loop. Serving via shouldInterceptRequest
+                // bypasses the broken fetch path entirely.
+                if (url.endsWith(".wasm", ignoreCase = true) ||
+                    url.contains(".wasm?", ignoreCase = true) ||
+                    url.contains(".wasm#", ignoreCase = true)
+                ) {
+                    val wasmFile = resolveGameFile(url)
+                    if (wasmFile != null && wasmFile.exists()) {
+                        return WebResourceResponse(
+                            "application/wasm",
+                            "utf-8",
+                            FileInputStream(wasmFile),
+                        )
+                    }
+                }
+
                 return super.shouldInterceptRequest(view, request)
             }
 
@@ -280,6 +300,20 @@ class WebViewEngine(context: Context) : WebView(context) {
                     // Game tried to close via window.close() — ignore
                     return true
                 }
+                // Mirror all page-side console output to Runestone-tagged
+                // logcat so we can debug game issues without attaching
+                // chrome://inspect. Format: "page-console(level): <message>"
+                // plus the source URL and line number, when available.
+                val level = when (msg.messageLevel()) {
+                    ConsoleMessage.MessageLevel.ERROR -> "E"
+                    ConsoleMessage.MessageLevel.WARNING -> "W"
+                    else -> "I"
+                }
+                android.util.Log.println(
+                    android.util.Log.INFO,
+                    "Runestone",
+                    "page-console[$level] ${msg.lineNumber()}: $log",
+                )
                 return super.onConsoleMessage(msg)
             }
         }
