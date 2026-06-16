@@ -219,6 +219,10 @@ class WebViewEngine(context: Context) : WebView(context) {
                     url.contains(".wasm#", ignoreCase = true)
                 ) {
                     val wasmFile = resolveGameFile(url)
+                    android.util.Log.d(
+                        "Runestone",
+                        "wasm intercept: url=$url resolvedFile=${wasmFile?.absolutePath} exists=${wasmFile?.exists()}",
+                    )
                     if (wasmFile != null && wasmFile.exists()) {
                         return WebResourceResponse(
                             "application/wasm",
