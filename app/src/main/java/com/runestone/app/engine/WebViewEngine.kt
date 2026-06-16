@@ -256,12 +256,13 @@ class WebViewEngine(context: Context) : WebView(context) {
                         view.evaluateJavascript(tpl, null)
                     }
                 }
+                // PIXI renderer-options patch runs BEFORE the tile-bleeding
+                // fix so that __runestonePixiOpts is in place if the bootstrap
+                // reads it (it does, for resolution clamping). Then the
+                // tile-bleeding patch layers the NEAREST scale mode on top.
+                view.evaluateJavascript(PIXI_RENDER_OPTS_JS, null)
                 // Fix PIXI tile bleeding — force NEAREST scale mode
                 view.evaluateJavascript(PIXI_TILE_FIX_JS, null)
-                // PIXI renderer-options patch: mobile-friendly defaults that
-                // make the canvas lighter on the GPU and crisper on hi-DPI
-                // screens. Safe no-op when PIXI is absent.
-                view.evaluateJavascript(PIXI_RENDER_OPTS_JS, null)
             }
         }
 
@@ -591,43 +592,43 @@ class WebViewEngine(context: Context) : WebView(context) {
         })();
         """
 
-        // JS to apply mobile-friendly PIXI renderer options. Applied AFTER the
-        // game has constructed PIXI, so we walk whatever defaults object is
-        // available and tune the values. Each step is gated and safe.
+        // JS to apply mobile-friendly PIXI renderer options. Runs BEFORE the
+        // tile-bleeding fix so that __runestonePixiOpts is in place by the
+        // time the webgl-bootstrap (if injected) reads it.
         //
-        // - antialias: false            → cheaper shader, no GPU MSAA cost
-        // - roundPixels: true           → integer snapping, less sub-pixel work
-        // - powerPreference: 'high-performance'
-        //                               → ask for the discrete GPU on hybrid
-        //                                 systems; ignored on phones
-        // - preserveDrawingBuffer: false → driver can swap-chain freely
-        // - resolution: clamp(dpr, 1, 2) → cap retina cost on 3x phones
-        // - backgroundColor: 0x000000   → avoid surprise transparent clears
+        // Conservative defaults: only touch the things that are universal
+        // wins on mobile. We do NOT force roundPixels, antialias, or
+        // resolution globally — those interact with PIXI v5 shaders in ways
+        // that have produced black screens on real games. The game is
+        // allowed to set them itself; we just nudge the bits that are
+        // never wrong.
+        //
+        // - PRECISION_FRAGMENT = 'mediump'   → cheaper fragment math on mobile GPUs
+        // - scaleMode = 0 (NEAREST)           → duplicated in PIXI_TILE_FIX_JS;
+        //                                       kept here in case that injection is skipped
+        // - resolution cap via opts hint     → only consumed by the bootstrap
         private const val PIXI_RENDER_OPTS_JS = """
         (function() {
             try {
                 if (typeof PIXI === 'undefined') return;
-                var dpr = window.devicePixelRatio || 1;
-                var clampedDpr = Math.max(1, Math.min(2, dpr));
-                var opts = {
-                    antialias: false,
-                    roundPixels: true,
-                    powerPreference: 'high-performance',
-                    preserveDrawingBuffer: false,
-                    resolution: clampedDpr,
-                    backgroundColor: 0x000000,
-                };
                 if (PIXI.settings) {
-                    if ('ANTIALIAS' in PIXI.settings) PIXI.settings.ANTIALIAS = false;
-                    if ('ROUND_PIXELS' in PIXI.settings) PIXI.settings.ROUND_PIXELS = true;
-                    if ('PRECISION_FRAGMENT' in PIXI.settings) PIXI.settings.PRECISION_FRAGMENT = 'mediump';
+                    if ('PRECISION_FRAGMENT' in PIXI.settings) {
+                        PIXI.settings.PRECISION_FRAGMENT = 'mediump';
+                    }
                 }
                 if (PIXI.BaseTexture && PIXI.BaseTexture.defaultOptions) {
-                    PIXI.BaseTexture.defaultOptions.scaleMode = 0;
+                    if ('scaleMode' in PIXI.BaseTexture.defaultOptions) {
+                        PIXI.BaseTexture.defaultOptions.scaleMode = 0;
+                    }
                 }
-                // Stash the opts so the webgl-bootstrap can read them when it
-                // builds the WebGLRenderer / WebGL2Renderer.
-                window.__runestonePixiOpts = opts;
+                // Stash a resolution hint for the bootstrap to read. The
+                // bootstrap is the only place that actually forwards
+                // resolution to the renderer constructor, and only when the
+                // game has not already set one.
+                var dpr = window.devicePixelRatio || 1;
+                window.__runestonePixiOpts = {
+                    resolution: Math.max(1, Math.min(2, dpr)),
+                };
             } catch (e) {
                 // Best-effort: never break the game over a tuning patch.
             }

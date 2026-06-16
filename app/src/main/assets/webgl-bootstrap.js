@@ -64,10 +64,23 @@
         return caps.hasWebgl1 ? 'webgl' : (caps.hasWebgl2 ? 'webgl2' : 'canvas');
     }
 
-    function pickPixiCtor(pixiVersion, eff) {
+    function pickPixiCtor(eff) {
         if (typeof PIXI === 'undefined') return null;
-        if (eff === 'webgl2' && PIXI.WebGL2Renderer) return PIXI.WebGL2Renderer;
-        if (eff === 'webgl' && PIXI.WebGLRenderer) return PIXI.WebGLRenderer;
+        // Order matters: PIXI v5 ships BOTH WebGLRenderer and WebGL2Renderer
+        // on the same page. We must check the v5-only WebGL2Renderer FIRST
+        // when the effective target is webgl2, otherwise we'd return the
+        // generic WebGLRenderer and report "webgl" even though the runtime
+        // would have created a WebGL2 context.
+        if (eff === 'webgl2') {
+            if (PIXI.WebGL2Renderer) return PIXI.WebGL2Renderer;
+            if (PIXI.WebGLRenderer) return PIXI.WebGLRenderer;
+        } else if (eff === 'webgl') {
+            if (PIXI.WebGLRenderer) return PIXI.WebGLRenderer;
+        } else {
+            // canvas
+            if (PIXI.CanvasRenderer) return PIXI.CanvasRenderer;
+        }
+        // Last-resort fallbacks.
         if (PIXI.WebGLRenderer) return PIXI.WebGLRenderer;
         if (PIXI.CanvasRenderer) return PIXI.CanvasRenderer;
         return null;
@@ -81,6 +94,16 @@
             if (pixiCtor === PIXI.CanvasRenderer) return 'canvas';
         } catch (e) { /* ignore */ }
         return 'unknown';
+    }
+
+    // Map the chosen constructor + probed capability to the actual GL version
+    // number we want to report in logcat. This is *not* just `eff` — we want
+    // to record what the running context actually is, not what we asked for.
+    function actualVersion(eff, ctor, caps) {
+        if (eff === 'canvas') return 0;
+        if (ctor === PIXI.WebGL2Renderer) return 2;
+        if (ctor === PIXI.WebGLRenderer) return caps.hasWebgl2 ? 2 : 1;
+        return 0;
     }
 
     function patchPIXI(eff, opts) {
@@ -103,7 +126,15 @@
             }
             if (PIXI.BaseTexture && PIXI.BaseTexture.defaultOptions) {
                 PIXI.BaseTexture.defaultOptions.scaleMode = 0;
-                if (opts && typeof opts.resolution === 'number') {
+                // Only override resolution if the game hasn't set one.
+                // Forcing resolution=2 on a 3x-DPR phone has been observed
+                // to black-screen MZ games that compute texture coordinates
+                // in absolute pixel space.
+                if (
+                    opts && typeof opts.resolution === 'number' &&
+                    (typeof PIXI.BaseTexture.defaultOptions.resolution !== 'number' ||
+                        PIXI.BaseTexture.defaultOptions.resolution <= 0)
+                ) {
                     PIXI.BaseTexture.defaultOptions.resolution = opts.resolution;
                 }
             }
@@ -117,13 +148,15 @@
             if (typeof window.RunestoneBridge.boot === 'function') {
                 window.RunestoneBridge.boot(eff !== 'canvas', true);
             }
-            // Richer form for the new path.
+            // Richer form for the new path. webglVersion is the *actual*
+            // context version (2 for WebGL2Renderer, 1 for WebGLRenderer
+            // on a WebGL1-only WebView, 0 for canvas).
             if (typeof window.RunestoneBridge.bootDetailed === 'function') {
                 window.RunestoneBridge.bootDetailed(
                     eff !== 'canvas',
                     true,
                     effectiveRendererName(pixiCtor),
-                    eff === 'webgl2' ? 2 : (eff === 'webgl' ? 1 : 0),
+                    actualVersion(eff, pixiCtor, caps),
                 );
             }
         } catch (e) { /* ignore */ }
@@ -132,9 +165,9 @@
     try {
         var caps = probe();
         var eff = effectiveVersion(target, caps);
-        var opts = window.__runestonePixiOpts || null;
+        var opts = (typeof window.__runestonePixiOpts === 'object' && window.__runestonePixiOpts) || null;
         patchPIXI(eff, opts);
-        var ctor = pickPixiCtor('auto', eff);
+        var ctor = pickPixiCtor(eff);
         // Defer the post a tick so the game's own manager script can finish
         // instantiating PIXI first (it overrides the prototype we just set).
         setTimeout(function() {
