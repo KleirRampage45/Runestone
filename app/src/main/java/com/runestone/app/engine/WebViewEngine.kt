@@ -278,7 +278,15 @@ class WebViewEngine(context: Context) : WebView(context) {
                 // runs only when webgl is enabled. It probes the actual context,
                 // forces WebGL2 on MZ when available, tunes mobile-friendly PIXI
                 // options, and reports back via RunestoneBridge.bootDetailed(...).
-                if (config.webgl) {
+                // [BOOTSTRAP DISABLED FOR DIAGNOSIS]
+                // The webgl-bootstrap.js injection was observed to
+                // black-screen look-outside on a hi-DPI phone even
+                // though the only mutation it does to PIXI is
+                // SCALE_MODE=0 and BaseTexture.defaultOptions.scaleMode=0.
+                // Skipping it entirely here, while keeping the asset on
+                // disk, lets us confirm whether the bootstrap is the
+                // cause. Re-enable by removing the early return.
+                if (false && config.webgl) {
                     val targetRenderer = WebglConfigBuilder
                         .pick(config.engineFamily, config.useWebgl2, config.forceCanvas)
                         .name.lowercase()
