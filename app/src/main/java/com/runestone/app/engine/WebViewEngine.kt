@@ -104,7 +104,15 @@ class WebViewEngine(context: Context) : WebView(context) {
         webSettings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
         webSettings.textZoom = (config.textScale * 100).toInt().coerceIn(50, 200)
         webSettings.setSupportZoom(false)
-        webSettings.setOffscreenPreRaster(true)
+        // OffscreenPreRaster pre-rasterises the entire viewport at the
+        // WebView's native resolution. On hi-DPI phones with games that
+        // allocate a WebGL canvas at full viewport size (e.g. RPG Maker
+        // MZ with Effekseer particles), this is what exhausts the
+        // WebView's tile memory pool and produces a black canvas with
+        // Chromium's "tile memory limits exceeded" warning. Disabling
+        // it is the difference between a black screen and a working
+        // game on devices we've tested.
+        webSettings.setOffscreenPreRaster(false)
         isVerticalScrollBarEnabled = false
         isHorizontalScrollBarEnabled = false
         overScrollMode = OVER_SCROLL_NEVER
