@@ -67,8 +67,13 @@ class WebglConfigBuilderTest {
     }
 
     @Test
-    fun `WEBGL2 query string advertises intent and has a discriminator`() {
-        assertEquals("?webgl=1&webgl2=1&renderer=webgl2", WebglConfigBuilder.queryParams(WebglVersion.WEBGL2, webglEnabled = true))
+    fun `WEBGL2 query string has the discriminator but does NOT advertise webgl2=1 to the game`() {
+        // We intentionally do not emit &webgl2=1. Some MZ games built
+        // against pre-5.2 PIXI honour that flag and try a WebGL2 path
+        // their bundled PIXI does not support, producing a black screen.
+        // The Kotlin-side decision tells the JS bootstrap what we want;
+        // the URL hint stays minimal.
+        assertEquals("?webgl=1&renderer=webgl2", WebglConfigBuilder.queryParams(WebglVersion.WEBGL2, webglEnabled = true))
     }
 
     @Test
@@ -93,9 +98,9 @@ class WebglConfigBuilderTest {
     }
 
     @Test
-    fun `buildQuery MZ useWebgl2 on produces webgl2 hint`() {
+    fun `buildQuery MZ useWebgl2 on produces webgl2 hint without leaking webgl2=1 to the URL`() {
         assertEquals(
-            "?webgl=1&webgl2=1&renderer=webgl2",
+            "?webgl=1&renderer=webgl2",
             WebglConfigBuilder.buildQuery(EngineFamily.MZ, useWebgl2 = true, forceCanvas = false, webglEnabled = true),
         )
     }

@@ -64,9 +64,13 @@ object WebglConfigBuilder {
      *
      * - Returns `""` when [webglEnabled] is false (the game will not see a hint
      *   and may fall back to canvas on its own).
-     * - Otherwise emits `?webgl=1` plus, for WebGL2, an additional `&webgl2=1`
-     *   and a `&renderer=...` discriminator. The discriminator is the single
-     *   authoritative hint for the game's own manager script.
+     * - Otherwise emits `?webgl=1` plus, for WebGL2, a `&renderer=webgl2`
+     *   discriminator. We deliberately do NOT emit `&webgl2=1` — some MZ
+     *   games built against pre-5.2 PIXI read that flag via
+     *   `Utils.isOptionValid('webgl2')` and try a WebGL2 path the bundled
+     *   PIXI does not actually support, producing a black screen. The
+     *   Kotlin-side decision is what we want the JS bootstrap to honour;
+     *   the URL hint is intentionally minimal.
      */
     fun queryParams(
         version: WebglVersion,
@@ -76,7 +80,7 @@ object WebglConfigBuilder {
     } else when (version) {
         WebglVersion.CANVAS -> "?webgl=0&renderer=canvas"
         WebglVersion.WEBGL1 -> "?webgl=1&renderer=webgl"
-        WebglVersion.WEBGL2 -> "?webgl=1&webgl2=1&renderer=webgl2"
+        WebglVersion.WEBGL2 -> "?webgl=1&renderer=webgl2"
     }
 
     /**
