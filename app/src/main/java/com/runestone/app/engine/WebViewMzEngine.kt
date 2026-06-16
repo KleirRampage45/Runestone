@@ -40,7 +40,7 @@ class WebViewMzEngine : GameEngine {
     override fun canRun(gameFolder: File): Boolean {
         if (!gameFolder.isDirectory) return false
 
-        // Check for MZ project file
+        // Check for MZ project file at the root.
         val files = gameFolder.listFiles() ?: return false
         val names = files.map { it.name }.toSet()
 
@@ -48,33 +48,45 @@ class WebViewMzEngine : GameEngine {
             return true
         }
 
-        // Check www structure
-        val wwwDir = File(gameFolder, "www")
-        if (!wwwDir.exists() || !wwwDir.isDirectory) return false
-
-        val indexHtml = File(wwwDir, "index.html")
-        if (!indexHtml.exists()) return false
-
-        // MZ-specific: check for rmmz_*.js files
-        val jsDir = File(wwwDir, "js")
-        if (jsDir.exists() && jsDir.isDirectory) {
-            val hasRmmzJs = jsDir.listFiles()?.any { file ->
+        // MZ-specific: rmmz_*.js files at the root (some MZ exports ship
+        // index.html at the root instead of inside www/, e.g. Look Outside).
+        val rootJsDir = File(gameFolder, "js")
+        if (rootJsDir.exists() && rootJsDir.isDirectory) {
+            val hasRootRmmzJs = rootJsDir.listFiles()?.any { file ->
                 file.name.startsWith("rmmz_") && file.name.endsWith(".js")
             } ?: false
-
-            if (hasRmmzJs) return true
+            if (hasRootRmmzJs) return true
         }
 
-        // Check package.json for MZ mention
-        val packageJson = File(wwwDir, "package.json")
-        if (packageJson.exists()) {
-            val content = try {
-                packageJson.readText()
-            } catch (e: Exception) {
-                return false
-            }
+        // Check www structure
+        val wwwDir = File(gameFolder, "www")
+        if (wwwDir.exists() && wwwDir.isDirectory) {
 
-            if (content.contains("MZ", ignoreCase = true)) return true
+            val indexHtml = File(wwwDir, "index.html")
+            if (indexHtml.exists()) {
+
+                // MZ-specific: check for rmmz_*.js files inside www/js
+                val jsDir = File(wwwDir, "js")
+                if (jsDir.exists() && jsDir.isDirectory) {
+                    val hasRmmzJs = jsDir.listFiles()?.any { file ->
+                        file.name.startsWith("rmmz_") && file.name.endsWith(".js")
+                    } ?: false
+
+                    if (hasRmmzJs) return true
+                }
+
+                // Check package.json for MZ mention
+                val packageJson = File(wwwDir, "package.json")
+                if (packageJson.exists()) {
+                    val content = try {
+                        packageJson.readText()
+                    } catch (e: Exception) {
+                        return false
+                    }
+
+                    if (content.contains("MZ", ignoreCase = true)) return true
+                }
+            }
         }
 
         return false
@@ -96,18 +108,23 @@ class WebViewMzEngine : GameEngine {
     override fun launch(context: Context, gameFolder: File, config: GameConfig) {
         Log.i(TAG, "Launching ${gameFolder.name} via WebView (MZ)")
 
-        val wwwDir = File(gameFolder, "www")
-        val indexHtml = File(wwwDir, "index.html")
-
-        if (!indexHtml.exists()) {
-            throw RuntimeException("index.html not found in $wwwDir")
+        // MZ exports ship in two layouts:
+        //   1. Standard: www/index.html + www/js/rmmz_*.js
+        //   2. Flat:     index.html + js/rmmz_*.js (some games, e.g. Look Outside)
+        // Pick whichever exists.
+        val (entryPoint, assetRoot) = when {
+            File(gameFolder, "www/index.html").exists() -> "www/index.html" to File(gameFolder, "www")
+            File(gameFolder, "index.html").exists() -> "index.html" to gameFolder
+            else -> throw RuntimeException("MZ game: no index.html found in $gameFolder or ${gameFolder}/www")
         }
+
+        Log.i(TAG, "MZ entry point: $entryPoint (assetRoot=${assetRoot.absolutePath})")
 
         // Launch GameActivity which will create a WebViewEngine instance
         val intent = Intent(context, Class.forName("com.runestone.app.GameActivity")).apply {
             putExtra("game_path", gameFolder.absolutePath)
             putExtra("engine_type", id)
-            putExtra("entry_point", "www/index.html")
+            putExtra("entry_point", entryPoint)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
 
@@ -115,9 +132,12 @@ class WebViewMzEngine : GameEngine {
     }
 
     override fun getSaves(gameFolder: File): List<SaveFile> {
-        // MZ saves are in www/save/ as .rmmzsave files (JSON)
-        val saveDir = File(gameFolder, "www/save")
-        if (!saveDir.exists() || !saveDir.isDirectory) return emptyList()
+        // MZ saves are in <assetRoot>/save/ as .rmmzsave files (JSON).
+        // Check both layouts.
+        val saveDir = sequenceOf(
+            File(gameFolder, "www/save"),
+            File(gameFolder, "save"),
+        ).firstOrNull { it.exists() && it.isDirectory } ?: return emptyList()
 
         val saves = mutableListOf<SaveFile>()
 
