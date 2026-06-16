@@ -301,6 +301,9 @@ data class PerformanceSection(
     val reduceShadows: Boolean = false,
     val reduceParticles: Boolean = false,
     val backgroundLoading: Boolean = true,
+    // WebGL rendering overrides (MV/MZ only). null = inherit from global.
+    val useWebgl2: Boolean? = null,
+    val forceCanvas: Boolean? = null,
 ) {
     companion object {
         fun fromJson(j: JSONObject?): PerformanceSection {
@@ -315,6 +318,8 @@ data class PerformanceSection(
                 reduceShadows = j.optBoolean("reduceShadows", false),
                 reduceParticles = j.optBoolean("reduceParticles", false),
                 backgroundLoading = j.optBoolean("backgroundLoading", true),
+                useWebgl2 = if (j.has("useWebgl2")) j.optBoolean("useWebgl2") else null,
+                forceCanvas = if (j.has("forceCanvas")) j.optBoolean("forceCanvas") else null,
             )
         }
     }
@@ -328,6 +333,8 @@ data class PerformanceSection(
         put("reduceShadows", reduceShadows)
         put("reduceParticles", reduceParticles)
         put("backgroundLoading", backgroundLoading)
+        if (useWebgl2 != null) put("useWebgl2", useWebgl2)
+        if (forceCanvas != null) put("forceCanvas", forceCanvas)
     }
 }
 

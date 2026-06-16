@@ -44,6 +44,7 @@ import com.runestone.app.data.RunnerSettings
 import com.runestone.app.engine.EngineDetector
 import com.runestone.app.engine.UnavailableEngine
 import com.runestone.app.engine.WebViewEngine
+import com.runestone.app.engine.WebglConfigBuilder
 import com.runestone.app.input.ControlButtonProfile
 import com.runestone.app.input.ControlProfile
 import com.runestone.app.input.ControlProfileScope
@@ -97,6 +98,9 @@ class GameActivity : Activity() {
         private const val EXTRA_DISPLAY_CUTOUT_MODE = "display_cutout_mode"
         private const val EXTRA_USE_HTTP_SERVER = "use_http_server"
         private const val EXTRA_WEBGL = "webgl"
+        private const val EXTRA_USE_WEBGL2 = "use_webgl2"
+        private const val EXTRA_FORCE_CANVAS = "force_canvas"
+        private const val EXTRA_ENGINE_FAMILY = "engine_family"
         private const val EXTRA_DESKTOP_MODE = "desktop_mode"
         private const val EXTRA_ALLOW_EXTERNAL = "allow_external"
         private const val EXTRA_DIALOG_LOGS = "dialog_logs"
@@ -108,6 +112,28 @@ class GameActivity : Activity() {
         private const val EXTRA_CONTROLLER_KEYBOARD_SHORTCUT = "controller_keyboard_shortcut"
         private const val EXTRA_CONTROLLER_RUNTIME_MENU_SHORTCUT = "controller_runtime_menu_shortcut"
         private const val EXTRA_CONTROLLER_RESUME_SHORTCUT = "controller_resume_shortcut"
+
+        /**
+         * Maps the broad [EngineType] used by `GameActivity` to the narrower
+         * [WebglConfigBuilder.EngineFamily] needed by the renderer-pick
+         * decision. Anything that is not specifically MV or MZ is treated as
+         * generic HTML (Tyrano, Construct, Twine, Ruffle, VN Maker, etc.).
+         */
+        private fun engineTypeToFamily(type: EngineType): WebglConfigBuilder.EngineFamily = when (type) {
+            EngineType.MV -> WebglConfigBuilder.EngineFamily.MV
+            EngineType.MZ -> WebglConfigBuilder.EngineFamily.MZ
+            else -> WebglConfigBuilder.EngineFamily.HTML
+        }
+
+        /**
+         * Translates a string engine-type name (the form passed to [start])
+         * to an [EngineType], falling back to [EngineType.UNKNOWN] for any
+         * unrecognised value. Used solely to compute the renderer-hint
+         * engine family on the launching side.
+         */
+        private fun parseEngineTypeOrUnknown(name: String?): EngineType =
+            if (name == null) EngineType.UNKNOWN
+            else runCatching { EngineType.valueOf(name) }.getOrDefault(EngineType.UNKNOWN)
 
         fun start(activity: Activity, gamePath: String, engineType: String? = null, settings: RunnerSettings = RunnerSettings(), storageName: String? = null) {
             val intent = Intent(activity, GameActivity::class.java).apply {
@@ -130,6 +156,9 @@ class GameActivity : Activity() {
                 putExtra(EXTRA_DISPLAY_CUTOUT_MODE, settings.displayCutoutMode.name)
                 putExtra(EXTRA_USE_HTTP_SERVER, settings.useHttpServer)
                 putExtra(EXTRA_WEBGL, settings.webgl)
+                putExtra(EXTRA_USE_WEBGL2, settings.useWebgl2)
+                putExtra(EXTRA_FORCE_CANVAS, settings.forceCanvas)
+                putExtra(EXTRA_ENGINE_FAMILY, engineTypeToFamily(parseEngineTypeOrUnknown(engineType)).name)
                 putExtra(EXTRA_DESKTOP_MODE, settings.desktopMode)
                 putExtra(EXTRA_ALLOW_EXTERNAL, settings.allowExternalModules)
                 putExtra(EXTRA_DIALOG_LOGS, settings.dialogLogs)
@@ -194,6 +223,8 @@ class GameActivity : Activity() {
             }.getOrDefault(defaults.displayCutoutMode),
             useHttpServer = intent.getBooleanExtra(EXTRA_USE_HTTP_SERVER, defaults.useHttpServer),
             webgl = intent.getBooleanExtra(EXTRA_WEBGL, defaults.webgl),
+            useWebgl2 = intent.getBooleanExtra(EXTRA_USE_WEBGL2, defaults.useWebgl2),
+            forceCanvas = intent.getBooleanExtra(EXTRA_FORCE_CANVAS, defaults.forceCanvas),
             desktopMode = intent.getBooleanExtra(EXTRA_DESKTOP_MODE, defaults.desktopMode),
             allowExternalModules = intent.getBooleanExtra(EXTRA_ALLOW_EXTERNAL, defaults.allowExternalModules),
             dialogLogs = intent.getBooleanExtra(EXTRA_DIALOG_LOGS, defaults.dialogLogs),
@@ -286,6 +317,9 @@ class GameActivity : Activity() {
             integerScaling = settings.integerScaling,
             textScale = settings.textScale,
             webgl = settings.webgl,
+            useWebgl2 = settings.useWebgl2,
+            forceCanvas = settings.forceCanvas,
+            engineFamily = engineTypeToFamily(engineType),
             desktopMode = settings.desktopMode,
             allowExternalModules = settings.allowExternalModules,
             dialogLogs = settings.dialogLogs,
@@ -1251,23 +1285,24 @@ class GameActivity : Activity() {
     // ── EasyRPG (GPLv3 — bundled native, no download needed) ─────
 
     private fun launchEasyRpgGame(gameDir: File) {
-        Log.i(TAG, "EasyRPG bundled: launching ${gameDir.name}")
+        val projectDir = findEasyRpgProjectRoot(gameDir) ?: gameDir
+        Log.i(TAG, "EasyRPG bundled: launching ${gameDir.name} project=${projectDir.absolutePath}")
         val configDir = File(filesDir, "easyrpg").apply { mkdirs() }
         val saveDir = File(configDir, "saves").apply { mkdirs() }
         val logFile = File(configDir, "easyrpg-player.log")
         val commandLine = arrayOf(
-            "--project-path", gameDir.absolutePath,
+            "--project-path", projectDir.absolutePath,
             "--config-path", configDir.absolutePath,
             "--save-path", saveDir.absolutePath,
             "--log-file", logFile.absolutePath,
         )
         val intent = Intent().apply {
             setClassName(packageName, "org.easyrpg.player.player.EasyRpgPlayerActivity")
-            putExtra("project_path", gameDir.absolutePath)
+            putExtra("project_path", projectDir.absolutePath)
             putExtra("command_line", commandLine)
             putExtra("save_path", saveDir.absolutePath)
             putExtra("log_file", logFile.absolutePath)
-            putExtra("com.runestone.app.extra.GAME_PATH", gameDir.absolutePath)
+            putExtra("com.runestone.app.extra.GAME_PATH", projectDir.absolutePath)
             putExtra("com.runestone.app.extra.LAYOUT_MODE", settings.layoutMode.name)
             putExtra("com.runestone.app.extra.TOUCH_OPACITY", settings.touchOpacity)
             putExtra("com.runestone.app.extra.TOUCH_SCALE", settings.touchScale)
@@ -1280,6 +1315,23 @@ class GameActivity : Activity() {
         }
         startActivity(intent)
         finish()
+    }
+
+    private fun findEasyRpgProjectRoot(dir: File, maxDepth: Int = 3): File? {
+        if (hasEasyRpgSignature(dir)) return dir
+        if (maxDepth <= 0 || !dir.isDirectory) return null
+
+        return dir.listFiles()
+            ?.filter { it.isDirectory }
+            ?.sortedWith(compareBy<File> { if (it.name.equals("Data", ignoreCase = true)) 0 else 1 }.thenBy { it.name.length })
+            ?.firstNotNullOfOrNull { child -> findEasyRpgProjectRoot(child, maxDepth - 1) }
+    }
+
+    private fun hasEasyRpgSignature(dir: File): Boolean {
+        if (!dir.isDirectory) return false
+        val names = dir.listFiles()?.map { it.name.lowercase() }?.toSet() ?: return false
+        return names.contains("rpg_rt.exe") &&
+            (names.contains("rpg_rt.ldb") || names.contains("rpg_rt.lmt"))
     }
 
     // ── Godot (MIT — native wrapper not integrated) ──────────────

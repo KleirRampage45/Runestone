@@ -286,8 +286,12 @@ class SettingsScreen(private val context: Context) {
         //  5. RPG MAKER — MV/MZ (WebView)
         // ────────────────────────────────────────────────
         accordion(content, "RPG MAKER (MV/MZ)", "WebView settings for MV/MZ games.") { panel ->
-            panel.addView(switchPanel("Use WebGL2", "Enable WebGL2 rendering context.", current.useWebgl2) {
+            panel.addView(switchPanel("Use WebGL2", "Enable WebGL2 rendering context. (MZ only — ignored on MV.)", current.useWebgl2) {
                 upd { copy(useWebgl2 = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Force Canvas Renderer", "Emergency fallback: skip WebGL entirely and use 2D canvas. Use if a specific game breaks under WebGL.", current.forceCanvas) {
+                upd { copy(forceCanvas = it) }
             })
             panel.addView(spacerAfter(6))
             panel.addView(switchPanel("Decrypter & Readfiles", "Support encrypted RPG Maker assets.", current.decrypterAndReadfiles) {

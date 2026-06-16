@@ -1,0 +1,146 @@
+// Runestone: WebGL/WebGL2 renderer bootstrap for RPG Maker MV/MZ (and HTML).
+//
+// Injected by `WebViewEngine` in `onPageFinished` after the page has loaded.
+// Runs *after* PIXI is on the page (since it loads via the game's own
+// index.html → rpg_managers.js / rmmz_managers.js).
+//
+// Responsibilities:
+//   1. Probe the WebView for WebGL2 / WebGL1 / no-WebGL support.
+//   2. If the target is "webgl2" and WebGL2 is available, force
+//      `PIXI.WebGLRenderer` to ask for a WebGL2 context (PIXI v5.2+).
+//   3. Apply mobile-friendly PIXI renderer defaults (antialias off, round
+//      pixels, high-performance, resolution clamp).
+//   4. Post a single `RunestoneBridge.bootDetailed(...)` message so the
+//      Kotlin side can log the actual renderer + version that won out.
+//
+// The Kotlin side injects this template with `__TARGET_RENDERER__` already
+// substituted to one of "webgl2" | "webgl" | "canvas".
+//
+// All steps are wrapped in try/catch and degrade silently on failure.
+
+(function() {
+    'use strict';
+
+    var target = '__TARGET_RENDERER__';
+
+    function probe() {
+        var c = document.createElement('canvas');
+        var hasWebgl2 = false;
+        var hasWebgl1 = false;
+        var unmasked = null;
+        try {
+            var gl2 = c.getContext('webgl2');
+            if (gl2) {
+                hasWebgl2 = true;
+                try {
+                    var dbg = gl2.getExtension('WEBGL_debug_renderer_info');
+                    if (dbg) unmasked = gl2.getParameter(dbg.UNMASKED_RENDERER_WEBGL);
+                } catch (e) { /* ignore */ }
+            }
+            if (!hasWebgl2) {
+                var gl1 = c.getContext('webgl') || c.getContext('experimental-webgl');
+                if (gl1) {
+                    hasWebgl1 = true;
+                    if (!unmasked) {
+                        try {
+                            var dbg1 = gl1.getExtension('WEBGL_debug_renderer_info');
+                            if (dbg1) unmasked = gl1.getParameter(dbg1.UNMASKED_RENDERER_WEBGL);
+                        } catch (e) { /* ignore */ }
+                    }
+                }
+            }
+        } catch (e) {
+            // No WebGL at all.
+        }
+        return { hasWebgl2: hasWebgl2, hasWebgl1: hasWebgl1, unmasked: unmasked };
+    }
+
+    function effectiveVersion(target, caps) {
+        if (target === 'canvas') return 'canvas';
+        if (target === 'webgl2') {
+            return caps.hasWebgl2 ? 'webgl2' : (caps.hasWebgl1 ? 'webgl' : 'canvas');
+        }
+        // target === 'webgl'
+        return caps.hasWebgl1 ? 'webgl' : (caps.hasWebgl2 ? 'webgl2' : 'canvas');
+    }
+
+    function pickPixiCtor(pixiVersion, eff) {
+        if (typeof PIXI === 'undefined') return null;
+        if (eff === 'webgl2' && PIXI.WebGL2Renderer) return PIXI.WebGL2Renderer;
+        if (eff === 'webgl' && PIXI.WebGLRenderer) return PIXI.WebGLRenderer;
+        if (PIXI.WebGLRenderer) return PIXI.WebGLRenderer;
+        if (PIXI.CanvasRenderer) return PIXI.CanvasRenderer;
+        return null;
+    }
+
+    function effectiveRendererName(pixiCtor) {
+        if (!pixiCtor) return 'none';
+        try {
+            if (pixiCtor === PIXI.WebGL2Renderer) return 'webgl2';
+            if (pixiCtor === PIXI.WebGLRenderer) return 'webgl';
+            if (pixiCtor === PIXI.CanvasRenderer) return 'canvas';
+        } catch (e) { /* ignore */ }
+        return 'unknown';
+    }
+
+    function patchPIXI(eff, opts) {
+        // Force autoDetectRenderer to choose the constructor we want.
+        if (typeof PIXI === 'undefined') return;
+        try {
+            if (PIXI.utils) {
+                if (eff === 'webgl2' && PIXI.WebGL2Renderer) {
+                    // v5.2+: redirect autoDetect to WebGL2Renderer.
+                    PIXI.utils._canUseWebGL2 = function() { return true; };
+                }
+            }
+            if (PIXI.settings) {
+                if ('PRECISION_FRAGMENT' in PIXI.settings) {
+                    PIXI.settings.PRECISION_FRAGMENT = 'mediump';
+                }
+                if ('SCALE_MODE' in PIXI.settings) {
+                    PIXI.settings.SCALE_MODE = 0; // NEAREST
+                }
+            }
+            if (PIXI.BaseTexture && PIXI.BaseTexture.defaultOptions) {
+                PIXI.BaseTexture.defaultOptions.scaleMode = 0;
+                if (opts && typeof opts.resolution === 'number') {
+                    PIXI.BaseTexture.defaultOptions.resolution = opts.resolution;
+                }
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    function postBoot(eff, caps, pixiCtor) {
+        try {
+            if (typeof window.RunestoneBridge === 'undefined') return;
+            // Legacy two-arg form so old logs stay readable.
+            if (typeof window.RunestoneBridge.boot === 'function') {
+                window.RunestoneBridge.boot(eff !== 'canvas', true);
+            }
+            // Richer form for the new path.
+            if (typeof window.RunestoneBridge.bootDetailed === 'function') {
+                window.RunestoneBridge.bootDetailed(
+                    eff !== 'canvas',
+                    true,
+                    effectiveRendererName(pixiCtor),
+                    eff === 'webgl2' ? 2 : (eff === 'webgl' ? 1 : 0),
+                );
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    try {
+        var caps = probe();
+        var eff = effectiveVersion(target, caps);
+        var opts = window.__runestonePixiOpts || null;
+        patchPIXI(eff, opts);
+        var ctor = pickPixiCtor('auto', eff);
+        // Defer the post a tick so the game's own manager script can finish
+        // instantiating PIXI first (it overrides the prototype we just set).
+        setTimeout(function() {
+            postBoot(eff, caps, ctor);
+        }, 0);
+    } catch (e) {
+        // Never break the page over a tuning bootstrap.
+    }
+})();

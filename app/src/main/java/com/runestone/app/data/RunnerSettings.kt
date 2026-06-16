@@ -82,7 +82,8 @@ data class RunnerSettings(
     val cropLeftY: Boolean = false,
 
     // RPG / MV-MZ (WebView)
-    val useWebgl2: Boolean = false,
+    val useWebgl2: Boolean = true,
+    val forceCanvas: Boolean = false,
     val decrypterAndReadfiles: Boolean = true,
     val usePreloadJs: Boolean = false,
 

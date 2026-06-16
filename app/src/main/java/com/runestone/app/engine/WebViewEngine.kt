@@ -69,6 +69,9 @@ class WebViewEngine(context: Context) : WebView(context) {
         val textScale: Float = 1.0f,
         val useHttpServer: Boolean = false,
         val webgl: Boolean = true,
+        val useWebgl2: Boolean = true,
+        val forceCanvas: Boolean = false,
+        val engineFamily: WebglConfigBuilder.EngineFamily = WebglConfigBuilder.EngineFamily.HTML,
         val desktopMode: Boolean = false,
         val allowExternalModules: Boolean = false,
         val allowedExternalHosts: List<String> = emptyList(),
@@ -239,8 +242,26 @@ class WebViewEngine(context: Context) : WebView(context) {
                 if (scalingJs.isNotEmpty()) {
                     view.evaluateJavascript(scalingJs, null)
                 }
+                // Renderer-pick + PIXI options: this is the one injection that
+                // runs only when webgl is enabled. It probes the actual context,
+                // forces WebGL2 on MZ when available, tunes mobile-friendly PIXI
+                // options, and reports back via RunestoneBridge.bootDetailed(...).
+                if (config.webgl) {
+                    val targetRenderer = WebglConfigBuilder
+                        .pick(config.engineFamily, config.useWebgl2, config.forceCanvas)
+                        .name.lowercase()
+                    val bootstrapJs = readAssetFile("webgl-bootstrap.js")
+                    if (bootstrapJs != null) {
+                        val tpl = bootstrapJs.replace("__TARGET_RENDERER__", targetRenderer)
+                        view.evaluateJavascript(tpl, null)
+                    }
+                }
                 // Fix PIXI tile bleeding — force NEAREST scale mode
                 view.evaluateJavascript(PIXI_TILE_FIX_JS, null)
+                // PIXI renderer-options patch: mobile-friendly defaults that
+                // make the canvas lighter on the GPU and crisper on hi-DPI
+                // screens. Safe no-op when PIXI is absent.
+                view.evaluateJavascript(PIXI_RENDER_OPTS_JS, null)
             }
         }
 
@@ -255,8 +276,15 @@ class WebViewEngine(context: Context) : WebView(context) {
             }
         }
 
-        // Load the game — pass webgl query param only if WebGL is enabled
-        val query = if (config.webgl) "?webgl" else ""
+        // Load the game — compose the renderer-hint query string via the
+        // shared, unit-tested builder. The string may be empty (when webgl
+        // is disabled) or carry `?webgl=1&renderer=...` discriminator flags.
+        val query = WebglConfigBuilder.buildQuery(
+            engineFamily = config.engineFamily,
+            useWebgl2 = config.useWebgl2,
+            forceCanvas = config.forceCanvas,
+            webglEnabled = config.webgl,
+        )
         loadUrl("file://${indexHtml.absolutePath}$query")
     }
 
@@ -375,12 +403,29 @@ class WebViewEngine(context: Context) : WebView(context) {
     }
 
     /**
-     * Bootstrapper interface - called from injected JS to signal readiness
+     * Bootstrapper interface - called from injected JS to signal readiness.
+     *
+     * Accepts both the legacy two-arg form (webgl, webaudio) and the richer
+     * form used by `webgl-bootstrap.js` (webgl, webaudio, renderer, webglVersion).
+     * Older games that only post the two-arg shape keep working without changes.
      */
     inner class Bootstrapper {
         @JavascriptInterface
         fun boot(webgl: Boolean, webaudio: Boolean) {
             android.util.Log.d("Runestone", "Game booted: WebGL=$webgl, WebAudio=$webaudio")
+        }
+
+        @JavascriptInterface
+        fun bootDetailed(
+            webgl: Boolean,
+            webaudio: Boolean,
+            renderer: String?,
+            webglVersion: Int,
+        ) {
+            android.util.Log.d(
+                "Runestone",
+                "Game booted: WebGL=$webgl WebAudio=$webaudio renderer=$renderer webglVersion=$webglVersion",
+            )
         }
     }
 
@@ -448,19 +493,6 @@ class WebViewEngine(context: Context) : WebView(context) {
                     origClear.call(localStorage);
                 };
             }
-        })();
-        """
-
-        // JS injected into the game to listen for a boot message
-        private const val BOOT_JS = """
-        (function() {
-            window.addEventListener('message', function(e) {
-                if (e.data && e.data.boot === 'ok') {
-                    if (window.RunestoneBridge) {
-                        RunestoneBridge.boot(!!e.data.webgl, !!e.data.webaudio);
-                    }
-                }
-            });
         })();
         """
 
@@ -555,6 +587,49 @@ class WebViewEngine(context: Context) : WebView(context) {
             }
             if (typeof PIXI !== 'undefined' && PIXI.BaseTexture && PIXI.BaseTexture.defaultOptions) {
                 PIXI.BaseTexture.defaultOptions.scaleMode = 0;
+            }
+        })();
+        """
+
+        // JS to apply mobile-friendly PIXI renderer options. Applied AFTER the
+        // game has constructed PIXI, so we walk whatever defaults object is
+        // available and tune the values. Each step is gated and safe.
+        //
+        // - antialias: false            → cheaper shader, no GPU MSAA cost
+        // - roundPixels: true           → integer snapping, less sub-pixel work
+        // - powerPreference: 'high-performance'
+        //                               → ask for the discrete GPU on hybrid
+        //                                 systems; ignored on phones
+        // - preserveDrawingBuffer: false → driver can swap-chain freely
+        // - resolution: clamp(dpr, 1, 2) → cap retina cost on 3x phones
+        // - backgroundColor: 0x000000   → avoid surprise transparent clears
+        private const val PIXI_RENDER_OPTS_JS = """
+        (function() {
+            try {
+                if (typeof PIXI === 'undefined') return;
+                var dpr = window.devicePixelRatio || 1;
+                var clampedDpr = Math.max(1, Math.min(2, dpr));
+                var opts = {
+                    antialias: false,
+                    roundPixels: true,
+                    powerPreference: 'high-performance',
+                    preserveDrawingBuffer: false,
+                    resolution: clampedDpr,
+                    backgroundColor: 0x000000,
+                };
+                if (PIXI.settings) {
+                    if ('ANTIALIAS' in PIXI.settings) PIXI.settings.ANTIALIAS = false;
+                    if ('ROUND_PIXELS' in PIXI.settings) PIXI.settings.ROUND_PIXELS = true;
+                    if ('PRECISION_FRAGMENT' in PIXI.settings) PIXI.settings.PRECISION_FRAGMENT = 'mediump';
+                }
+                if (PIXI.BaseTexture && PIXI.BaseTexture.defaultOptions) {
+                    PIXI.BaseTexture.defaultOptions.scaleMode = 0;
+                }
+                // Stash the opts so the webgl-bootstrap can read them when it
+                // builds the WebGLRenderer / WebGL2Renderer.
+                window.__runestonePixiOpts = opts;
+            } catch (e) {
+                // Best-effort: never break the game over a tuning patch.
             }
         })();
         """

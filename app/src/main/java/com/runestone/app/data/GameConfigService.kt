@@ -77,6 +77,8 @@ class GameConfigService(
         json.optJSONObject("performance")?.let { perf ->
             result = result.copy(
                 frameSkip = if (perf.has("frameSkip")) perf.optInt("frameSkip", if (result.frameSkip) 1 else 0) > 0 else result.frameSkip,
+                useWebgl2 = if (perf.has("useWebgl2")) perf.optBoolean("useWebgl2", result.useWebgl2) else result.useWebgl2,
+                forceCanvas = if (perf.has("forceCanvas")) perf.optBoolean("forceCanvas", result.forceCanvas) else result.forceCanvas,
             )
         }
         json.optJSONObject("fonts")?.let { fonts ->
