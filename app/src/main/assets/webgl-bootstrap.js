@@ -96,13 +96,16 @@
         return 'unknown';
     }
 
-    // Map the chosen constructor + probed capability to the actual GL version
-    // number we want to report in logcat. This is *not* just `eff` — we want
-    // to record what the running context actually is, not what we asked for.
-    function actualVersion(eff, ctor, caps) {
-        if (eff === 'canvas') return 0;
+    // Map the chosen constructor to the actual GL context version it
+    // creates. A PIXI.WebGLRenderer always creates a WebGL1 context
+    // (PIXI v5 will not auto-upgrade to WebGL2 even if the WebView
+    // supports it, because autoDetectRenderer has to be called with
+    // specific options to ask for v2). A PIXI.WebGL2Renderer creates a
+    // WebGL2 context. Canvas is 0.
+    function actualVersion(eff, ctor) {
+        if (eff === 'canvas' || ctor === PIXI.CanvasRenderer) return 0;
         if (ctor === PIXI.WebGL2Renderer) return 2;
-        if (ctor === PIXI.WebGLRenderer) return caps.hasWebgl2 ? 2 : 1;
+        if (ctor === PIXI.WebGLRenderer) return 1;
         return 0;
     }
 
@@ -117,9 +120,6 @@
                 }
             }
             if (PIXI.settings) {
-                if ('PRECISION_FRAGMENT' in PIXI.settings) {
-                    PIXI.settings.PRECISION_FRAGMENT = 'mediump';
-                }
                 if ('SCALE_MODE' in PIXI.settings) {
                     PIXI.settings.SCALE_MODE = 0; // NEAREST
                 }
@@ -156,7 +156,7 @@
                     eff !== 'canvas',
                     true,
                     effectiveRendererName(pixiCtor),
-                    actualVersion(eff, pixiCtor, caps),
+                    actualVersion(eff, pixiCtor),
                 );
             }
         } catch (e) { /* ignore */ }

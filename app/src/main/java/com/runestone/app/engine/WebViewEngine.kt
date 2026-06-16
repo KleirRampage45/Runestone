@@ -263,6 +263,18 @@ class WebViewEngine(context: Context) : WebView(context) {
                 view.evaluateJavascript(PIXI_RENDER_OPTS_JS, null)
                 // Fix PIXI tile bleeding — force NEAREST scale mode
                 view.evaluateJavascript(PIXI_TILE_FIX_JS, null)
+                // Force window.devicePixelRatio to a safe value (1.0) at the
+                // WebView level. On 3x-DPR phones the WebView would otherwise
+                // allocate a 3x backbuffer for the page, which the WebView
+                // tile memory pool cannot always satisfy — that produces
+                // "tile memory limits exceeded" errors and a black canvas
+                // while the FPS overlay (which lives outside the page) keeps
+                // ticking. This is the single most impactful performance fix
+                // for MV/MZ games on hi-DPI phones.
+                view.evaluateJavascript(
+                    "(function(){try{window.devicePixelRatio=1;Object.defineProperty(window,'devicePixelRatio',{get:function(){return 1;},configurable:true});}catch(e){}})();",
+                    null,
+                )
             }
         }
 
