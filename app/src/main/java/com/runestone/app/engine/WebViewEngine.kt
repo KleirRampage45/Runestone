@@ -54,6 +54,17 @@ class WebViewEngine(context: Context) : WebView(context) {
     private var gameDir: File? = null
     private var config: WebViewGameConfig = WebViewGameConfig()
     private val externalHostCache = mutableMapOf<String, Boolean>()
+    private var localServer: LocalServer? = null
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        stopLocalServer()
+    }
+
+    private fun stopLocalServer() {
+        localServer?.stop()
+        localServer = null
+    }
 
     data class WebViewGameConfig(
         val fixLocalStorage: Boolean = true,
@@ -169,6 +180,19 @@ class WebViewEngine(context: Context) : WebView(context) {
 
         addJavascriptInterface(Bootstrapper(), "RunestoneBridge")
 
+        // Local HTTP server. When enabled, the game is served from
+        // http://127.0.0.1:PORT/ with COOP/COEP headers, which unlocks
+        // SharedArrayBuffer / shared-memory WebAssembly on the system
+        // WebView. This is required for Effekseer-based MZ games
+        // (look-outside, haven) to boot, and is harmless for games
+        // that don't need it.
+        if (config.useHttpServer) {
+            stopLocalServer()
+            localServer = LocalServer(wwwDir).also { it.start() }
+        } else {
+            stopLocalServer()
+        }
+
         webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
                 view: WebView,
@@ -225,23 +249,37 @@ class WebViewEngine(context: Context) : WebView(context) {
                     url.contains(".wasm?", ignoreCase = true) ||
                     url.contains(".wasm#", ignoreCase = true)
                 ) {
-                    val wasmFile = resolveGameFile(url)
-                    if (wasmFile != null && wasmFile.exists()) {
-                        val headers = mapOf(
-                            "Content-Type" to "application/wasm",
-                            "Content-Length" to wasmFile.length().toString(),
-                            "Cross-Origin-Resource-Policy" to "cross-origin",
-                            "Access-Control-Allow-Origin" to "*",
-                            "Cache-Control" to "no-store",
-                        )
-                        return WebResourceResponse(
-                            "application/wasm",
-                            "utf-8",
-                            200,
-                            "OK",
-                            headers,
-                            FileInputStream(wasmFile),
-                        )
+                    // When the local HTTP server is serving the game,
+                    // its response already includes COOP/COEP/CORP and
+                    // is what enables cross-origin-isolation. Don't
+                    // override it with our simpler response or the
+                    // page loses its isolation.
+                    val fromLocalServer = url.startsWith("http://127.0.0.1:") ||
+                        url.startsWith("http://localhost:")
+                    if (!fromLocalServer) {
+                        val wasmFile = resolveGameFile(url)
+                        if (wasmFile != null && wasmFile.exists()) {
+                            val headers = mapOf(
+                                "Content-Type" to "application/wasm",
+                                "Content-Length" to wasmFile.length().toString(),
+                                "Cross-Origin-Resource-Policy" to "cross-origin",
+                                "Access-Control-Allow-Origin" to "*",
+                                "Cache-Control" to "no-store",
+                            )
+                            android.util.Log.d(
+                                "Runestone",
+                                "wasm intercept: url=$url size=${wasmFile.length()} " +
+                                    "headers=$headers",
+                            )
+                            return WebResourceResponse(
+                                "application/wasm",
+                                "utf-8",
+                                200,
+                                "OK",
+                                headers,
+                                FileInputStream(wasmFile),
+                            )
+                        }
                     }
                 }
 
@@ -344,7 +382,12 @@ class WebViewEngine(context: Context) : WebView(context) {
             forceCanvas = config.forceCanvas,
             webglEnabled = config.webgl,
         )
-        loadUrl("file://${indexHtml.absolutePath}$query")
+        val url = if (config.useHttpServer && localServer != null) {
+            "http://127.0.0.1:${localServer!!.port}/index.html$query"
+        } else {
+            "file://${indexHtml.absolutePath}$query"
+        }
+        loadUrl(url)
     }
 
     private fun findWwwDir(gameDir: File): File {
@@ -490,14 +533,21 @@ class WebViewEngine(context: Context) : WebView(context) {
 
     /**
      * Resolve a URL path to a file in the game directory.
-     * Handles file:// URLs, relative paths, and paths with query strings.
+     * Handles file:// URLs, our own http://127.0.0.1:PORT/ URLs (when
+     * useHttpServer is on), and relative paths with query strings.
      */
     private fun resolveGameFile(url: String): File? {
         val gameDir = gameDir ?: return null
-        // Strip file:// prefix and query params
+        // Strip file:// prefix
         var path = url
         if (path.startsWith("file://")) {
             path = path.removePrefix("file://")
+        } else if (path.startsWith("http://127.0.0.1:") || path.startsWith("http://localhost:")) {
+            // The local server is up; strip the origin so we're left
+            // with the same path we would have used under file://.
+            val schemeEnd = path.indexOf("://") + 3
+            val pathStart = path.indexOf('/', schemeEnd)
+            path = if (pathStart >= 0) path.substring(pathStart) else "/"
         }
         // Strip query string
         val queryIdx = path.indexOf('?')

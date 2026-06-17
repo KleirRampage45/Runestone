@@ -319,6 +319,7 @@ class GameActivity : Activity() {
             webgl = settings.webgl,
             useWebgl2 = settings.useWebgl2,
             forceCanvas = settings.forceCanvas,
+            useHttpServer = settings.useHttpServer,
             engineFamily = engineTypeToFamily(engineType),
             desktopMode = settings.desktopMode,
             allowExternalModules = settings.allowExternalModules,

@@ -352,7 +352,7 @@ class SettingsScreen(private val context: Context) {
         //  7. HTML GAMES (WebView)
         // ────────────────────────────────────────────────
         accordion(content, "HTML GAMES", "WebView settings for HTML5/Tyrano/Construct games.") { panel ->
-            panel.addView(stubSwitchPanel("Use HTTP Server", "Serve games via local HTTP instead of file://.", current.useHttpServer) {
+            panel.addView(switchPanel("Use HTTP Server", "Serve games via local HTTP instead of file://. Required for Effekseer-based MZ games (Look Outside, Haven) to boot, and for any WASM that uses shared memory.", current.useHttpServer) {
                 upd { copy(useHttpServer = it) }
             })
             panel.addView(spacerAfter(6))
