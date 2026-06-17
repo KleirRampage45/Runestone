@@ -209,20 +209,37 @@ class WebViewEngine(context: Context) : WebView(context) {
                 }
 
                 // Intercept .wasm asset requests — serve from the game
-                // directory with the correct MIME type. Some WebView builds
-                // (and some games' own fetch() code paths) fail to load
-                // .wasm via fetch() on file:// URLs, which silently hangs
-                // the game's main loop. Serving via shouldInterceptRequest
-                // bypasses the broken fetch path entirely.
+                // directory with the correct MIME type, an explicit 200
+                // status, and the headers required for the page to be
+                // cross-origin-isolated (Effekseer's WASM runtime needs
+                // SharedArrayBuffer, which requires both COOP/COEP on
+                // the main document and CORP on every subresource).
+                //
+                // The 3-arg WebResourceResponse constructor is unreliable
+                // for .wasm on some Android WebView versions: the response
+                // is returned to the XHR but the WASM fails to instantiate
+                // because the response is missing CORS / CORP headers.
+                // The 6-arg constructor with explicit status + headers
+                // is the supported path.
                 if (url.endsWith(".wasm", ignoreCase = true) ||
                     url.contains(".wasm?", ignoreCase = true) ||
                     url.contains(".wasm#", ignoreCase = true)
                 ) {
                     val wasmFile = resolveGameFile(url)
                     if (wasmFile != null && wasmFile.exists()) {
+                        val headers = mapOf(
+                            "Content-Type" to "application/wasm",
+                            "Content-Length" to wasmFile.length().toString(),
+                            "Cross-Origin-Resource-Policy" to "cross-origin",
+                            "Access-Control-Allow-Origin" to "*",
+                            "Cache-Control" to "no-store",
+                        )
                         return WebResourceResponse(
                             "application/wasm",
                             "utf-8",
+                            200,
+                            "OK",
+                            headers,
                             FileInputStream(wasmFile),
                         )
                     }
