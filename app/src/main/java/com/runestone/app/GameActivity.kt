@@ -320,6 +320,7 @@ class GameActivity : Activity() {
             useWebgl2 = settings.useWebgl2,
             forceCanvas = settings.forceCanvas,
             useHttpServer = settings.useHttpServer,
+            useAsmjsEffekseer = settings.useAsmjsEffekseer,
             engineFamily = engineTypeToFamily(engineType),
             desktopMode = settings.desktopMode,
             allowExternalModules = settings.allowExternalModules,

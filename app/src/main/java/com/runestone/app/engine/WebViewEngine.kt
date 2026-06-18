@@ -122,6 +122,11 @@ class WebViewEngine(context: Context) : WebView(context) {
         val allowExternalModules: Boolean = false,
         val allowedExternalHosts: List<String> = emptyList(),
         val dialogLogs: Boolean = false,
+        // When true, the WebView's request for js/libs/effekseer.min.js
+        // is intercepted and served from our bundled
+        // effekseer_asmjs.min.js. Required for any MZ game whose
+        // main.js calls effekseer.initRuntime() on Android WebView.
+        val useAsmjsEffekseer: Boolean = true,
     )
 
     init {
@@ -264,6 +269,42 @@ class WebViewEngine(context: Context) : WebView(context) {
                     if (js != null) {
                         return WebResourceResponse("application/javascript", "utf-8",
                             java.io.ByteArrayInputStream(js.toByteArray()))
+                    }
+                }
+
+                // Intercept effekseer.min.js requests — swap in the
+                // asm.js runtime so initRuntime() takes the immediate
+                // fallback path (no WASM, no SharedArrayBuffer).
+                //
+                // Background: Android system WebView does not enable
+                // cross-origin isolation, so SharedArrayBuffer is
+                // permanently unavailable. The WASM Effekseer runtime
+                // needs shared-memory WebAssembly and silently hangs
+                // forever in initRuntime() on Android WebView. The
+                // asm.js runtime is a 2.5 MB plain-JS port of the same
+                // API; its initRuntime() short-circuits to onload()
+                // when effekseer_native is undefined, which it always
+                // is in the asm.js build.
+                //
+                // Trade-off: particle effects don't render. The MZ
+                // runtime's Graphics.effekseer calls into the loaded
+                // module but gets a no-op. Scenes, maps, battles,
+                // menus, saves — everything else works.
+                if (config.useAsmjsEffekseer && url.endsWith("/effekseer.min.js", ignoreCase = true)) {
+                    val asmjs = readAssetFile("effekseer_asmjs.min.js")
+                    if (asmjs != null) {
+                        android.util.Log.d(
+                            "Runestone",
+                            "effekseer intercept: url=$url -> serving asm.js runtime",
+                        )
+                        return WebResourceResponse(
+                            "application/javascript",
+                            "utf-8",
+                            200,
+                            "OK",
+                            mapOf("Content-Type" to "application/javascript"),
+                            java.io.ByteArrayInputStream(asmjs.toByteArray()),
+                        )
                     }
                 }
 

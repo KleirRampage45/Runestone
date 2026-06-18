@@ -356,6 +356,10 @@ class SettingsScreen(private val context: Context) {
                 upd { copy(useHttpServer = it) }
             })
             panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Asm.js Effekseer", "Replace js/libs/effekseer.min.js with the asm.js runtime (no WASM, no particle effects). Required for any game whose main.js calls effekseer.initRuntime() on Android WebView.", current.useAsmjsEffekseer) {
+                upd { copy(useAsmjsEffekseer = it) }
+            })
+            panel.addView(spacerAfter(6))
             panel.addView(stubSwitchPanel("Preload", "Preload HTML resources for faster startup.", current.preload) {
                 upd { copy(preload = it) }
             })

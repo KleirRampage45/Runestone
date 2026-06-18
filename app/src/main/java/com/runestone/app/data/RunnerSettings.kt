@@ -89,6 +89,7 @@ data class RunnerSettings(
 
     // HTML (WebView)
     val useHttpServer: Boolean = true,
+    val useAsmjsEffekseer: Boolean = true,
     val preload: Boolean = true,
     val webgl: Boolean = true,
     val desktopMode: Boolean = false,

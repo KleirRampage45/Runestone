@@ -80,6 +80,7 @@ class SettingsStore(context: Context) {
             decrypterAndReadfiles = prefs.getBoolean("decrypterAndReadfiles", defaults.decrypterAndReadfiles),
             usePreloadJs = prefs.getBoolean("usePreloadJs", defaults.usePreloadJs),
             useHttpServer = prefs.getBoolean("useHttpServer_v2", defaults.useHttpServer),
+            useAsmjsEffekseer = prefs.getBoolean("useAsmjsEffekseer", defaults.useAsmjsEffekseer),
             preload = prefs.getBoolean("preload", defaults.preload),
             webgl = prefs.getBoolean("webgl", defaults.webgl),
             desktopMode = prefs.getBoolean("desktopMode", defaults.desktopMode),
@@ -168,6 +169,7 @@ class SettingsStore(context: Context) {
             .putBoolean("decrypterAndReadfiles", settings.decrypterAndReadfiles)
             .putBoolean("usePreloadJs", settings.usePreloadJs)
             .putBoolean("useHttpServer_v2", settings.useHttpServer)
+            .putBoolean("useAsmjsEffekseer", settings.useAsmjsEffekseer)
             .putBoolean("preload", settings.preload)
             .putBoolean("webgl", settings.webgl)
             .putBoolean("desktopMode", settings.desktopMode)
