@@ -79,7 +79,7 @@ class SettingsStore(context: Context) {
             forceCanvas = prefs.getBoolean("forceCanvas", defaults.forceCanvas),
             decrypterAndReadfiles = prefs.getBoolean("decrypterAndReadfiles", defaults.decrypterAndReadfiles),
             usePreloadJs = prefs.getBoolean("usePreloadJs", defaults.usePreloadJs),
-            useHttpServer = prefs.getBoolean("useHttpServer", defaults.useHttpServer),
+            useHttpServer = prefs.getBoolean("useHttpServer_v2", defaults.useHttpServer),
             preload = prefs.getBoolean("preload", defaults.preload),
             webgl = prefs.getBoolean("webgl", defaults.webgl),
             desktopMode = prefs.getBoolean("desktopMode", defaults.desktopMode),
@@ -167,7 +167,7 @@ class SettingsStore(context: Context) {
             .putBoolean("forceCanvas", settings.forceCanvas)
             .putBoolean("decrypterAndReadfiles", settings.decrypterAndReadfiles)
             .putBoolean("usePreloadJs", settings.usePreloadJs)
-            .putBoolean("useHttpServer", settings.useHttpServer)
+            .putBoolean("useHttpServer_v2", settings.useHttpServer)
             .putBoolean("preload", settings.preload)
             .putBoolean("webgl", settings.webgl)
             .putBoolean("desktopMode", settings.desktopMode)

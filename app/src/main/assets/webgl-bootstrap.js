@@ -159,6 +159,30 @@
                     actualVersion(eff, pixiCtor),
                 );
             }
+
+            // Diagnostic: report cross-origin isolation state. If the
+            // local HTTP server is up with COOP/COEP, this should be
+            // true. If false, WASM shared-memory modules will fail to
+            // instantiate.
+            try {
+                console.log('[Runestone] iso=' + window.crossOriginIsolated
+                    + ' sab=' + (typeof SharedArrayBuffer)
+                    + ' wasm=' + (typeof WebAssembly)
+                    + ' ist=' + (typeof WebAssembly?.instantiateStreaming));
+            } catch (e) { /* ignore */ }
+
+            // Diagnostic: fetch the page itself and dump the response
+            // headers it sees. Lets us see if COOP/COEP are reaching
+            // the page or being stripped.
+            try {
+                fetch(location.href, { method: 'HEAD' }).then(function(r) {
+                    var h = {};
+                    r.headers.forEach(function(v, k) { h[k] = v; });
+                    console.log('[Runestone] HEAD: ' + JSON.stringify(h));
+                }).catch(function(e) {
+                    console.log('[Runestone] HEAD failed: ' + e);
+                });
+            } catch (e) { /* ignore */ }
         } catch (e) { /* ignore */ }
     }
 

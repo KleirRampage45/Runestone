@@ -58,7 +58,7 @@ class LocalServerTest {
         val conn = open("/index.html")
         assertEquals(200, conn.responseCode)
         assertEquals("text/html", conn.contentType?.substringBefore(";"))
-        assertEquals("same-origin", conn.getHeaderField("Cross-Origin-Opener-Policy"))
+        assertEquals("same-origin-allow-popups", conn.getHeaderField("Cross-Origin-Opener-Policy"))
         assertEquals("require-corp", conn.getHeaderField("Cross-Origin-Embedder-Policy"))
         assertEquals("cross-origin", conn.getHeaderField("Cross-Origin-Resource-Policy"))
         val body = conn.inputStream.readBytes().toString(Charsets.UTF_8)

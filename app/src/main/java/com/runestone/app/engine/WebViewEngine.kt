@@ -55,6 +55,7 @@ class WebViewEngine(context: Context) : WebView(context) {
     private var config: WebViewGameConfig = WebViewGameConfig()
     private val externalHostCache = mutableMapOf<String, Boolean>()
     private var localServer: LocalServer? = null
+    private var serverIp: String? = null
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
@@ -64,6 +65,40 @@ class WebViewEngine(context: Context) : WebView(context) {
     private fun stopLocalServer() {
         localServer?.stop()
         localServer = null
+        serverIp = null
+    }
+
+    /**
+     * Pick a non-loopback IPv4 address to use as the server's bind
+     * address / page origin. The Android WebView treats 127.0.0.1 /
+     * localhost as a null origin and refuses to enable cross-origin
+     * isolation (COOP+COEP) on responses from there. A real LAN IP
+     * gives the WebView a proper origin and crossOriginIsolated
+     * becomes true.
+     *
+     * Returns null if no suitable IP is found; callers should fall
+     * back to file:// loading in that case.
+     */
+    private fun pickServerIp(): String? {
+        val interfaces = try {
+            java.net.NetworkInterface.getNetworkInterfaces()
+        } catch (_: Exception) {
+            return null
+        } ?: return null
+        val candidates = mutableListOf<String>()
+        while (interfaces.hasMoreElements()) {
+            val ni = interfaces.nextElement()
+            if (!ni.isUp || ni.isLoopback || ni.isPointToPoint) continue
+            val addrs = ni.inetAddresses
+            while (addrs.hasMoreElements()) {
+                val addr = addrs.nextElement()
+                if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
+                    candidates.add(addr.hostAddress ?: continue)
+                }
+            }
+        }
+        // Prefer Wi-Fi-ish names but accept any.
+        return candidates.firstOrNull()
     }
 
     data class WebViewGameConfig(
@@ -181,16 +216,25 @@ class WebViewEngine(context: Context) : WebView(context) {
         addJavascriptInterface(Bootstrapper(), "RunestoneBridge")
 
         // Local HTTP server. When enabled, the game is served from
-        // http://127.0.0.1:PORT/ with COOP/COEP headers, which unlocks
+        // http://<device-ip>:PORT/ with COOP/COEP headers, which unlocks
         // SharedArrayBuffer / shared-memory WebAssembly on the system
         // WebView. This is required for Effekseer-based MZ games
         // (look-outside, haven) to boot, and is harmless for games
         // that don't need it.
+        //
+        // We bind to 0.0.0.0 and load via the device's Wi-Fi IP, not
+        // 127.0.0.1, because the Android WebView treats 127.0.0.1 as
+        // a null origin and refuses to enable cross-origin isolation
+        // (crossOriginIsolated stays false). Using the device's LAN
+        // IP gives the WebView a real origin.
         if (config.useHttpServer) {
             stopLocalServer()
-            localServer = LocalServer(wwwDir).also { it.start() }
+            val server = LocalServer(wwwDir).also { it.start() }
+            localServer = server
+            serverIp = pickServerIp()
         } else {
             stopLocalServer()
+            serverIp = null
         }
 
         webViewClient = object : WebViewClient() {
@@ -255,7 +299,8 @@ class WebViewEngine(context: Context) : WebView(context) {
                     // override it with our simpler response or the
                     // page loses its isolation.
                     val fromLocalServer = url.startsWith("http://127.0.0.1:") ||
-                        url.startsWith("http://localhost:")
+                        url.startsWith("http://localhost:") ||
+                        (serverIp != null && url.startsWith("http://$serverIp:"))
                     if (!fromLocalServer) {
                         val wasmFile = resolveGameFile(url)
                         if (wasmFile != null && wasmFile.exists()) {
@@ -382,8 +427,8 @@ class WebViewEngine(context: Context) : WebView(context) {
             forceCanvas = config.forceCanvas,
             webglEnabled = config.webgl,
         )
-        val url = if (config.useHttpServer && localServer != null) {
-            "http://127.0.0.1:${localServer!!.port}/index.html$query"
+        val url = if (config.useHttpServer && localServer != null && serverIp != null) {
+            "http://$serverIp:${localServer!!.port}/index.html$query"
         } else {
             "file://${indexHtml.absolutePath}$query"
         }
@@ -542,7 +587,9 @@ class WebViewEngine(context: Context) : WebView(context) {
         var path = url
         if (path.startsWith("file://")) {
             path = path.removePrefix("file://")
-        } else if (path.startsWith("http://127.0.0.1:") || path.startsWith("http://localhost:")) {
+        } else if (path.startsWith("http://127.0.0.1:") || path.startsWith("http://localhost:")
+            || (serverIp != null && path.startsWith("http://$serverIp:"))
+        ) {
             // The local server is up; strip the origin so we're left
             // with the same path we would have used under file://.
             val schemeEnd = path.indexOf("://") + 3

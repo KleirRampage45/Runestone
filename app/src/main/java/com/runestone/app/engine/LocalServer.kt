@@ -55,7 +55,14 @@ class LocalServer(private val rootDir: File) {
     /** Bind and start accepting connections. Idempotent. */
     fun start() {
         if (running.getAndSet(1L) == 1L) return
-        val sock = ServerSocket(0, BACKLOG, InetAddress.getByName(LOCALHOST))
+        // We bind to all interfaces (0.0.0.0), not just 127.0.0.1, because
+        // the Android WebView treats 127.0.0.1 / localhost as a "null
+        // origin" and refuses to enable cross-origin isolation (COOP+COEP)
+        // for responses from there. Binding to the device's Wi-Fi IP
+        // gives the WebView a real origin and the isolation works.
+        // The server only serves the configured root directory and is
+        // reachable only from the device itself or the same LAN.
+        val sock = ServerSocket(0, BACKLOG, InetAddress.getByName("0.0.0.0"))
         serverSocket = sock
         val acceptThread = Thread({ acceptLoop(sock) }, "Runestone-LocalServer-accept")
         acceptThread.isDaemon = true
@@ -218,7 +225,20 @@ class LocalServer(private val rootDir: File) {
             // the page cannot use SharedArrayBuffer, which is required
             // by Effekseer's WASM runtime and any other WASM module
             // that needs shared memory.
-            "Cross-Origin-Opener-Policy" to "same-origin",
+            //
+            // COOP `same-origin-allow-popups` is needed (not
+            // `same-origin`) because the WebView opens the page from
+            // a null origin (about:blank), and `same-origin` rejects
+            // that opener. `same-origin-allow-popups` accepts null-origin
+            // openers but still isolates the document.
+            //
+            // COEP `require-corp` requires every subresource to have
+            // CORP. We set CORP on every response from this server, so
+            // this works. `credentialless` is a less-strict alternative
+            // for cross-origin subresources without CORP, but in our
+            // case every subresource is same-origin and has CORP, so
+            // `require-corp` is the correct value.
+            "Cross-Origin-Opener-Policy" to "same-origin-allow-popups",
             "Cross-Origin-Embedder-Policy" to "require-corp",
             // CORP: allow our own subresources to be loaded by a
             // cross-origin-isolated page. We set this on every
@@ -261,7 +281,6 @@ class LocalServer(private val rootDir: File) {
     }
 
     companion object {
-        private const val LOCALHOST = "127.0.0.1"
         private const val BACKLOG = 50
         private const val MAX_HEADER_BYTES = 16 * 1024
     }
