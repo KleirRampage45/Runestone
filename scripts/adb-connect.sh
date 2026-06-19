@@ -14,7 +14,7 @@ set -euo pipefail
 
 STATE_DIR=".runestone"
 STATE_FILE="$STATE_DIR/.last-adb-ip"
-PORT="${ADB_PORT:-5555}"
+PORT="${ADB_PORT:-38775}"
 
 mkdir -p "$STATE_DIR"
 
