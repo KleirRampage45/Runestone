@@ -46,26 +46,37 @@ class EasyRpgEngine : GameEngine {
     }
 
     override fun canRun(gameFolder: File): Boolean {
-        if (!gameFolder.isDirectory) return false
+        return findProjectRoot(gameFolder) != null
+    }
 
-        val files = gameFolder.listFiles() ?: return false
-        val names = files.map { it.name }.toSet()
+    private fun hasEasyRpgSignature(folder: File): Boolean {
+        if (!folder.isDirectory) return false
+        val names = folder.listFiles()?.map { it.name.lowercase() }?.toSet() ?: return false
 
-        // RPG Maker 2000/2003 must have RPG_RT.exe and either .lmt or .ldb
-        return names.contains("RPG_RT.exe") &&
-               (names.contains("RPG_RT.lmt") || names.contains("RPG_RT.ldb"))
+        return names.contains("rpg_rt.exe") &&
+            (names.contains("rpg_rt.lmt") || names.contains("rpg_rt.ldb"))
+    }
+
+    private fun findProjectRoot(gameFolder: File, maxDepth: Int = 3): File? {
+        if (hasEasyRpgSignature(gameFolder)) return gameFolder
+        if (maxDepth <= 0 || !gameFolder.isDirectory) return null
+
+        return gameFolder.listFiles()
+            ?.filter { it.isDirectory }
+            ?.sortedWith(compareBy<File> { if (it.name.equals("Data", ignoreCase = true)) 0 else 1 }.thenBy { it.name.length })
+            ?.firstNotNullOfOrNull { child -> findProjectRoot(child, maxDepth - 1) }
     }
 
     override fun detect(gameFolder: File): EngineMetadata? {
-        if (!canRun(gameFolder)) return null
+        val projectRoot = findProjectRoot(gameFolder) ?: return null
 
-        val version = detectVersion(gameFolder)
+        val version = detectVersion(projectRoot)
         val engineVersion = when {
             version.contains("2003") -> "RGSS 2003"
             version.contains("2000") -> "RGSS 2000"
             else -> "EasyRPG"
         }
-        val title = detectTitleFromLdb(gameFolder) ?: gameFolder.name
+        val title = detectTitleFromLdb(projectRoot) ?: gameFolder.name
 
         return EngineMetadata(
             engine = id,
