@@ -145,6 +145,7 @@ class MainActivity : Activity() {
         private const val ADB_OPEN_MANAGE = "manage"
         private const val ADB_OPEN_SETTINGS = "settings"
         private const val ADB_OPEN_STORE = "store"
+        private const val ADB_OPEN_GAME_PREFIX = "game:"
     }
 
     private var pausedGamePath: String? = null
@@ -158,6 +159,7 @@ class MainActivity : Activity() {
     private var storeMetadataLoading = false
     private var storeMetadataRenderScheduled = false
     private var availableGamesScrollY = 0
+    private var storeGridColumns = 2
     private var isLoadingGames = false
     private var gamesErrorMessage: String? = null
     private var downloadReceiverRegistered = false
@@ -1574,8 +1576,13 @@ class MainActivity : Activity() {
                 downloadStates = downloadProgressMap,
                 installStates = installProgressMap,
                 installedGameTitles = titles,
+                gridColumns = storeGridColumns,
                 initialScrollY = availableGamesScrollY,
                 onScrollYChanged = { availableGamesScrollY = it },
+                onGridColumnsChanged = { columns ->
+                    storeGridColumns = columns.coerceIn(1, 4)
+                    renderAvailableGamesScreen(installedGameTitles = titles)
+                },
                 onRefresh = { showAvailableGames() },
                 onManageSources = { showSources() },
                 onProviderSettings = { showProviderSettings() },
@@ -2463,6 +2470,14 @@ class MainActivity : Activity() {
                 ADB_OPEN_MANAGE -> showManageFiles()
                 ADB_OPEN_SETTINGS -> showSettings()
                 ADB_OPEN_STORE -> showAvailableGames()
+                else -> {
+                    refreshGames()
+                    val storageName = command.removePrefix(ADB_OPEN_GAME_PREFIX).takeIf { it != command }
+                        ?: command.takeIf { candidate -> games.any { it.storageName == candidate } }
+                    if (storageName != null) {
+                        playGame(storageName)
+                    }
+                }
             }
         }, 650)
     }
