@@ -73,7 +73,8 @@ class ExtractionManager(private val context: Context) {
         var total = 0
         var extractedBytes = 0L
 
-        val charset = Charset.forName("ISO-8859-1")
+        val charset = selectZipCharset(zipFile)
+        Log.i(TAG, "Using ZIP filename charset: ${charset.name()}")
 
         // Pass 1: count entries
         ZipInputStream(zipFile.inputStream().buffered(), charset).use { zis ->
@@ -221,5 +222,65 @@ class ExtractionManager(private val context: Context) {
                 if (!marker.exists()) marker.writeText("")
             }
         }
+    }
+
+    private fun selectZipCharset(zipFile: File): Charset {
+        val candidates = listOf(
+            Charsets.UTF_8,
+            Charset.forName("windows-31j"),
+            Charset.forName("Shift_JIS"),
+            Charset.forName("ISO-8859-1"),
+        ).distinctBy { it.name() }
+
+        return candidates
+            .mapNotNull { charset ->
+                runCatching {
+                    val names = readZipNames(zipFile, charset)
+                    charset to scoreZipNames(names)
+                }.getOrNull()
+            }
+            .maxByOrNull { it.second }
+            ?.first
+            ?: Charsets.UTF_8
+    }
+
+    private fun readZipNames(zipFile: File, charset: Charset): List<String> {
+        val names = mutableListOf<String>()
+        ZipInputStream(zipFile.inputStream().buffered(), charset).use { zis ->
+            while (true) {
+                val entry = zis.nextEntry ?: break
+                names += entry.name
+                zis.closeEntry()
+                if (names.size >= 300) break
+            }
+        }
+        return names
+    }
+
+    private fun scoreZipNames(names: List<String>): Int {
+        var score = 0
+        for (name in names) {
+            var hasJapanese = false
+            var badControls = 0
+            for (char in name) {
+                when {
+                    char.code in 0x80..0x9F -> badControls += 6
+                    char == '\uFFFD' -> badControls += 10
+                    isJapanese(char) -> hasJapanese = true
+                }
+            }
+            score -= badControls
+            if (hasJapanese) score += 8
+            if (name.contains('/') || name.contains('\\')) score += 1
+            if (name.any { it.isLetterOrDigit() }) score += 1
+        }
+        return score
+    }
+
+    private fun isJapanese(char: Char): Boolean {
+        return char in '\u3040'..'\u30FF' ||
+            char in '\u3400'..'\u4DBF' ||
+            char in '\u4E00'..'\u9FFF' ||
+            char in '\uF900'..'\uFAFF'
     }
 }
