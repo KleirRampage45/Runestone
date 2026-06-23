@@ -171,22 +171,6 @@
     <string name="runtime_controls_shown">Controls shown</string>
     <string name="runtime_controls_hidden">Controls hidden</string>
     <string name="runtime_layout_rotated">Layout rotated</string>
-    <!-- Onboarding -->
-    <string name="onboarding_welcome">Welcome to Runestone</string>
-    <string name="onboarding_subtitle">Multi-engine game launcher for Android. Free and open source.</string>
-    <string name="onboarding_language">Language / Idioma / Idioma</string>
-    <string name="onboarding_engines">Select Engines</string>
-    <string name="onboarding_engines_desc">Choose which game engines to enable.</string>
-    <string name="onboarding_rawg">Game Art Scraping</string>
-    <string name="onboarding_rawg_desc">Runestone can fetch covers and metadata from RAWG.</string>
-    <string name="onboarding_rawg_link">Get your free API key</string>
-    <string name="onboarding_rawg_paste">Paste your API key below (optional, skip to use fallback covers):</string>
-    <string name="onboarding_rawg_hint">RAWG API Key</string>
-    <string name="onboarding_rtp">Install VX Ace RTP (~100 MB, needed by many games)</string>
-    <string name="onboarding_ready">Ready to Play</string>
-    <string name="onboarding_ready_desc">You can import games anytime from the + button on the home screen.</string>
-    <string name="onboarding_start">START PLAYING</string>
-    <string name="onboarding_rtp_later">RTP will be downloaded when you launch a game that needs it.</string>
     <!-- General -->
     <string name="back">Back</string>
     <string name="close">Close</string>
@@ -232,4 +216,29 @@
     <string name="engine_size_godot">~142 MB</string>
     <string name="engine_size_webview">~0 MB (WebView)</string>
     <string name="engine_size_cdn">~0 MB (CDN)</string>
+    <!-- Onboarding -->
+    <string name="onboarding_welcome_title">Welcome to Runestone</string>
+    <string name="onboarding_welcome_desc">Runestone is a multi-engine game launcher for Android. Play RPG Maker, Ren\'Py, NScripter, Flash games and more — all from one app. Free and open source.</string>
+    <string name="onboarding_language">Language</string>
+    <string name="onboarding_next">Next →</string>
+    <string name="onboarding_engines_title">Select Engines</string>
+    <string name="onboarding_engines_desc">Choose which game engines to install. Engines that use your system WebView are always available and don\'t need installation.</string>
+    <string name="onboarding_engine_mkxpz">RPG Maker XP/VX/VX Ace (~8 MB)</string>
+    <string name="onboarding_engine_easyrpg">RPG Maker 2000/2003 (~6 MB)</string>
+    <string name="onboarding_engine_onscripter">NScripter (~2 MB)</string>
+    <string name="onboarding_engine_renpy">Ren\'Py (~55 MB)</string>
+    <string name="onboarding_engine_godot">Godot Engine (~142 MB, optional)</string>
+    <string name="onboarding_rtp_title">RTP Package</string>
+    <string name="onboarding_rtp_desc">Some VX Ace games need the RPG Maker Runtime Package (RTP) to run properly. It contains the default graphics, sounds, and fonts.\n\nYou can download and install it now, or skip this and install it later from Settings.</string>
+    <string name="onboarding_rtp_toggle">Install VX Ace RTP (~100 MB)</string>
+    <string name="onboarding_scraping_title">Game Art &amp; Metadata</string>
+    <string name="onboarding_scraping_desc">Runestone can scrape cover art and metadata directly from your game files by default.\n\nFor richer results with high-quality covers and descriptions, get a free API key from RAWG:</string>
+    <string name="onboarding_scraping_input_label">Paste your RAWG API key below (optional):</string>
+    <string name="onboarding_scraping_hint">RAWG API Key</string>
+    <string name="onboarding_paste">Paste</string>
+    <string name="onboarding_pasted">API key pasted</string>
+    <string name="onboarding_clipboard_empty">Clipboard is empty</string>
+    <string name="onboarding_ready_title">Ready to Play!</string>
+    <string name="onboarding_ready_desc">You can import games anytime from the + button on the home screen.\n\nHave fun!</string>
+    <string name="onboarding_start">START PLAYING</string>
 </resources>

@@ -11,7 +11,7 @@
 package com.runestone.app
 
 import android.Manifest
-import android.app.Activity
+import androidx.activity.ComponentActivity
 import android.content.Intent
 import android.graphics.Color
 import android.os.Build
@@ -54,7 +54,7 @@ import com.runestone.app.workspace.WorkspaceStorageReporter
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
-class MainActivity : Activity() {
+class MainActivity : ComponentActivity() {
 
     private lateinit var settingsStore: SettingsStore
     private lateinit var workspaceManager: WorkspaceManager
@@ -125,7 +125,6 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "onCreate")
         applyImmersiveMode()
-        sessionManager.clearResumeState("fresh_on_create")
         pausedGamePath = null
         settingsStore = SettingsStore(this)
         workspaceManager = WorkspaceManager(this)
@@ -136,6 +135,7 @@ class MainActivity : Activity() {
         extractionManager = ExtractionManager(this)
         metadataService = GameMetadataService(this)
         sessionManager = GameSessionManager(this)
+        sessionManager.clearResumeState("fresh_on_create")
         storeCoordinator = StoreCoordinator(this, workspaceManager, downloadManager, extractionManager, sourcesManager, metadataService, storeCallbacks)
         importManager = ImportManager(this, workspaceManager, saveManager, importCallbacks)
         gameListViewModel = androidx.lifecycle.ViewModelProvider(this as androidx.lifecycle.ViewModelStoreOwner).get(com.runestone.app.ui.GameListViewModel::class.java)
