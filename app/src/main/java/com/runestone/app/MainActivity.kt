@@ -271,14 +271,18 @@ class MainActivity : Activity() {
         }
     }
 
+    private var gamesCollected = false
+
     private fun refreshGames() {
         gameListViewModel.refreshGames()
+        if (gamesCollected) return
+        gamesCollected = true
         AppScope.main.launch {
             gameListViewModel.uiState.collectLatest { state ->
                 navController.games = gameListViewModel.games.value
                 navController.controllerNavigationEnabled = controllerNavigationEnabled
                 Log.i(TAG, "refreshGames: found ${state.cards.size} games")
-                navController.dismissSplash()
+                if (!state.isLoading) navController.dismissSplash()
             }
         }
     }
