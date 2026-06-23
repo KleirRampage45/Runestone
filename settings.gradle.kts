@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Runestone"
 include(":app")
+include(":godot-plugin")

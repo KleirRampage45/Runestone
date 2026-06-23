@@ -109,10 +109,26 @@ object EngineRegistry {
         register(RenpyEngine())       // Ren'Py MIT
 
         // Optional engines (disabled by default, enable in Settings > Addons)
-        if (isOptionalEnabled(context, "godot")) register(GodotEngine())   // Godot MIT
+        if (isOptionalEnabled(context, "godot")) {
+            if (isPluginInstalled(context, "com.runestone.plugin.godot")) {
+                register(GodotEngine())   // Godot MIT
+            } else {
+                Log.w(TAG, "Godot plugin APK not installed. Download from GitHub releases.")
+            }
+        }
         register(UnityEngine())       // Unity desktop exports — detect-only
         register(UnrealEngine())      // Unreal desktop exports — detect-only
         register(ElectronEngine())    // Electron (desktop only)
+    }
+
+    /** Check if a plugin APK is installed on the device */
+    fun isPluginInstalled(context: Context, pluginPackage: String): Boolean {
+        return try {
+            context.packageManager.getPackageInfo(pluginPackage, 0)
+            true
+        } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+            false
+        }
     }
 
     /** Check if an optional engine is enabled in settings */

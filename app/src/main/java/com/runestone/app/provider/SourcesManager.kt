@@ -12,6 +12,9 @@ package com.runestone.app.provider
 
 import android.content.Context
 import android.util.Log
+import com.runestone.app.util.AppScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -84,7 +87,7 @@ class SourcesManager(private val context: Context) {
     fun fetchGamesFromSources(onResult: (List<AvailableGame>, String?) -> Unit) {
         val sources = getSources()
 
-        Thread {
+        AppScope.io.launch {
             try {
                 val allGames = loadBundledCatalogue().toMutableList()
                 var lastError: String? = null
@@ -112,7 +115,7 @@ class SourcesManager(private val context: Context) {
                 Log.e(TAG, "Fetch failed", e)
                 onResult(emptyList(), e.message ?: "Network error")
             }
-        }.start()
+        }
     }
 
     private fun loadBundledCatalogue(): List<AvailableGame> {

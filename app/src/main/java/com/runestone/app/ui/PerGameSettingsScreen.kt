@@ -212,6 +212,32 @@ class PerGameSettingsScreen(private val context: Context) {
         })
         content.addView(spacer(14))
 
+        // ── Controller Profile ──
+        content.addView(sectionTitle("Controller Profile", "Button layout preset for this game"))
+        content.addView(compactDropdown("Preset", current.input.controllerPreset,
+            listOf("auto", "simplified", "full")) { v ->
+            current = current.copy(input = current.input.copy(controllerPreset = v))
+            onConfigChanged(current)
+        })
+        content.addView(spacer(6))
+        content.addView(TextView(context).apply {
+            text = "Edit button positions in-game via the runtime menu (\u2022\u2022\u2022 button)."
+            setTextColor(MUTED); textSize = 11f; setPadding(dp(4), 0, dp(4), 0)
+        })
+        content.addView(spacer(10))
+        content.addView(switchPanel("Show L1/R1", "Display shoulder buttons on the touch overlay",
+            current.input.showL1R1) { checked ->
+            current = current.copy(input = current.input.copy(showL1R1 = checked))
+            onConfigChanged(current)
+        })
+        content.addView(spacer(10))
+        content.addView(switchPanel("Show L2/R2", "Display trigger buttons on the touch overlay",
+            current.input.showL2R2) { checked ->
+            current = current.copy(input = current.input.copy(showL2R2 = checked))
+            onConfigChanged(current)
+        })
+        content.addView(spacer(14))
+
         // ── Video Section ──
         content.addView(sectionTitle("Video", "Display and rendering"))
 
@@ -795,6 +821,30 @@ class PerGameSettingsScreen(private val context: Context) {
             )
         }
 
+    private fun compactDropdown(title: String, currentValue: String, options: List<String>, onSelect: (String) -> Unit): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(3), 0, dp(3))
+            addView(TextView(context).apply {
+                text = title; setTextColor(TEXT); textSize = 13f; typeface = Typeface.DEFAULT_BOLD
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(TextView(context).apply {
+                text = currentValue; setTextColor(ACCENT); textSize = 12f
+                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.END
+                setPadding(dp(8), dp(3), dp(8), dp(3))
+                background = glassBg(6, alpha = 80)
+                makeLiquid(this)
+                setOnClickListener {
+                    val idx = options.indexOf(text)
+                    val nextIdx = (idx + 1) % options.size
+                    text = options[nextIdx]
+                    onSelect(options[nextIdx])
+                    animTap(this)
+                }
+            })
+        }
+
     private fun settingsPanel(build: LinearLayout.() -> Unit): LinearLayout =
         LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -1301,15 +1351,9 @@ class PerGameSettingsScreen(private val context: Context) {
             }
         }
 
-    private fun spacer(h: Int = 0, w: Int = 0): View {
-        val lp = LinearLayout.LayoutParams(
-            if (w > 0) dp(w) else ViewGroup.LayoutParams.MATCH_PARENT,
-            if (h > 0) dp(h) else ViewGroup.LayoutParams.WRAP_CONTENT,
-        )
-        return View(context).apply { layoutParams = lp }
-    }
+    private fun spacer(h: Int = 0, w: Int = 0): View = com.runestone.app.ui.UiKit.spacer(context, if (h > 0) h else 0)
 
-    private fun dp(v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
+    private fun dp(v: Int): Int = com.runestone.app.ui.UiKit.dp(context, v)
 
     private fun makeLiquid(view: View) { if (Theme.isReducedMotion(context)) return
         view.setOnTouchListener { v, event ->
@@ -1336,15 +1380,14 @@ class PerGameSettingsScreen(private val context: Context) {
         }
     }
 
+    private fun animTap(v: View) { if (Theme.isReducedMotion(context)) return
+        v.animate().scaleX(0.92f).scaleY(0.92f).setDuration(60).withEndAction {
+            v.animate().scaleX(1f).scaleY(1f).setDuration(100).setInterpolator(OvershootInterpolator()).start()
+        }.start()
+    }
+
     private fun glassBg(radius: Int, alpha: Int = 200): GradientDrawable =
-        GradientDrawable().apply {
-            setColor(Color.argb(alpha, 18, 18, 24))
-            cornerRadius = dp(radius).toFloat()
-            setStroke(dp(1), Color.argb(40,
-                Color.red(Theme.active.accent),
-                Color.green(Theme.active.accent),
-                Color.blue(Theme.active.accent)))
-        }
+        com.runestone.app.ui.theme.ThemeProvider.getInstance(context).glassBg(radius, alpha)
 
     private inner class GlassSlider(
         context: Context,
@@ -1457,8 +1500,8 @@ class PerGameSettingsScreen(private val context: Context) {
     }
 
     companion object {
-        private val TEXT = Color.rgb(232, 229, 220)
-        private val MUTED = Color.rgb(140, 130, 112)
+        private val TEXT: Int get() = Theme.TEXT
+        private val MUTED: Int get() = Theme.MUTED
         private val ACCENT: Int get() = Theme.active.accent
         private val MATCH_PARENT = ViewGroup.LayoutParams.MATCH_PARENT
         private val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT

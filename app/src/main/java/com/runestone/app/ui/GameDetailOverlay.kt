@@ -28,7 +28,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import com.runestone.app.MainActivity
+import com.runestone.app.store.StoreCoordinator
 import com.runestone.app.provider.AvailableGame
 import com.runestone.app.provider.DownloadManager
 import com.runestone.app.provider.DownloadOption
@@ -38,7 +38,7 @@ class GameDetailOverlay(
     context: Context,
     initialGame: AvailableGame,
     initialProgress: DownloadManager.DownloadProgress?,
-    initialInstallProgress: MainActivity.InstallProgress?,
+    initialInstallProgress: StoreCoordinator.InstallProgress?,
     initialInstalledGameTitles: Set<String>,
     private val onDownload: (AvailableGame) -> Unit,
     private val onPauseDownload: (String) -> Unit,
@@ -55,7 +55,7 @@ class GameDetailOverlay(
 
     private var game: AvailableGame = initialGame
     private var progress: DownloadManager.DownloadProgress? = initialProgress
-    private var installProgress: MainActivity.InstallProgress? = initialInstallProgress
+    private var installProgress: StoreCoordinator.InstallProgress? = initialInstallProgress
     private var installedGameTitles: Set<String> = initialInstalledGameTitles
     private var currentState: State = State.INFO
 
@@ -134,7 +134,7 @@ class GameDetailOverlay(
     fun update(
         game: AvailableGame,
         progress: DownloadManager.DownloadProgress?,
-        installProgress: MainActivity.InstallProgress?,
+        installProgress: StoreCoordinator.InstallProgress?,
         installedGameTitles: Set<String>,
     ) {
         val stateChanged = this.game.id != game.id
@@ -740,35 +740,13 @@ class GameDetailOverlay(
         context.startActivity(intent)
     }
 
-    private fun dp(v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
+    private fun dp(v: Int): Int = com.runestone.app.ui.UiKit.dp(context, v)
 
-    private fun spacer(h: Int): View = View(context).apply {
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, if (h > 0) h else 1)
-    }
+    private fun spacer(h: Int): View = com.runestone.app.ui.UiKit.spacer(context, h)
 
-    private fun animTap(v: View) {
-        v.animate().scaleX(0.92f).scaleY(0.92f).setDuration(60)
-            .withEndAction {
-                v.animate().scaleX(1f).scaleY(1f).setDuration(180)
-                    .setInterpolator(OvershootInterpolator(1.5f)).start()
-            }.start()
-    }
+    private fun animTap(v: View) { com.runestone.app.ui.UiKit.animTap(v) }
 
-    private fun makeLiquid(view: View) {
-        view.setOnTouchListener { v, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    v.animate().cancel()
-                    v.animate().scaleX(1.04f).scaleY(1.04f).setDuration(120).start()
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    v.animate().scaleX(1f).scaleY(1f).setDuration(250)
-                        .setInterpolator(OvershootInterpolator(1.6f)).start()
-                }
-            }
-            false
-        }
-    }
+    private fun makeLiquid(view: View) { com.runestone.app.ui.UiKit.makeLiquid(view) }
 
     private fun normalizeKey(value: String): String =
         value.lowercase()
@@ -777,16 +755,16 @@ class GameDetailOverlay(
             .trim('-')
 
     companion object {
-        private val TEXT = Color.rgb(232, 229, 220)
-        private val MUTED = Color.rgb(140, 130, 112)
-        private val MUTED_DIM = Color.rgb(120, 112, 104)
+        private val TEXT: Int get() = Theme.TEXT
+        private val MUTED: Int get() = Theme.MUTED
+        private val MUTED_DIM: Int get() = Theme.MUTED_DIM
         private val ACCENT: Int get() = Theme.active.accent
 
         fun show(
             context: Context,
             game: AvailableGame,
             progress: DownloadManager.DownloadProgress?,
-            installProgress: MainActivity.InstallProgress?,
+            installProgress: StoreCoordinator.InstallProgress?,
             installedGameTitles: Set<String>,
             onDownload: (AvailableGame) -> Unit,
             onPauseDownload: (String) -> Unit,

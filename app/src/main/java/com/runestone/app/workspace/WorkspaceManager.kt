@@ -13,7 +13,7 @@ package com.runestone.app.workspace
 import android.content.Context
 import android.util.Log
 import com.runestone.app.data.EngineType
-import com.runestone.app.engine.EngineDetector
+import com.runestone.app.engine.EngineRegistry
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -86,7 +86,7 @@ class WorkspaceManager(private val context: Context) {
                     } else null
                 }.getOrNull()
 
-                val engineType = override ?: EngineDetector.detect(originalDir)
+                val engineType = override ?: (EngineRegistry.detect(originalDir)?.let { EngineType.fromEngineId(it.id) } ?: EngineType.UNKNOWN)
                 val fileCount = originalDir.walkTopDown().count { it.isFile }
                 val displayName = readGameTitle(originalDir, engineType) ?: formatDisplayName(gameDir.name)
 
@@ -218,7 +218,7 @@ class WorkspaceManager(private val context: Context) {
         val gamePayload = children.filter { it.name !in ignoredNames }
         if (gamePayload.isEmpty()) return
 
-        val engineType = EngineDetector.detect(gameDir)
+        val engineType = EngineRegistry.detect(gameDir)?.let { EngineType.fromEngineId(it.id) } ?: EngineType.UNKNOWN
         if (engineType == EngineType.UNKNOWN) return
 
         val repairDir = File(gameDir, "original_repair")

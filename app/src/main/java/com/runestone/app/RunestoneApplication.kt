@@ -17,6 +17,7 @@ import android.os.Process
 import android.util.Log
 import android.content.Context
 import com.runestone.app.engine.EngineRegistry
+import com.runestone.app.util.I18n
 
 /**
  * Application class for Runestone.
@@ -29,6 +30,16 @@ class RunestoneApplication : Application() {
 
     companion object {
         private const val TAG = "Runestone"
+    }
+
+    override fun attachBaseContext(base: Context) {
+        val locale = base.getSharedPreferences("runestone-settings-v1", MODE_PRIVATE)
+            .getString("locale", "en") ?: "en"
+        val localeObj = java.util.Locale(locale)
+        java.util.Locale.setDefault(localeObj)
+        val config = android.content.res.Configuration(base.resources.configuration)
+        config.setLocale(localeObj)
+        super.attachBaseContext(base.createConfigurationContext(config))
     }
 
     override fun onCreate() {
@@ -52,6 +63,8 @@ class RunestoneApplication : Application() {
         
         // Initialize all built-in engine plugins
         EngineRegistry.initDefaults(this)
+        com.runestone.app.ui.theme.ThemeProvider.init(this)
+        com.runestone.app.ui.Theme.bind(com.runestone.app.ui.theme.ThemeProvider.getInstance(this))
         
         val engineCount = EngineRegistry.all().size
         Log.i(TAG, "Initialized $engineCount engine plugins")

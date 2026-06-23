@@ -29,6 +29,7 @@ holding all merged work since the v0.6.13 cycle.
 - `animTap()` en cada elemento táctil: scale bounce con OvershootInterpolator.
 - Sin dependencias externas pesadas — `org.json` para configs, sin Gson/Moshi.
 - Commit messages en inglés, descriptivos.
+- **Language parity obligatorio.** Cada vez que se añada un texto visible en UI (títulos, botones, labels, diálogos, mensajes, hints, descripciones, notificaciones, tooltips), debe tener traducción en los 3 idiomas soportados: English, Español, Português. Usar `I18n.get(context, "key")` en lugar de strings hardcodeados. NO mergear código con strings sin traducir.
 
 ### Arquitectura de Motores
 
