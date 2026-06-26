@@ -1,6 +1,18 @@
 # Runestone — Bug & Feature Inventory
 
-## Critical Bugs
+## Fixed
+
+### 1. Resume banner never appears ✅ FIXED
+`isPaused` reads `paused_game` from SharedPreferences in both `OverlayNavigationController.toCardInfo()` and `GameListViewModel.toCardInfo()`.
+**Files:** `OverlayNavigationController.kt`, `GameListViewModel.kt`
+
+### 2. Playtime accumulator never stops ✅ FIXED
+`GameSessionManager.finalize()` caps elapsed seconds to 14400 (4 hours max per session).
+**Files:** `GameSessionManager.kt`
+
+### 3. STOP button creates separate GameSessionManager instance ✅ FIXED
+`showHome()` STOP callback now uses the shared `sessionManager` from the navController instead of creating a new instance.
+**Files:** `OverlayNavigationController.kt`
 
 ### 1. Resume banner never appears
 `isPaused` is hardcoded to `false` in both `OverlayNavigationController.toCardInfo()` (line 980) and `GameListViewModel.toCardInfo()` (line 111). The resume bar at the top of the home screen only renders when `pausedGame != null`, which never happens.

@@ -144,7 +144,6 @@ class MainActivity : ComponentActivity() {
         importManager = ImportManager(this, workspaceManager, saveManager, importCallbacks)
         gameListViewModel = ViewModelProvider(this, GameListViewModel.Factory(application as Application, workspaceManager, sessionManager, metadataService)).get(GameListViewModel::class.java)
         settings = settingsStore.load()
-        navController.settings = settings
         applyImmersiveMode()
         Theme.active = Theme.byName(settings.colorPalette)
         homeCardLayout = runCatching {

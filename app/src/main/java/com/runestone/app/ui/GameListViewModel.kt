@@ -1,6 +1,7 @@
 package com.runestone.app.ui
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -107,11 +108,14 @@ class GameListViewModel(
         }
         val coverUrl = perGame?.game?.customCoverPath?.let { if (File(it).exists()) "local:$it" else null }
             ?: metadata?.localCoverPath?.takeIf { it.isNotEmpty() }?.let { if (File(it).exists()) "local:$it" else null }
+        val pausedPath = context.getSharedPreferences("runestone", Context.MODE_PRIVATE)
+            .getString("paused_game", null)
+        val isPaused = pausedPath != null && g.originalPath == pausedPath
         return GameCardInfo(
             storageName = g.storageName, displayName = metadata?.gameTitle?.takeIf { it.isNotEmpty() } ?: g.displayName,
             engineType = g.engineType, fileCount = g.fileCount, fileSize = cachedGameSize(g),
             totalPlayTime = sessionManager.getPlayTime(g.storageName), lastPlayedTimestamp = sessionManager.getLastPlayed(g.storageName),
-            isReady = true, coverUrl = coverUrl,
+            isReady = true, coverUrl = coverUrl, isPaused = isPaused,
             metadataDeveloper = metadata?.developer ?: "", metadataGenres = metadata?.genres ?: "", metadataYear = metadata?.releaseYear ?: "",
         )
     }

@@ -58,7 +58,7 @@ class GameSessionManager(private val context: Context) {
         val startedAt = prefs.getLong("active_game_started_at", 0L)
         if (startedAt <= 0L) return false
 
-        val elapsedSeconds = ((System.currentTimeMillis() - startedAt) / 1000L).coerceAtLeast(0L)
+        val elapsedSeconds = ((System.currentTimeMillis() - startedAt) / 1000L).coerceIn(0L, 14400L)
         if (elapsedSeconds > 0L) {
             playTimeCache[storageName] = (playTimeCache[storageName] ?: 0L) + elapsedSeconds
             lastPlayedCache[storageName] = System.currentTimeMillis()

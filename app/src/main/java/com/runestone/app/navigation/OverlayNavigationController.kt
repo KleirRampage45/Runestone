@@ -290,7 +290,7 @@ class OverlayNavigationController(
                     val game = games.find { it.storageName == storageName }
                     if (game != null) {
                         Log.i(TAG, "STOP game: $storageName path=${game.originalPath}")
-                        com.runestone.app.session.GameSessionManager(activity).recordStop(storageName)
+                        sessionManager.recordStop(storageName)
                         activity.getSharedPreferences("runestone", Activity.MODE_PRIVATE).edit()
                             .remove("paused_game")
                             .remove("active_game_storage")
@@ -968,6 +968,10 @@ class OverlayNavigationController(
         }
         val coverUrl = customCoverPath ?: metadataCoverPath
 
+        val pausedStorage = activity.getSharedPreferences("runestone", Activity.MODE_PRIVATE)
+            .getString("paused_game", null)
+        val isPaused = pausedStorage != null && g.originalPath == pausedStorage
+
         return GameCardInfo(
             storageName = g.storageName,
             displayName = metadata?.gameTitle?.takeIf { it.isNotEmpty() } ?: g.displayName,
@@ -977,7 +981,7 @@ class OverlayNavigationController(
             totalPlayTime = sessionManager.getPlayTime(g.storageName),
             lastPlayedTimestamp = sessionManager.getLastPlayed(g.storageName),
             isReady = true,
-            isPaused = false,
+            isPaused = isPaused,
             coverUrl = coverUrl,
             metadataDeveloper = metadata?.developer ?: "",
             metadataGenres = metadata?.genres ?: "",
