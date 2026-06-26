@@ -25,9 +25,12 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.Toast
+import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import androidx.activity.viewModels
+import androidx.lifecycle.ViewModelProvider
+import com.runestone.app.ui.GameListViewModel
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -75,7 +78,7 @@ class MainActivity : ComponentActivity() {
     lateinit var rootContainer: FrameLayout
     var activeOverlay: View? = null
     var homeContentView: View? = null
-    lateinit var persistentDock: View
+    var persistentDock: View? = null
 
     companion object {
         private const val TAG = "Runestone"
@@ -113,6 +116,7 @@ class MainActivity : ComponentActivity() {
         override fun onSettingsChanged(newSettings: RunnerSettings) {
             val cutoutChanged = settings.displayCutoutMode != newSettings.displayCutoutMode
             settings = newSettings
+            navController.settings = newSettings
             settingsStore.save(newSettings)
             applyImmersiveMode(force = cutoutChanged)
             if (cutoutChanged) {
@@ -138,8 +142,9 @@ class MainActivity : ComponentActivity() {
         sessionManager.clearResumeState("fresh_on_create")
         storeCoordinator = StoreCoordinator(this, workspaceManager, downloadManager, extractionManager, sourcesManager, metadataService, storeCallbacks)
         importManager = ImportManager(this, workspaceManager, saveManager, importCallbacks)
-        gameListViewModel = androidx.lifecycle.ViewModelProvider(this as androidx.lifecycle.ViewModelStoreOwner).get(com.runestone.app.ui.GameListViewModel::class.java)
+        gameListViewModel = ViewModelProvider(this, GameListViewModel.Factory(application as Application, workspaceManager, sessionManager, metadataService)).get(GameListViewModel::class.java)
         settings = settingsStore.load()
+        navController.settings = settings
         applyImmersiveMode()
         Theme.active = Theme.byName(settings.colorPalette)
         homeCardLayout = runCatching {
@@ -227,6 +232,7 @@ class MainActivity : ComponentActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT, dp(58), android.view.Gravity.BOTTOM).apply {
             setMargins(dp(10), 0, dp(10), dp(8))
         })
+        navController.persistentDock = persistentDock
         handleAdbCommand(intent)
     }
 
@@ -279,7 +285,8 @@ class MainActivity : ComponentActivity() {
         gamesCollected = true
         AppScope.main.launch {
             gameListViewModel.uiState.collectLatest { state ->
-                navController.games = gameListViewModel.games.value
+                games = gameListViewModel.games.value
+                navController.games = games
                 navController.controllerNavigationEnabled = controllerNavigationEnabled
                 Log.i(TAG, "refreshGames: found ${state.cards.size} games")
                 if (!state.isLoading) navController.dismissSplash()
@@ -311,7 +318,7 @@ class MainActivity : ComponentActivity() {
     private val storeCallbacks = object : StoreCoordinator.Callbacks {
         override fun refreshGames() = this@MainActivity.refreshGames()
         override fun refreshStoreUI() {
-            if (activeOverlay != null) navController.renderAvailableGamesScreen()
+            navController.renderAvailableGamesScreen()
         }
         override fun pushDetailOverlayUpdate(gameId: String) {
             val overlay = navController.detailOverlay ?: return
@@ -419,13 +426,13 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         applyImmersiveMode()
-        Log.i(TAG, "onResume importActive=${importManager.activeImportProgressView != null} initial=$initialLaunch overlay=${activeOverlay != null}")
+        Log.i(TAG, "onResume importActive=${importManager.activeImportProgressView != null} initial=$initialLaunch overlay=${navController.activeOverlay != null}")
         if (importManager.activeImportProgressView != null) return
         if (initialLaunch) {
             initialLaunch = false
             return
         }
-        if (activeOverlay != null) return
+        if (navController.activeOverlay != null) return
         val runestonePrefs = getSharedPreferences("runestone", MODE_PRIVATE)
         if (runestonePrefs.getBoolean("game_minimized", false)) {
             val minimizedPath = runestonePrefs.getString("paused_game", null)
@@ -454,7 +461,7 @@ class MainActivity : ComponentActivity() {
     override fun onBackPressed() {
         if (importManager.activeImportProgressView != null) {
             Toast.makeText(this, "Operation still running.", Toast.LENGTH_SHORT).show()
-        } else if (activeOverlay != null) {
+        } else if (navController.activeOverlay != null) {
             navController.dismissOverlay()
         } else if (navController.activeEngineFilter != null) {
             navController.activeEngineFilter = null
@@ -570,7 +577,7 @@ class MainActivity : ComponentActivity() {
         if (!controllerNavigationEnabled) {
             controllerNavigationEnabled = true
         }
-        navController.enableControllerNavigation(activeOverlay ?: rootContainer)
+        navController.enableControllerNavigation(navController.activeOverlay ?: rootContainer)
     }
 
     private fun disableControllerNavigation(root: View) {

@@ -85,7 +85,7 @@ class OverlayNavigationController(
     var activeOverlay: View? = null
     var detailOverlay: GameDetailOverlay? = null
     var homeContentView: View? = null
-    lateinit var persistentDock: View
+    var persistentDock: View? = null
     var manageFilesVisible = false
     var storageCache: Map<String, WorkspaceStorage> = emptyMap()
     var games: List<WorkspaceManager.GameInfo> = emptyList()
@@ -138,7 +138,7 @@ class OverlayNavigationController(
         rootContainer.addView(wrapper,
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT)
-        persistentDock.bringToFront()
+        persistentDock?.bringToFront()
         activeOverlay = wrapper
         if (controllerNavigationEnabled) {
             rootContainer.post { enableControllerNavigation(wrapper) }
@@ -482,7 +482,7 @@ class OverlayNavigationController(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
         )
-        persistentDock.bringToFront()
+        persistentDock?.bringToFront()
         activeOverlay = wrapper
     }
 

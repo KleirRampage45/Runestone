@@ -2,17 +2,15 @@ package com.runestone.app.ui
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.runestone.app.data.EngineType
 import com.runestone.app.data.GameConfigService
-import com.runestone.app.data.RunnerSettings
-import com.runestone.app.engine.EngineRegistry
 import com.runestone.app.provider.AvailableGame
 import com.runestone.app.session.GameSessionManager
 import com.runestone.app.services.CoverExtractor
 import com.runestone.app.services.GameMetadataService
-import com.runestone.app.store.StoreCoordinator
-import com.runestone.app.util.AppScope
 import com.runestone.app.workspace.WorkspaceManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,11 +30,13 @@ data class HomeUiState(
     val pausedGame: GameCardInfo? = null,
 )
 
-class GameListViewModel(application: Application) : AndroidViewModel(application) {
+class GameListViewModel(
+    application: Application,
+    private val workspaceManager: WorkspaceManager,
+    private val sessionManager: GameSessionManager,
+    private val metadataService: GameMetadataService,
+) : AndroidViewModel(application) {
     private val context = application
-    private val workspaceManager = WorkspaceManager(context)
-    private val sessionManager = GameSessionManager(context)
-    private val metadataService = GameMetadataService(context)
     private val gameSizeCache = mutableMapOf<String, Long>()
     private val gameSizeInFlight = mutableSetOf<String>()
     private val metadataWarmupInFlight = mutableSetOf<String>()
@@ -126,5 +126,16 @@ class GameListViewModel(application: Application) : AndroidViewModel(application
         val iT = i.split(" ").filter { it.length > 1 }.toSet()
         val mT = m.split(" ").filter { it.length > 1 }.toSet()
         return iT.isNotEmpty() && iT.intersect(mT).size >= minOf(2, iT.size)
+    }
+
+    class Factory(
+        private val application: Application,
+        private val workspaceManager: WorkspaceManager,
+        private val sessionManager: GameSessionManager,
+        private val metadataService: GameMetadataService,
+    ) : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T =
+            GameListViewModel(application, workspaceManager, sessionManager, metadataService) as T
     }
 }
