@@ -573,7 +573,7 @@ class HomeScreen(private val context: Context) {
                 SortMode.NAME_ASC -> "A-Z"
                 SortMode.NAME_DESC -> "Z-A"
                 SortMode.RECENT -> "REC"
-                SortMode.DATE_ADDED -> "NEW"
+                SortMode.DATE_ADDED -> "ADDED"
             }
             val filterBtn = TextView(context).apply {
                 text = " \u25A4 $filterLabel$searchBadge  |  $sortLabel "; setTextColor(ACCENT); textSize = 13f
@@ -945,7 +945,7 @@ class HomeScreen(private val context: Context) {
 
         val columns = if (layout == HomeCardLayout.GRID_3) 3 else 2
         val gap = dp(8)
-        val available = screenW - dp(20) - gap * (columns - 1)
+        val available = screenW - dp(28) - gap * (columns - 1)
         val cardW = available / columns
         return GridLayout(context).apply {
             columnCount = columns
