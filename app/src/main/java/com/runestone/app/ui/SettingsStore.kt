@@ -76,9 +76,11 @@ class SettingsStore(context: Context) {
             pixelFormatSpeed = prefs.getString("pixelFormatSpeed", defaults.pixelFormatSpeed) ?: defaults.pixelFormatSpeed,
             cropLeftY = prefs.getBoolean("cropLeftY", defaults.cropLeftY),
             useWebgl2 = prefs.getBoolean("useWebgl2", defaults.useWebgl2),
+            forceCanvas = prefs.getBoolean("forceCanvas", defaults.forceCanvas),
             decrypterAndReadfiles = prefs.getBoolean("decrypterAndReadfiles", defaults.decrypterAndReadfiles),
             usePreloadJs = prefs.getBoolean("usePreloadJs", defaults.usePreloadJs),
-            useHttpServer = prefs.getBoolean("useHttpServer", defaults.useHttpServer),
+            useHttpServer = prefs.getBoolean("useHttpServer_v2", defaults.useHttpServer),
+            useAsmjsEffekseer = prefs.getBoolean("useAsmjsEffekseer", defaults.useAsmjsEffekseer),
             preload = prefs.getBoolean("preload", defaults.preload),
             webgl = prefs.getBoolean("webgl", defaults.webgl),
             desktopMode = prefs.getBoolean("desktopMode", defaults.desktopMode),
@@ -163,9 +165,11 @@ class SettingsStore(context: Context) {
             .putString("pixelFormatSpeed", settings.pixelFormatSpeed)
             .putBoolean("cropLeftY", settings.cropLeftY)
             .putBoolean("useWebgl2", settings.useWebgl2)
+            .putBoolean("forceCanvas", settings.forceCanvas)
             .putBoolean("decrypterAndReadfiles", settings.decrypterAndReadfiles)
             .putBoolean("usePreloadJs", settings.usePreloadJs)
-            .putBoolean("useHttpServer", settings.useHttpServer)
+            .putBoolean("useHttpServer_v2", settings.useHttpServer)
+            .putBoolean("useAsmjsEffekseer", settings.useAsmjsEffekseer)
             .putBoolean("preload", settings.preload)
             .putBoolean("webgl", settings.webgl)
             .putBoolean("desktopMode", settings.desktopMode)

@@ -8,9 +8,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
-import android.graphics.RenderEffect
-import android.graphics.Shader
-import android.graphics.LinearGradient
+import android.graphics.DashPathEffect
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -32,8 +30,11 @@ class TouchOverlayView(context: Context) : View(context) {
         BTN_EXTRA_A, BTN_EXTRA_S, BTN_EXTRA_D,
         BTN_EXTRA_Z, BTN_EXTRA_X, BTN_EXTRA_C,
         SELECT, START, MENU, SETTINGS, HOME,
-        L1, R1,
-        OVERLAY_MENU,
+        L1, R1, ZL, ZR, L3, R3,
+        GUIDE, PLUS, MINUS,
+        LEFT_STICK, RIGHT_STICK,
+        TOOLBAR_TOGGLE, TOOLBAR_SETTINGS, TOOLBAR_KEYBOARD, TOOLBAR_POINTER,
+        OVERLAY_MENU, MENU_CHEATS, MENU_MUTE, MENU_ROTATE, MENU_REMAP, MENU_QUIT,
     }
 
     var opacity: Float = 0.72f
@@ -54,6 +55,11 @@ class TouchOverlayView(context: Context) : View(context) {
     var onRotateLayout: (() -> Unit)? = null
     var onProfileLayoutChanged: ((List<ControlButtonProfile>) -> Unit)? = null
     var onOverlayMenu: (() -> Unit)? = null
+    var onToggleKeyboard: (() -> Unit)? = null
+    var onTogglePointer: (() -> Unit)? = null
+    var toolbarVisible: Boolean = true
+    var menuOverlayVisible: Boolean = false
+    var pointerMode: Boolean = false
 
     // Game viewport safe area (set by GameActivity)
     var gameViewportLeft: Float = 0f
@@ -110,6 +116,39 @@ class TouchOverlayView(context: Context) : View(context) {
     private val r1Rect = RectF()
     private val shoulderRadius = 20f
 
+    // Full mode additions
+    private val leftStickRect = RectF()
+    private val rightStickRect = RectF()
+    private val leftStickThumb = PointF(0f, 0f)
+    private val rightStickThumb = PointF(0f, 0f)
+    private val zlRect = RectF()
+    private val zrRect = RectF()
+    private val l3Rect = RectF()
+    private val r3Rect = RectF()
+    private val guideRect = RectF()
+    private val plusRect = RectF()
+    private val minusRect = RectF()
+    private var stickRadius = 32f
+    private var innerStickRadius = 14f
+    private var leftStickActive = false
+    private var rightStickActive = false
+
+    // Toolbar
+    private val toolbarButtons = arrayOfNulls<RectF>(4)
+    private val toolbarRect = RectF()
+    private var toolbarButtonSize = 48f
+
+    // Menu overlay
+    private val menuOverlayRect = RectF()
+    private val menuItems = mutableListOf<Pair<RectF, Zone>>()
+
+    // Editor right toolbar
+    private val editorCheckRect = RectF()
+    private val editorUndoRect = RectF()
+    private val editorRotateRect = RectF()
+    private val editorCloseRect = RectF()
+    private val editorHeaderRect = RectF()
+
     // Bitmaps
     private val buttonBitmap: Bitmap? by lazy { bitmapOrNull(R.drawable.controller_button_circle) }
     private val buttonHighlightBitmap: Bitmap? by lazy { bitmapOrNull(R.drawable.controller_button_circle_highlight) }
@@ -162,10 +201,16 @@ class TouchOverlayView(context: Context) : View(context) {
     private val safeAreaPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 2f
-        pathEffect = android.graphics.DashPathEffect(floatArrayOf(10f, 10f), 0f)
+        pathEffect = DashPathEffect(floatArrayOf(10f, 10f), 0f)
     }
     private val touchZonePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
+    }
+    private val editorIconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        strokeWidth = 2.5f
     }
 
     private val vibrator: Vibrator? by lazy {
@@ -200,6 +245,12 @@ class TouchOverlayView(context: Context) : View(context) {
         selectedStrokePaint.color = Color.rgb(210, 180, 134)
     }
 
+    private fun orientationPrefix(): String = when {
+        controlsOnly -> "portrait_console"
+        width > height -> "landscape"
+        else -> "portrait"
+    }
+
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
         val w = width.toFloat()
@@ -223,7 +274,6 @@ class TouchOverlayView(context: Context) : View(context) {
     }
 
     private fun layoutLandscape(w: Float, h: Float, s: Float, shortSide: Float) {
-        // Calculate 4:3 game viewport (set by GameActivity, but recalculate fallback)
         val targetGameRatio = 4f / 3f
         val gameW = if (gameViewportRight > gameViewportLeft) {
             gameViewportRight - gameViewportLeft
@@ -256,12 +306,16 @@ class TouchOverlayView(context: Context) : View(context) {
         val actionSpread = 56f * s
 
         if (controllerPreset == ControllerPreset.SIMPLIFIED) {
-            btnConfirm.x = rightGutterCenter
-            btnConfirm.y = actionBaseY
-            btnBack.x = rightGutterCenter
-            btnBack.y = actionBaseY + actionSpread * 1.3f
-            btnDash.x = rightGutterCenter
-            btnDash.y = actionBaseY + actionSpread * 2.6f
+            // 2x2 grid: Confirm tl, Back tr, Dash bl, ExtraS br
+            val gridSize = actionSpread * 0.9f
+            btnConfirm.x = rightGutterCenter - gridSize
+            btnConfirm.y = actionBaseY - gridSize
+            btnBack.x = rightGutterCenter + gridSize
+            btnBack.y = actionBaseY - gridSize
+            btnDash.x = rightGutterCenter - gridSize
+            btnDash.y = actionBaseY + gridSize
+            btnExtraS.x = rightGutterCenter + gridSize
+            btnExtraS.y = actionBaseY + gridSize
         } else {
             // Full mode: compact cluster
             btnExtraA.x = rightGutterCenter - actionSpread * 0.8f
@@ -289,6 +343,13 @@ class TouchOverlayView(context: Context) : View(context) {
         l1Rect.set(leftGutterW * 0.5f - shoulderW / 2f, 24f * s, leftGutterW * 0.5f + shoulderW / 2f, 24f * s + shoulderH)
         r1Rect.set(gameRight + rightGutterW * 0.5f - shoulderW / 2f, 24f * s, gameRight + rightGutterW * 0.5f + shoulderW / 2f, 24f * s + shoulderH)
 
+        // ZL/ZR below L1/R1
+        val zlH = 26f * s
+        val zlW = 44f * s
+        val zlY = l1Rect.bottom + 8f * s
+        zlRect.set(l1Rect.centerX() - zlW / 2f, zlY, l1Rect.centerX() + zlW / 2f, zlY + zlH)
+        zrRect.set(r1Rect.centerX() - zlW / 2f, zlY, r1Rect.centerX() + zlW / 2f, zlY + zlH)
+
         // Modifier buttons in left gutter (Full mode only)
         if (controllerPreset == ControllerPreset.FULL) {
             val modX = gameLeft * 0.5f
@@ -297,6 +358,41 @@ class TouchOverlayView(context: Context) : View(context) {
             btnCtrl.x = modX; btnCtrl.y = modY
             btnAlt.x = modX; btnAlt.y = modY + modSpread
             btnShift.x = modX; btnShift.y = modY + modSpread * 2f
+
+            // Analog sticks (left in left gutter, right in right gutter)
+            val stickOuter = 36f * s
+            stickRadius = stickOuter / s
+            innerStickRadius = stickRadius * 0.44f
+            leftStickRect.set(
+                leftGutterW * 0.5f - stickOuter, h * 0.46f - stickOuter,
+                leftGutterW * 0.5f + stickOuter, h * 0.46f + stickOuter,
+            )
+            rightStickRect.set(
+                rightGutterCenter - stickOuter, h * 0.46f - stickOuter,
+                rightGutterCenter + stickOuter, h * 0.46f + stickOuter,
+            )
+            leftStickThumb.x = leftStickRect.centerX(); leftStickThumb.y = leftStickRect.centerY()
+            rightStickThumb.x = rightStickRect.centerX(); rightStickThumb.y = rightStickRect.centerY()
+
+            // L3/R3 below sticks
+            val l3H = 24f * s
+            val l3W = 40f * s
+            l3Rect.set(
+                leftStickRect.centerX() - l3W / 2f, leftStickRect.bottom + 6f * s,
+                leftStickRect.centerX() + l3W / 2f, leftStickRect.bottom + 6f * s + l3H,
+            )
+            r3Rect.set(
+                rightStickRect.centerX() - l3W / 2f, rightStickRect.bottom + 6f * s,
+                rightStickRect.centerX() + l3W / 2f, rightStickRect.bottom + 6f * s + l3H,
+            )
+
+            // Guide/Plus/Minus — between SELECT/START/MENU in bottom bar area
+            val miniW = 36f * s
+            val miniH = 24f * s
+            val miniY = h - 48f * s
+            guideRect.set(w * 0.5f - miniW / 2f, miniY - miniH / 2f, w * 0.5f + miniW / 2f, miniY + miniH / 2f)
+            plusRect.set(w * 0.5f - miniW / 2f - w * 0.08f, miniY - miniH / 2f, w * 0.5f + miniW / 2f - w * 0.08f, miniY + miniH / 2f)
+            minusRect.set(w * 0.5f - miniW / 2f + w * 0.08f, miniY - miniH / 2f, w * 0.5f + miniW / 2f + w * 0.08f, miniY + miniH / 2f)
         }
 
         // Bottom bar (small, in gutters or below)
@@ -309,6 +405,29 @@ class TouchOverlayView(context: Context) : View(context) {
         // Overlay menu button — top corner, outside game area
         overlayMenuRect.set(8f * s, 8f * s, 56f * s, 56f * s)
         editButtonRect.set(w - 76f * s, h - 76f * s, w - 8f * s, h - 8f * s)
+
+        // Toolbar on right edge
+        layoutToolbar(w, h, s)
+    }
+
+    private fun layoutToolbar(w: Float, h: Float, s: Float) {
+        val btnSize = 48f * s
+        toolbarButtonSize = btnSize
+        val gap = 8f * s
+        val panelW = btnSize + gap * 2f
+        val panelH = btnSize * 4f + gap * 5f
+        val panelL = w - panelW - 4f * s
+        val panelT = (h - panelH) / 2f
+        toolbarRect.set(panelL, panelT, panelL + panelW, panelT + panelH)
+
+        for (i in 0..3) {
+            val b = RectF()
+            b.set(
+                panelL + gap, panelT + gap + i * (btnSize + gap),
+                panelL + gap + btnSize, panelT + gap + i * (btnSize + gap) + btnSize,
+            )
+            toolbarButtons[i] = b
+        }
     }
 
     private fun layoutPortrait(w: Float, h: Float, s: Float, shortSide: Float) {
@@ -330,9 +449,16 @@ class TouchOverlayView(context: Context) : View(context) {
         val spread = if (controlsOnly) (actionRadius * s * 1.75f).coerceAtLeast(150f) else 52f * s
 
         if (controllerPreset == ControllerPreset.SIMPLIFIED) {
-            btnConfirm.x = actionCenterX; btnConfirm.y = actionCenterY - spread
-            btnBack.x = actionCenterX; btnBack.y = actionCenterY
-            btnDash.x = actionCenterX; btnDash.y = actionCenterY + spread
+            // 2x2 grid: Confirm tl, Back tr, Dash bl, ExtraS br
+            val gridSize = spread * 0.45f
+            btnConfirm.x = actionCenterX - gridSize
+            btnConfirm.y = actionCenterY - gridSize
+            btnBack.x = actionCenterX + gridSize
+            btnBack.y = actionCenterY - gridSize
+            btnDash.x = actionCenterX - gridSize
+            btnDash.y = actionCenterY + gridSize
+            btnExtraS.x = actionCenterX + gridSize
+            btnExtraS.y = actionCenterY + gridSize
         } else {
             btnExtraA.x = actionCenterX - spread * 0.8f; btnExtraA.y = actionCenterY - spread
             btnExtraS.x = actionCenterX; btnExtraS.y = actionCenterY - spread
@@ -356,6 +482,12 @@ class TouchOverlayView(context: Context) : View(context) {
         l1Rect.set(10f, shoulderY, 10f + shoulderW, shoulderY + shoulderH)
         r1Rect.set(w - 10f - shoulderW, shoulderY, w - 10f, shoulderY + shoulderH)
 
+        // ZL/ZR beside L1/R1
+        val zlH = 24f * s
+        val zlW = 38f * s
+        zlRect.set(l1Rect.right + 4f * s, shoulderY, l1Rect.right + 4f * s + zlW, shoulderY + zlH)
+        zrRect.set(r1Rect.left - 4f * s - zlW, shoulderY, r1Rect.left - 4f * s, shoulderY + zlH)
+
         if (controllerPreset == ControllerPreset.FULL) {
             val modX = w * 0.12f
             val modY = panelTop + controlsHeight * 0.15f
@@ -363,10 +495,68 @@ class TouchOverlayView(context: Context) : View(context) {
             btnCtrl.x = modX; btnCtrl.y = modY
             btnAlt.x = modX; btnAlt.y = modY + modSpread
             btnShift.x = modX; btnShift.y = modY + modSpread * 2f
+
+            // Analog sticks
+            val stickOuter = 34f * s
+            stickRadius = stickOuter / s
+            innerStickRadius = stickRadius * 0.44f
+            leftStickRect.set(
+                w * 0.35f - stickOuter, panelTop + controlsHeight * 0.20f - stickOuter,
+                w * 0.35f + stickOuter, panelTop + controlsHeight * 0.20f + stickOuter,
+            )
+            rightStickRect.set(
+                w * 0.65f - stickOuter, panelTop + controlsHeight * 0.20f - stickOuter,
+                w * 0.65f + stickOuter, panelTop + controlsHeight * 0.20f + stickOuter,
+            )
+            leftStickThumb.x = leftStickRect.centerX(); leftStickThumb.y = leftStickRect.centerY()
+            rightStickThumb.x = rightStickRect.centerX(); rightStickThumb.y = rightStickRect.centerY()
+
+            // L3/R3
+            val l3H = 22f * s
+            val l3W = 36f * s
+            l3Rect.set(
+                leftStickRect.centerX() - l3W / 2f, leftStickRect.bottom + 4f * s,
+                leftStickRect.centerX() + l3W / 2f, leftStickRect.bottom + 4f * s + l3H,
+            )
+            r3Rect.set(
+                rightStickRect.centerX() - l3W / 2f, rightStickRect.bottom + 4f * s,
+                rightStickRect.centerX() + l3W / 2f, rightStickRect.bottom + 4f * s + l3H,
+            )
+
+            // Guide/Plus/Minus
+            val miniW = 32f * s
+            val miniH = 20f * s
+            val miniY = barY - 4f * s
+            val miniGap = 20f * s
+            guideRect.set(w * 0.5f - miniW / 2f, miniY - miniH / 2f, w * 0.5f + miniW / 2f, miniY + miniH / 2f)
+            plusRect.set(guideRect.centerX() - miniGap - miniW, miniY - miniH / 2f, guideRect.centerX() - miniGap, miniY + miniH / 2f)
+            minusRect.set(guideRect.centerX() + miniGap, miniY - miniH / 2f, guideRect.centerX() + miniGap + miniW, miniY + miniH / 2f)
         }
 
         overlayMenuRect.set(8f * s, panelTop + 8f * s, 56f * s, panelTop + 56f * s)
         editButtonRect.set(w - 76f * s, h - 76f * s, w - 8f * s, h - 8f * s)
+
+        layoutToolbarPortrait(w, h, s, panelTop)
+    }
+
+    private fun layoutToolbarPortrait(w: Float, h: Float, s: Float, panelTop: Float) {
+        val btnSize = 44f * s
+        toolbarButtonSize = btnSize
+        val gap = 6f * s
+        val panelW = btnSize + gap * 2f
+        val panelH = btnSize * 4f + gap * 5f
+        val panelL = w - panelW - 4f * s
+        val panelT = panelTop + 16f * s
+        toolbarRect.set(panelL, panelT, panelL + panelW, panelT + panelH)
+
+        for (i in 0..3) {
+            val b = RectF()
+            b.set(
+                panelL + gap, panelT + gap + i * (btnSize + gap),
+                panelL + gap + btnSize, panelT + gap + i * (btnSize + gap) + btnSize,
+            )
+            toolbarButtons[i] = b
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -393,7 +583,8 @@ class TouchOverlayView(context: Context) : View(context) {
         if (controllerPreset == ControllerPreset.SIMPLIFIED) {
             drawGlassButton(canvas, btnConfirm.x, btnConfirm.y, radiusFor(Control.CONFIRM), getConfirmLabel(), a, Zone.BTN_CONFIRM, Control.CONFIRM)
             drawGlassButton(canvas, btnBack.x, btnBack.y, radiusFor(Control.BACK), getBackLabel(), a, Zone.BTN_BACK, Control.BACK)
-            drawGlassButton(canvas, btnDash.x, btnDash.y, radiusFor(Control.DASH), "Dash", a, Zone.BTN_DASH, Control.DASH)
+            drawGlassButton(canvas, btnDash.x, btnDash.y, radiusFor(Control.DASH), "Z", a, Zone.BTN_DASH, Control.DASH)
+            drawGlassButton(canvas, btnExtraS.x, btnExtraS.y, radiusFor(Control.EXTRA_S), "B", a, Zone.BTN_EXTRA_S, Control.EXTRA_S)
         } else {
             drawGlassButton(canvas, btnExtraA.x, btnExtraA.y, radiusFor(Control.EXTRA_A), "A", a, Zone.BTN_EXTRA_A, Control.EXTRA_A)
             drawGlassButton(canvas, btnExtraS.x, btnExtraS.y, radiusFor(Control.EXTRA_S), "S", a, Zone.BTN_EXTRA_S, Control.EXTRA_S)
@@ -413,13 +604,40 @@ class TouchOverlayView(context: Context) : View(context) {
         }
 
         // Bottom bar
-        drawGlassBarButton(canvas, selectRect, "SELECT", a, Zone.SELECT)
-        drawGlassBarButton(canvas, startRect, "START", a, Zone.START)
-        drawGlassBarButton(canvas, menuRect, "HOME", a, Zone.HOME)
+        drawGlassRoundRect(canvas, selectRect, "SELECT", a, Zone.SELECT, Control.SELECT)
+        drawGlassRoundRect(canvas, startRect, "START", a, Zone.START, Control.START)
+        drawGlassRoundRect(canvas, menuRect, "HOME", a, Zone.HOME, Control.MENU)
 
         // L1/R1
         drawShoulderButton(canvas, l1Rect, "L", a, Zone.L1)
         drawShoulderButton(canvas, r1Rect, "R", a, Zone.R1)
+
+        // ZL/ZR in FULL mode
+        if (controllerPreset == ControllerPreset.FULL) {
+            drawShoulderButton(canvas, zlRect, "ZL", a, Zone.ZL)
+            drawShoulderButton(canvas, zrRect, "ZR", a, Zone.ZR)
+        }
+
+        // Analog sticks + L3/R3 in FULL mode
+        if (controllerPreset == ControllerPreset.FULL) {
+            drawAnalogStick(canvas, leftStickRect, leftStickActive, a, true)
+            drawAnalogStick(canvas, rightStickRect, rightStickActive, a, false)
+            drawShoulderButton(canvas, l3Rect, "L3", a, Zone.L3)
+            drawShoulderButton(canvas, r3Rect, "R3", a, Zone.R3)
+            drawShoulderButton(canvas, guideRect, "GUIDE", a, Zone.GUIDE)
+            drawGlassBarButton(canvas, plusRect, "+", a, Zone.PLUS)
+            drawGlassBarButton(canvas, minusRect, "-", a, Zone.MINUS)
+        }
+
+        // Toolbar
+        if (toolbarVisible) {
+            drawToolbar(canvas, a)
+        }
+
+        // Menu overlay
+        if (menuOverlayVisible) {
+            drawMenuOverlay(canvas, a)
+        }
 
         // Overlay menu
         drawOverlayMenuButton(canvas, a)
@@ -432,25 +650,244 @@ class TouchOverlayView(context: Context) : View(context) {
         }
     }
 
-    private fun getConfirmLabel(): String = when {
-        showIcons && !showLabels -> ""
-        else -> "Confirm"
+    private fun drawAnalogStick(canvas: Canvas, rect: RectF, pressed: Boolean, a: Float, isLeft: Boolean) {
+        val cx = rect.centerX()
+        val cy = rect.centerY()
+        val r = rect.width() / 2f
+        val sr = r * 0.45f
+        val isr = r * 0.20f
+
+        // Outer shadow
+        shadowPaint.alpha = (0.30f * 255 * a).toInt().coerceIn(0, 255)
+        canvas.drawCircle(cx + 2f, cy + 3f, r, shadowPaint)
+
+        // Outer ring
+        val ringPaint = if (pressed) pressedGlassPaint else glassFillPaint
+        ringPaint.alpha = if (pressed) (0.22f * 255 * a).toInt().coerceIn(0, 255) else (0.12f * 255 * a).toInt().coerceIn(0, 255)
+        canvas.drawCircle(cx, cy, r, ringPaint)
+
+        glassBorderPaint.alpha = if (pressed) (0.50f * 255 * a).toInt().coerceIn(0, 255) else (0.32f * 255 * a).toInt().coerceIn(0, 255)
+        canvas.drawCircle(cx, cy, r, glassBorderPaint)
+
+        // Top highlight on ring
+        if (!pressed) {
+            glassHighlightPaint.alpha = (0.18f * 255 * a).toInt().coerceIn(0, 255)
+            canvas.drawArc(RectF(cx - r, cy - r, cx + r, cy + r), 225f, 90f, true, glassHighlightPaint)
+        }
+
+        // Crosshair lines
+        val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeWidth = 1.5f * scale
+            color = Color.argb((0.25f * 255 * a).toInt().coerceIn(0, 255), 255, 255, 255)
+        }
+        val crossExtent = r * 0.55f
+        canvas.drawLine(cx - crossExtent, cy, cx + crossExtent, cy, linePaint)
+        canvas.drawLine(cx, cy - crossExtent, cx, cy + crossExtent, linePaint)
+
+        // Center dot
+        val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.argb((0.20f * 255 * a).toInt().coerceIn(0, 255), 255, 255, 255)
+        }
+        canvas.drawCircle(cx, cy, r * 0.08f, dotPaint)
+
+        // Thumb circle
+        val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+        }
+        val thumbAlpha = if (pressed) (0.30f * 255 * a).toInt().coerceIn(0, 255) else (0.18f * 255 * a).toInt().coerceIn(0, 255)
+        thumbPaint.color = Color.argb(thumbAlpha, 255, 255, 255)
+        val thumbX = if (isLeft) leftStickThumb.x else rightStickThumb.x
+        val thumbY = if (isLeft) leftStickThumb.y else rightStickThumb.y
+        canvas.drawCircle(thumbX, thumbY, sr, thumbPaint)
+
+        val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+            color = Color.argb((0.40f * 255 * a).toInt().coerceIn(0, 255), 255, 255, 255)
+        }
+        canvas.drawCircle(thumbX, thumbY, sr, tp)
+
+        // Inner thumb dot
+        if (!pressed) {
+            glassHighlightPaint.alpha = (0.15f * 255 * a).toInt().coerceIn(0, 255)
+            canvas.drawCircle(thumbX, thumbY, sr * 0.5f, glassHighlightPaint)
+        }
     }
 
-    private fun getBackLabel(): String = when {
-        showIcons && !showLabels -> ""
-        else -> "Back"
+    private fun drawToolbar(canvas: Canvas, a: Float) {
+        if (!toolbarVisible || toolbarButtons[0] == null) return
+
+        // Panel background
+        val panelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.argb((0.10f * 255 * a).toInt().coerceIn(0, 255), 0, 0, 0)
+        }
+        canvas.drawRoundRect(toolbarRect, 12f * scale, 12f * scale, panelPaint)
+
+        val borderP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+            color = Color.argb((0.20f * 255 * a).toInt().coerceIn(0, 255), 255, 255, 255)
+        }
+        canvas.drawRoundRect(toolbarRect, 12f * scale, 12f * scale, borderP)
+
+        val iconLabelAlpha = (0.85f * 255 * a).toInt().coerceIn(0, 255)
+        val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            strokeWidth = 2f * scale
+            color = Color.argb(iconLabelAlpha, 232, 229, 220)
+        }
+
+        val zones = listOf(
+            Zone.TOOLBAR_TOGGLE to "Toggle",
+            Zone.TOOLBAR_SETTINGS to "Settings",
+            Zone.TOOLBAR_KEYBOARD to "Keys",
+            Zone.TOOLBAR_POINTER to "Pointer",
+        )
+
+        for (i in 0..3) {
+            val rect = toolbarButtons[i] ?: continue
+            val zone = zones[i].first
+            val label = zones[i].second
+            val pressed = zone in activeZones
+
+            val btnFill = if (pressed) pressedGlassPaint else glassFillPaint
+            btnFill.alpha = if (pressed) (0.22f * 255 * a).toInt().coerceIn(0, 255) else (0.12f * 255 * a).toInt().coerceIn(0, 255)
+            canvas.drawRoundRect(rect, 8f * scale, 8f * scale, btnFill)
+
+            if (pressed) {
+                val bdr = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    strokeWidth = 1.5f
+                    color = Color.argb((0.50f * 255 * a).toInt().coerceIn(0, 255), 210, 180, 134)
+                }
+                canvas.drawRoundRect(rect, 8f * scale, 8f * scale, bdr)
+            }
+
+            val cx = rect.centerX()
+            val cy = rect.centerY()
+            val s = rect.width() * 0.30f
+
+            iconPaint.color = if (pressed) Color.rgb(238, 207, 158) else Color.argb(iconLabelAlpha, 232, 229, 220)
+
+            when (i) {
+                0 -> OverlayStyle.Icons.gamepad(canvas, cx, cy, s, iconPaint)
+                1 -> OverlayStyle.Icons.sliders(canvas, cx, cy, s, iconPaint)
+                2 -> OverlayStyle.Icons.keyboard(canvas, cx, cy, s, iconPaint)
+                3 -> OverlayStyle.Icons.touchPointer(canvas, cx, cy, s, iconPaint)
+            }
+        }
     }
+
+    private fun drawMenuOverlay(canvas: Canvas, a: Float) {
+        // Dimmed background
+        val dimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.argb((0.55f * 255).toInt().coerceIn(0, 255), 0, 0, 0)
+        }
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dimPaint)
+
+        // Centered glass panel
+        val panelW = (260f * scale).coerceAtLeast(220f)
+        val itemH = (52f * scale).coerceAtLeast(44f)
+        val gap = (8f * scale).coerceAtLeast(4f)
+        val panelItems = 5
+        val panelPad = 20f * scale
+        val panelH = panelPad * 2f + itemH * panelItems + gap * (panelItems - 1)
+        val panelL = (width - panelW) / 2f
+        val panelT = (height - panelH) / 2f
+        menuOverlayRect.set(panelL, panelT, panelL + panelW, panelT + panelH)
+
+        val panelFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.argb((0.15f * 255).toInt().coerceIn(0, 255), 14, 14, 18)
+        }
+        canvas.drawRoundRect(menuOverlayRect, 20f * scale, 20f * scale, panelFill)
+
+        val panelBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+            color = Color.argb((0.35f * 255).toInt().coerceIn(0, 255), 255, 255, 255)
+        }
+        canvas.drawRoundRect(menuOverlayRect, 20f * scale, 20f * scale, panelBorder)
+
+        menuItems.clear()
+        val entries = listOf(
+            Zone.MENU_CHEATS to "Cheats",
+            Zone.MENU_MUTE to "Mute",
+            Zone.MENU_ROTATE to "Rotate",
+            Zone.MENU_REMAP to "Remap",
+            Zone.MENU_QUIT to "Quit",
+        )
+
+        val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            strokeWidth = 2f * scale
+            color = Color.argb((0.85f * 255).toInt().coerceIn(0, 255), 232, 229, 220)
+        }
+
+        for ((index, entry) in entries.withIndex()) {
+            val (zone, name) = entry
+            val itemRect = RectF(
+                menuOverlayRect.left + panelPad,
+                menuOverlayRect.top + panelPad + index * (itemH + gap),
+                menuOverlayRect.right - panelPad,
+                menuOverlayRect.top + panelPad + index * (itemH + gap) + itemH,
+            )
+            menuItems.add(itemRect to zone)
+
+            val pressed = zone in activeZones
+
+            // Item background
+            if (pressed) {
+                val itemBg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.FILL
+                    color = Color.argb((0.20f * 255).toInt().coerceIn(0, 255), 255, 255, 255)
+                }
+                canvas.drawRoundRect(itemRect, 10f * scale, 10f * scale, itemBg)
+            }
+
+            // Icon
+            val iconCx = itemRect.left + itemH * 0.5f
+            val iconCy = itemRect.centerY()
+            val iconS = itemH * 0.30f
+
+            when (index) {
+                0 -> OverlayStyle.Icons.wand(canvas, iconCx, iconCy, iconS, iconPaint)
+                1 -> OverlayStyle.Icons.speakerMute(canvas, iconCx, iconCy, iconS, iconPaint)
+                2 -> OverlayStyle.Icons.phoneRotate(canvas, iconCx, iconCy, iconS, iconPaint)
+                3 -> OverlayStyle.Icons.grid(canvas, iconCx, iconCy, iconS, iconPaint)
+                4 -> OverlayStyle.Icons.exitDoor(canvas, iconCx, iconCy, iconS, iconPaint)
+            }
+
+            // Label
+            val lp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                textAlign = Paint.Align.LEFT
+                textSize = 15f * scale
+                isFakeBoldText = true
+                color = if (pressed) Color.rgb(238, 207, 158) else Color.argb((0.85f * 255).toInt().coerceIn(0, 255), 255, 255, 255)
+            }
+            canvas.drawText(name, iconCx + iconS + 12f * scale, itemRect.centerY() + 5f * scale, lp)
+        }
+    }
+
+    private fun getConfirmLabel(): String = "ENTER"
+    private fun getBackLabel(): String = if (showIcons && !showLabels) "" else "ESC"
 
     private fun drawGlassButton(canvas: Canvas, x: Float, y: Float, r: Float, label: String, a: Float, zone: Zone, control: Control) {
         val zonePressed = zone in activeZones
         val baseRadius = r
 
-        // Shadow
         shadowPaint.alpha = (0.35f * 255 * a).toInt().coerceIn(0, 255)
         canvas.drawCircle(x + 2f, y + 4f, baseRadius, shadowPaint)
 
-        // Fill
         val fillPaint = if (zonePressed) pressedGlassPaint else glassFillPaint
         fillPaint.alpha = if (zonePressed) {
             (0.22f * 255 * a).toInt().coerceIn(0, 255)
@@ -459,7 +896,6 @@ class TouchOverlayView(context: Context) : View(context) {
         }
         canvas.drawCircle(x, y, baseRadius, fillPaint)
 
-        // Border
         glassBorderPaint.alpha = if (zonePressed) {
             (0.50f * 255 * a).toInt().coerceIn(0, 255)
         } else {
@@ -467,20 +903,17 @@ class TouchOverlayView(context: Context) : View(context) {
         }
         canvas.drawCircle(x, y, baseRadius, glassBorderPaint)
 
-        // Top highlight
         if (!zonePressed) {
             glassHighlightPaint.alpha = (0.18f * 255 * a).toInt().coerceIn(0, 255)
             canvas.drawArc(RectF(x - baseRadius, y - baseRadius, x + baseRadius, y + baseRadius), 225f, 90f, true, glassHighlightPaint)
         }
 
-        // Pressed scale effect
         val scaleDown = if (zonePressed) 0.96f else 1.0f
         if (zonePressed) {
             canvas.save()
             canvas.scale(scaleDown, scaleDown, x, y)
         }
 
-        // Label
         if (label.isNotEmpty()) {
             labelPaint.alpha = if (zonePressed) 255 else (0.85f * 255 * a).toInt().coerceIn(0, 255)
             labelPaint.color = if (zonePressed) Color.rgb(200, 170, 130) else Color.argb((0.85f * 255 * a).toInt().coerceIn(0, 255), 255, 255, 255)
@@ -490,7 +923,6 @@ class TouchOverlayView(context: Context) : View(context) {
 
         if (zonePressed) canvas.restore()
 
-        // Debug control bounds
         if (showControlBounds) {
             glassBorderPaint.alpha = (0.60f * 255 * a).toInt().coerceIn(0, 255)
             glassBorderPaint.color = Color.argb(glassBorderPaint.alpha, 0, 255, 200)
@@ -500,6 +932,34 @@ class TouchOverlayView(context: Context) : View(context) {
 
         drawSelection(canvas, control)
         controlRects[control] = RectF(x - baseRadius, y - baseRadius, x + baseRadius, y + baseRadius)
+    }
+
+    private fun drawGlassRoundRect(canvas: Canvas, rect: RectF, label: String, a: Float, zone: Zone, control: Control) {
+        val pressed = zone in activeZones
+        val r = rect.height() * 0.35f
+
+        shadowPaint.alpha = (0.30f * 255 * a).toInt().coerceIn(0, 255)
+        canvas.drawRoundRect(rect.left + 1f, rect.top + 3f, rect.right + 1f, rect.bottom + 3f, r, r, shadowPaint)
+
+        val fillPaint = if (pressed) pressedGlassPaint else glassFillPaint
+        fillPaint.alpha = if (pressed) (0.22f * 255 * a).toInt().coerceIn(0, 255) else (0.12f * 255 * a).toInt().coerceIn(0, 255)
+        canvas.drawRoundRect(rect, r, r, fillPaint)
+
+        glassBorderPaint.alpha = if (pressed) (0.45f * 255 * a).toInt().coerceIn(0, 255) else (0.32f * 255 * a).toInt().coerceIn(0, 255)
+        canvas.drawRoundRect(rect, r, r, glassBorderPaint)
+
+        if (!pressed) {
+            glassHighlightPaint.alpha = (0.15f * 255 * a).toInt().coerceIn(0, 255)
+            val hlRect = RectF(rect.left, rect.top, rect.right, rect.top + rect.height() * 0.45f)
+            canvas.drawRoundRect(hlRect, r, r, glassHighlightPaint)
+        }
+
+        labelPaint.alpha = if (pressed) 255 else (0.85f * 255 * a).toInt().coerceIn(0, 255)
+        labelPaint.color = if (pressed) Color.rgb(238, 207, 158) else Color.argb((0.85f * 255 * a).toInt().coerceIn(0, 255), 255, 255, 255)
+        labelPaint.textSize = 14f * scale
+        canvas.drawText(label, rect.centerX(), rect.centerY() + 5f, labelPaint)
+
+        drawSelection(canvas, control)
     }
 
     private fun drawGlassBarButton(canvas: Canvas, rect: RectF, label: String, a: Float, zone: Zone) {
@@ -579,7 +1039,6 @@ class TouchOverlayView(context: Context) : View(context) {
         glassBorderPaint.alpha = (0.35f * 255 * a).toInt().coerceIn(0, 255)
         canvas.drawRoundRect(overlayMenuRect, r, r, glassBorderPaint)
 
-        // Draw three horizontal lines (hamburger)
         val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
@@ -598,93 +1057,43 @@ class TouchOverlayView(context: Context) : View(context) {
     private fun drawDPad(canvas: Canvas, a: Float) {
         val cx = dpadCenter.x
         val cy = dpadCenter.y
-        val outer = dpadRadius * scale
-        val inner = dpadInnerRadius * scale
-        val pressed = activeZones.any { it.name.startsWith("DPAD") }
+        val totalSize = dpadRadius * scale * 1.6f
+        val gap = totalSize * 0.06f
+        val btnW = totalSize * 0.34f
+        val btnH = totalSize * 0.32f
+        val corner = 8f * scale
 
-        // Shadow
-        shadowPaint.alpha = (0.35f * 255 * a).toInt().coerceIn(0, 255)
-        canvas.drawCircle(cx + 2f, cy + 4f, outer, shadowPaint)
+        drawDpadBtn(canvas, RectF(cx - btnW / 2f, cy - btnH - gap / 2f, cx + btnW / 2f, cy - gap / 2f), corner, a, Zone.DPAD_UP, "\u25B2")
+        drawDpadBtn(canvas, RectF(cx - btnW / 2f, cy + gap / 2f, cx + btnW / 2f, cy + btnH + gap / 2f), corner, a, Zone.DPAD_DOWN, "\u25BC")
+        drawDpadBtn(canvas, RectF(cx - btnW - gap / 2f, cy - btnH / 2f, cx - gap / 2f, cy + btnH / 2f), corner, a, Zone.DPAD_LEFT, "\u25C0")
+        drawDpadBtn(canvas, RectF(cx + gap / 2f, cy - btnH / 2f, cx + btnW + gap / 2f, cy + btnH / 2f), corner, a, Zone.DPAD_RIGHT, "\u25B6")
 
-        // Base fill
-        val fillPaint = if (pressed) pressedGlassPaint else glassFillPaint
-        fillPaint.alpha = if (pressed) {
-            (0.22f * 255 * a).toInt().coerceIn(0, 255)
-        } else {
-            (0.12f * 255 * a).toInt().coerceIn(0, 255)
-        }
-        canvas.drawCircle(cx, cy, outer, fillPaint)
-
-        // Border
-        glassBorderPaint.alpha = if (pressed) {
-            (0.50f * 255 * a).toInt().coerceIn(0, 255)
-        } else {
-            (0.32f * 255 * a).toInt().coerceIn(0, 255)
-        }
-        canvas.drawCircle(cx, cy, outer, glassBorderPaint)
-
-        // Top highlight
-        if (!pressed) {
-            glassHighlightPaint.alpha = (0.18f * 255 * a).toInt().coerceIn(0, 255)
-            canvas.drawArc(RectF(cx - outer, cy - outer, cx + outer, cy + outer), 225f, 90f, true, glassHighlightPaint)
-        }
-
-        // Center dot
-        glassFillPaint.alpha = (0.08f * 255 * a).toInt().coerceIn(0, 255)
-        canvas.drawCircle(cx, cy, inner * 0.35f, glassFillPaint)
-        glassBorderPaint.alpha = (0.20f * 255 * a).toInt().coerceIn(0, 255)
-        canvas.drawCircle(cx, cy, inner * 0.35f, glassBorderPaint)
-
-        // Directional arrows
-        drawDpadArrow(canvas, cx, cy - inner * 0.72f, outer * 0.18f, Direction.UP, Zone.DPAD_UP, a)
-        drawDpadArrow(canvas, cx, cy + inner * 0.72f, outer * 0.18f, Direction.DOWN, Zone.DPAD_DOWN, a)
-        drawDpadArrow(canvas, cx - inner * 0.72f, cy, outer * 0.18f, Direction.LEFT, Zone.DPAD_LEFT, a)
-        drawDpadArrow(canvas, cx + inner * 0.72f, cy, outer * 0.18f, Direction.RIGHT, Zone.DPAD_RIGHT, a)
-
-        drawSelection(canvas, Control.DPAD)
+        val outer = totalSize / 2f + gap
         controlRects[Control.DPAD] = RectF(cx - outer, cy - outer, cx + outer, cy + outer)
-
-        // Debug touch zone
-        if (showTouchZones) {
-            touchZonePaint.alpha = (0.15f * 255 * a).toInt().coerceIn(0, 255)
-            canvas.drawCircle(cx, cy, outer * 1.15f, touchZonePaint)
-        }
     }
 
-    private enum class Direction { UP, DOWN, LEFT, RIGHT }
-
-    private fun drawDpadArrow(canvas: Canvas, x: Float, y: Float, size: Float, direction: Direction, zone: Zone, a: Float) {
+    private fun drawDpadBtn(canvas: Canvas, rect: RectF, corner: Float, a: Float, zone: Zone, arrow: String) {
         val pressed = zone in activeZones
-        val path = Path()
-        when (direction) {
-            Direction.UP -> {
-                path.moveTo(x, y - size)
-                path.lineTo(x - size, y + size * 0.7f)
-                path.lineTo(x + size, y + size * 0.7f)
-            }
-            Direction.DOWN -> {
-                path.moveTo(x, y + size)
-                path.lineTo(x - size, y - size * 0.7f)
-                path.lineTo(x + size, y - size * 0.7f)
-            }
-            Direction.LEFT -> {
-                path.moveTo(x - size, y)
-                path.lineTo(x + size * 0.7f, y - size)
-                path.lineTo(x + size * 0.7f, y + size)
-            }
-            Direction.RIGHT -> {
-                path.moveTo(x + size, y)
-                path.lineTo(x - size * 0.7f, y - size)
-                path.lineTo(x - size * 0.7f, y + size)
-            }
+        val r = corner
+        shadowPaint.alpha = (0.30f * 255 * a).toInt().coerceIn(0, 255)
+        canvas.drawRoundRect(rect.left + 1f, rect.top + 2f, rect.right + 1f, rect.bottom + 2f, r, r, shadowPaint)
+        val fillA = if (pressed) 0.22f else 0.10f
+        glassFillPaint.color = Color.argb((fillA * 255 * a).toInt().coerceIn(0, 255), 255, 255, 255)
+        canvas.drawRoundRect(rect, r, r, glassFillPaint)
+        glassBorderPaint.alpha = if (pressed) (0.45f * 255 * a).toInt().coerceIn(0, 255) else (0.30f * 255 * a).toInt().coerceIn(0, 255)
+        canvas.drawRoundRect(rect, r, r, glassBorderPaint)
+        if (!pressed) {
+            glassHighlightPaint.alpha = (0.12f * 255 * a).toInt().coerceIn(0, 255)
+            val hl = RectF(rect.left, rect.top, rect.right, rect.top + rect.height() * 0.4f)
+            canvas.drawRoundRect(hl, r, r, glassHighlightPaint)
         }
-        path.close()
-
-        val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = if (pressed) Color.rgb(200, 170, 130) else Color.argb((0.85f * 255 * a).toInt().coerceIn(0, 255), 255, 255, 255)
+        val ap = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL; textAlign = Paint.Align.CENTER; isFakeBoldText = true
+            textSize = rect.height() * 0.6f
+            color = if (pressed) Color.rgb(238, 207, 158) else Color.argb((0.85f * 255 * a).toInt().coerceIn(0, 255), 255, 255, 255)
         }
-        canvas.drawPath(path, arrowPaint)
+        canvas.drawText(arrow, rect.centerX(), rect.centerY() + ap.textSize * 0.35f, ap)
+        drawSelection(canvas, Control.DPAD)
     }
 
     private fun drawTouchZones(canvas: Canvas) {
@@ -810,7 +1219,6 @@ class TouchOverlayView(context: Context) : View(context) {
     }
 
     private fun showExtraButtonsLegacyToggle() {
-        // Toggle between SIMPLIFIED and FULL
         controllerPreset = if (controllerPreset == ControllerPreset.SIMPLIFIED) ControllerPreset.FULL else ControllerPreset.SIMPLIFIED
         loadLayout()
         applySavedLayout()
@@ -830,6 +1238,7 @@ class TouchOverlayView(context: Context) : View(context) {
                 val zones = hitTestMulti(event.getX(idx), event.getY(idx))
                 if (zones.isNotEmpty()) {
                     val newZones = zones - activeZones
+                    handleSpecialZones(newZones)
                     activeZones.addAll(zones)
                     newZones.forEach { onInput?.invoke(it, true) }
                     if (newZones.isNotEmpty()) vibrate()
@@ -846,6 +1255,7 @@ class TouchOverlayView(context: Context) : View(context) {
                 val released = activeZones - newActive
                 val pressed = newActive - activeZones
                 released.forEach { onInput?.invoke(it, false) }
+                handleSpecialZones(pressed)
                 pressed.forEach {
                     onInput?.invoke(it, true)
                     vibrate()
@@ -878,6 +1288,52 @@ class TouchOverlayView(context: Context) : View(context) {
         return false
     }
 
+    private fun handleSpecialZones(zones: Set<Zone>) {
+        for (zone in zones) {
+            when (zone) {
+                Zone.TOOLBAR_TOGGLE -> {
+                    onToggleControls?.invoke()
+                }
+                Zone.TOOLBAR_SETTINGS -> {
+                    onOverlayMenu?.invoke()
+                }
+                Zone.TOOLBAR_KEYBOARD -> {
+                    onToggleKeyboard?.invoke()
+                }
+                Zone.TOOLBAR_POINTER -> {
+                    onTogglePointer?.invoke()
+                }
+                Zone.MENU_CHEATS -> {
+                    menuOverlayVisible = false
+                    invalidate()
+                }
+                Zone.MENU_MUTE -> {
+                    menuOverlayVisible = false
+                    invalidate()
+                }
+                Zone.MENU_ROTATE -> {
+                    menuOverlayVisible = false
+                    onRotateLayout?.invoke()
+                }
+                Zone.MENU_REMAP -> {
+                    menuOverlayVisible = false
+                    invalidate()
+                }
+                Zone.MENU_QUIT -> {
+                    menuOverlayVisible = false
+                    onOverlayMenu?.invoke()
+                }
+                Zone.LEFT_STICK -> {
+                    leftStickActive = true
+                }
+                Zone.RIGHT_STICK -> {
+                    rightStickActive = true
+                }
+                else -> {}
+            }
+        }
+    }
+
     private fun handleOverlayMenuTouch(event: MotionEvent): Boolean {
         if (editing || quickSettingsOpen) return false
         val action = event.actionMasked
@@ -888,6 +1344,11 @@ class TouchOverlayView(context: Context) : View(context) {
             return true
         }
         return false
+    }
+
+    fun toggleMenuOverlay() {
+        menuOverlayVisible = !menuOverlayVisible
+        invalidate()
     }
 
     private fun hitTestMulti(x: Float, y: Float): Set<Zone> {
@@ -901,21 +1362,46 @@ class TouchOverlayView(context: Context) : View(context) {
         val s = scale
         val isLandscape = width > height && !controlsOnly
 
-        // In landscape, ignore touches inside the game viewport unless in edit mode
         if (isLandscape && !editing && gameViewportRight > gameViewportLeft) {
             if (x > gameViewportLeft && x < gameViewportRight && y > gameViewportTop && y < gameViewportBottom) {
                 return null
             }
         }
 
-        // In portrait, ignore touches above control panel unless in edit mode
         if (!isLandscape && !editing && !controlsOnly) {
             val panelTop = height * 0.55f
             if (y < panelTop) return null
         }
 
+        // Menu items (highest priority)
+        for ((rect, zone) in menuItems) {
+            if (rect.contains(x, y)) return zone
+        }
+
+        // Toolbar buttons
+        if (toolbarVisible) {
+            for (i in 0..3) {
+                val rect = toolbarButtons[i] ?: continue
+                if (rect.contains(x, y)) {
+                    return when (i) {
+                        0 -> Zone.TOOLBAR_TOGGLE
+                        1 -> Zone.TOOLBAR_SETTINGS
+                        2 -> Zone.TOOLBAR_KEYBOARD
+                        3 -> Zone.TOOLBAR_POINTER
+                        else -> null
+                    }
+                }
+            }
+        }
+
         // Overlay menu
         if (overlayMenuRect.contains(x, y)) return Zone.OVERLAY_MENU
+
+        // ZL/ZR in FULL mode
+        if (controllerPreset == ControllerPreset.FULL) {
+            if (zlRect.contains(x, y)) return Zone.ZL
+            if (zrRect.contains(x, y)) return Zone.ZR
+        }
 
         // L1/R1
         if (l1Rect.contains(x, y)) return Zone.L1
@@ -926,11 +1412,33 @@ class TouchOverlayView(context: Context) : View(context) {
         if (startRect.contains(x, y)) return Zone.START
         if (menuRect.contains(x, y)) return Zone.HOME
 
+        // FULL mode extras
+        if (controllerPreset == ControllerPreset.FULL) {
+            // Analog sticks
+            if (leftStickRect.contains(x, y)) return Zone.LEFT_STICK
+            if (rightStickRect.contains(x, y)) return Zone.RIGHT_STICK
+
+            // L3/R3
+            if (l3Rect.contains(x, y)) return Zone.L3
+            if (r3Rect.contains(x, y)) return Zone.R3
+
+            // Guide/Plus/Minus
+            if (guideRect.contains(x, y)) return Zone.GUIDE
+            if (plusRect.contains(x, y)) return Zone.PLUS
+            if (minusRect.contains(x, y)) return Zone.MINUS
+
+            // Modifiers
+            if (dist(x, y, btnCtrl.x, btnCtrl.y) < radiusFor(Control.CTRL) * 0.85f) return Zone.BTN_CTRL
+            if (dist(x, y, btnAlt.x, btnAlt.y) < radiusFor(Control.ALT) * 0.85f) return Zone.BTN_ALT
+            if (dist(x, y, btnShift.x, btnShift.y) < radiusFor(Control.SHIFT) * 0.85f) return Zone.BTN_SHIFT
+        }
+
         // Action buttons based on preset
         if (controllerPreset == ControllerPreset.SIMPLIFIED) {
             if (dist(x, y, btnConfirm.x, btnConfirm.y) < radiusFor(Control.CONFIRM)) return Zone.BTN_CONFIRM
             if (dist(x, y, btnBack.x, btnBack.y) < radiusFor(Control.BACK)) return Zone.BTN_BACK
             if (dist(x, y, btnDash.x, btnDash.y) < radiusFor(Control.DASH)) return Zone.BTN_DASH
+            if (dist(x, y, btnExtraS.x, btnExtraS.y) < radiusFor(Control.EXTRA_S)) return Zone.BTN_EXTRA_S
         } else {
             if (dist(x, y, btnExtraA.x, btnExtraA.y) < radiusFor(Control.EXTRA_A)) return Zone.BTN_EXTRA_A
             if (dist(x, y, btnExtraS.x, btnExtraS.y) < radiusFor(Control.EXTRA_S)) return Zone.BTN_EXTRA_S
@@ -940,9 +1448,6 @@ class TouchOverlayView(context: Context) : View(context) {
             if (dist(x, y, btnExtraC.x, btnExtraC.y) < radiusFor(Control.EXTRA_C)) return Zone.BTN_EXTRA_C
             if (dist(x, y, btnConfirm.x, btnConfirm.y) < radiusFor(Control.CONFIRM)) return Zone.BTN_CONFIRM
             if (dist(x, y, btnBack.x, btnBack.y) < radiusFor(Control.BACK)) return Zone.BTN_BACK
-            if (dist(x, y, btnCtrl.x, btnCtrl.y) < radiusFor(Control.CTRL) * 0.85f) return Zone.BTN_CTRL
-            if (dist(x, y, btnAlt.x, btnAlt.y) < radiusFor(Control.ALT) * 0.85f) return Zone.BTN_ALT
-            if (dist(x, y, btnShift.x, btnShift.y) < radiusFor(Control.SHIFT) * 0.85f) return Zone.BTN_SHIFT
         }
 
         // D-pad
@@ -980,7 +1485,44 @@ class TouchOverlayView(context: Context) : View(context) {
 
         val result = mutableSetOf<Zone>()
 
+        // Menu items (highest priority)
+        for ((rect, zone) in menuItems) {
+            if (rect.contains(x, y)) return setOf(zone)
+        }
+
+        // Toolbar buttons
+        if (toolbarVisible) {
+            for (i in 0..3) {
+                val rect = toolbarButtons[i] ?: continue
+                if (rect.contains(x, y)) {
+                    return setOf(
+                        when (i) {
+                            0 -> Zone.TOOLBAR_TOGGLE
+                            1 -> Zone.TOOLBAR_SETTINGS
+                            2 -> Zone.TOOLBAR_KEYBOARD
+                            3 -> Zone.TOOLBAR_POINTER
+                            else -> null
+                        }!!
+                    )
+                }
+            }
+        }
+
         if (overlayMenuRect.contains(x, y)) return setOf(Zone.OVERLAY_MENU)
+
+        // FULL mode extras
+        if (controllerPreset == ControllerPreset.FULL) {
+            if (zlRect.contains(x, y)) return setOf(Zone.ZL)
+            if (zrRect.contains(x, y)) return setOf(Zone.ZR)
+            if (leftStickRect.contains(x, y)) result.add(Zone.LEFT_STICK)
+            if (rightStickRect.contains(x, y)) result.add(Zone.RIGHT_STICK)
+            if (l3Rect.contains(x, y)) return setOf(Zone.L3)
+            if (r3Rect.contains(x, y)) return setOf(Zone.R3)
+            if (guideRect.contains(x, y)) return setOf(Zone.GUIDE)
+            if (plusRect.contains(x, y)) return setOf(Zone.PLUS)
+            if (minusRect.contains(x, y)) return setOf(Zone.MINUS)
+        }
+
         if (l1Rect.contains(x, y)) return setOf(Zone.L1)
         if (r1Rect.contains(x, y)) return setOf(Zone.R1)
         if (selectRect.contains(x, y)) return setOf(Zone.SELECT)
@@ -991,6 +1533,7 @@ class TouchOverlayView(context: Context) : View(context) {
             if (dist(x, y, btnConfirm.x, btnConfirm.y) < radiusFor(Control.CONFIRM)) result.add(Zone.BTN_CONFIRM)
             if (dist(x, y, btnBack.x, btnBack.y) < radiusFor(Control.BACK)) result.add(Zone.BTN_BACK)
             if (dist(x, y, btnDash.x, btnDash.y) < radiusFor(Control.DASH)) result.add(Zone.BTN_DASH)
+            if (dist(x, y, btnExtraS.x, btnExtraS.y) < radiusFor(Control.EXTRA_S)) result.add(Zone.BTN_EXTRA_S)
         } else {
             if (dist(x, y, btnExtraA.x, btnExtraA.y) < radiusFor(Control.EXTRA_A)) result.add(Zone.BTN_EXTRA_A)
             if (dist(x, y, btnExtraS.x, btnExtraS.y) < radiusFor(Control.EXTRA_S)) result.add(Zone.BTN_EXTRA_S)
@@ -1000,9 +1543,11 @@ class TouchOverlayView(context: Context) : View(context) {
             if (dist(x, y, btnExtraC.x, btnExtraC.y) < radiusFor(Control.EXTRA_C)) result.add(Zone.BTN_EXTRA_C)
             if (dist(x, y, btnConfirm.x, btnConfirm.y) < radiusFor(Control.CONFIRM)) result.add(Zone.BTN_CONFIRM)
             if (dist(x, y, btnBack.x, btnBack.y) < radiusFor(Control.BACK)) result.add(Zone.BTN_BACK)
-            if (dist(x, y, btnCtrl.x, btnCtrl.y) < radiusFor(Control.CTRL) * 0.85f) result.add(Zone.BTN_CTRL)
-            if (dist(x, y, btnAlt.x, btnAlt.y) < radiusFor(Control.ALT) * 0.85f) result.add(Zone.BTN_ALT)
-            if (dist(x, y, btnShift.x, btnShift.y) < radiusFor(Control.SHIFT) * 0.85f) result.add(Zone.BTN_SHIFT)
+            if (controllerPreset == ControllerPreset.FULL) {
+                if (dist(x, y, btnCtrl.x, btnCtrl.y) < radiusFor(Control.CTRL) * 0.85f) result.add(Zone.BTN_CTRL)
+                if (dist(x, y, btnAlt.x, btnAlt.y) < radiusFor(Control.ALT) * 0.85f) result.add(Zone.BTN_ALT)
+                if (dist(x, y, btnShift.x, btnShift.y) < radiusFor(Control.SHIFT) * 0.85f) result.add(Zone.BTN_SHIFT)
+            }
         }
         if (result.isNotEmpty()) return result
 
@@ -1069,7 +1614,25 @@ class TouchOverlayView(context: Context) : View(context) {
         Zone.HOME -> Control.MENU
         Zone.L1 -> Control.L1
         Zone.R1 -> Control.R1
+        Zone.ZL -> Control.ZL
+        Zone.ZR -> Control.ZR
+        Zone.L3 -> Control.L3
+        Zone.R3 -> Control.R3
+        Zone.GUIDE -> Control.GUIDE
+        Zone.PLUS -> Control.PLUS
+        Zone.MINUS -> Control.MINUS
+        Zone.LEFT_STICK -> Control.LEFT_STICK
+        Zone.RIGHT_STICK -> Control.RIGHT_STICK
+        Zone.TOOLBAR_TOGGLE -> Control.MENU
+        Zone.TOOLBAR_SETTINGS -> Control.MENU
+        Zone.TOOLBAR_KEYBOARD -> Control.MENU
+        Zone.TOOLBAR_POINTER -> Control.MENU
         Zone.OVERLAY_MENU -> Control.MENU
+        Zone.MENU_CHEATS -> Control.MENU
+        Zone.MENU_MUTE -> Control.MENU
+        Zone.MENU_ROTATE -> Control.MENU
+        Zone.MENU_REMAP -> Control.MENU
+        Zone.MENU_QUIT -> Control.MENU
         Zone.BTN_X, Zone.BTN_Y -> Control.DASH
     }
 
@@ -1087,13 +1650,13 @@ class TouchOverlayView(context: Context) : View(context) {
         when (action) {
             MotionEvent.ACTION_DOWN -> {
                 when {
-                    doneRect.contains(x, y) -> {
+                    editorCheckRect.contains(x, y) -> {
                         saveLayout()
                         editing = false
                         selectedControl = null
                         invalidate()
                     }
-                    revertRect.contains(x, y) -> {
+                    editorUndoRect.contains(x, y) -> {
                         layout.clear()
                         layout.putAll(savedLayoutBeforeEdit.mapValues { it.value.copy() })
                         applySavedLayout()
@@ -1101,8 +1664,16 @@ class TouchOverlayView(context: Context) : View(context) {
                         selectedControl = null
                         invalidate()
                     }
-                    presetRect.contains(x, y) -> {
+                    editorRotateRect.contains(x, y) -> {
                         resetToPreset()
+                    }
+                    editorCloseRect.contains(x, y) -> {
+                        layout.clear()
+                        layout.putAll(savedLayoutBeforeEdit.mapValues { it.value.copy() })
+                        applySavedLayout()
+                        editing = false
+                        selectedControl = null
+                        invalidate()
                     }
                     else -> {
                         draggingControl = hitTestControl(x, y)
@@ -1154,16 +1725,22 @@ class TouchOverlayView(context: Context) : View(context) {
         editing = true
         selectedControl = null
         activeZones.clear()
-        // Position editor buttons at top center
-        val btnW = (120f * scale).coerceAtLeast(100f)
-        val btnH = (48f * scale).coerceAtLeast(40f)
-        val gap = (16f * scale).coerceAtLeast(10f)
-        val totalW = btnW * 3f + gap * 2f
-        val startX = (width - totalW) / 2f
-        val btnY = (40f * scale).coerceAtLeast(24f)
-        doneRect.set(startX, btnY, startX + btnW, btnY + btnH)
-        revertRect.set(startX + btnW + gap, btnY, startX + btnW * 2f + gap, btnY + btnH)
-        presetRect.set(startX + (btnW + gap) * 2f, btnY, startX + (btnW + gap) * 2f + btnW, btnY + btnH)
+
+        // Layout Editor header at top
+        val headerH = (44f * scale).coerceAtLeast(36f)
+        editorHeaderRect.set(0f, 0f, width.toFloat(), headerH)
+
+        // Right toolbar buttons
+        val btnSize = (48f * scale).coerceAtLeast(40f)
+        val btnGap = (8f * scale).coerceAtLeast(4f)
+        val tbX = width - btnSize - 12f * scale
+        val tbStartY = headerH + 16f * scale
+
+        editorCheckRect.set(tbX, tbStartY, tbX + btnSize, tbStartY + btnSize)
+        editorUndoRect.set(tbX, tbStartY + btnSize + btnGap, tbX + btnSize, tbStartY + (btnSize + btnGap) * 2)
+        editorRotateRect.set(tbX, tbStartY + (btnSize + btnGap) * 2, tbX + btnSize, tbStartY + (btnSize + btnGap) * 3)
+        editorCloseRect.set(tbX, tbStartY + (btnSize + btnGap) * 3, tbX + btnSize, tbStartY + (btnSize + btnGap) * 4)
+
         invalidate()
     }
 
@@ -1185,14 +1762,169 @@ class TouchOverlayView(context: Context) : View(context) {
     }
 
     private fun drawEditorChrome(canvas: Canvas) {
-        editorPaint.alpha = 150
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), editorPaint)
-        drawEditorButton(canvas, doneRect, "DONE")
-        drawEditorButton(canvas, revertRect, "REVERT")
-        drawEditorButton(canvas, presetRect, "PRESET")
-        smallLabelPaint.alpha = 230
-        smallLabelPaint.color = Color.rgb(232, 229, 220)
-        canvas.drawText("Drag controls. Pinch selected control to resize.", width / 2f, height - 20f, smallLabelPaint)
+        // Grid overlay
+        val gridPatternPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1f
+            color = Color.argb(30, 255, 255, 255)
+        }
+        val gridSpacing = 48f * scale
+        var gy = editorHeaderRect.bottom + gridSpacing
+        while (gy < height) {
+            canvas.drawLine(0f, gy, width.toFloat(), gy, gridPatternPaint)
+            gy += gridSpacing
+        }
+        var gx = gridSpacing
+        while (gx < width) {
+            canvas.drawLine(gx, 0f, gx, height.toFloat(), gridPatternPaint)
+            gx += gridSpacing
+        }
+
+        // Header bar
+        editorPaint.alpha = 200
+        editorPaint.color = Color.argb(200, 14, 14, 18)
+        canvas.drawRect(editorHeaderRect, editorPaint)
+
+        val headerLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+            color = Color.argb(60, 255, 255, 255)
+        }
+        canvas.drawLine(editorHeaderRect.left, editorHeaderRect.bottom, editorHeaderRect.right, editorHeaderRect.bottom, headerLinePaint)
+
+        val headerTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = Paint.Align.CENTER
+            textSize = 16f * scale
+            isFakeBoldText = true
+            color = Color.argb(220, 232, 229, 220)
+        }
+        canvas.drawText("Layout Editor", editorHeaderRect.centerX(), editorHeaderRect.centerY() + 6f * scale, headerTextPaint)
+
+        // Right toolbar (check/undo/rotate/close)
+        val toolbarBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.argb(180, 14, 14, 18)
+        }
+        val toolBarL = editorCheckRect.left - 8f * scale
+        val toolBarR = editorCheckRect.right + 8f * scale
+        val toolBarT = editorCheckRect.top - 8f * scale
+        val toolBarB = editorCloseRect.bottom + 8f * scale
+        canvas.drawRoundRect(RectF(toolBarL, toolBarT, toolBarR, toolBarB), 12f * scale, 12f * scale, toolbarBgPaint)
+
+        val toolBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1.2f
+            color = Color.argb(50, 255, 255, 255)
+        }
+        canvas.drawRoundRect(RectF(toolBarL, toolBarT, toolBarR, toolBarB), 12f * scale, 12f * scale, toolBorderPaint)
+
+        drawEditorToolButton(canvas, editorCheckRect, OverlayStyle.Icons::check, "Done")
+        drawEditorToolButton(canvas, editorUndoRect, OverlayStyle.Icons::undo, "Undo")
+        drawEditorToolButton(canvas, editorRotateRect, OverlayStyle.Icons::rotate, "Reset")
+        drawEditorToolButton(canvas, editorCloseRect, OverlayStyle.Icons::close, "Cancel")
+
+        // Dashed bounding boxes + circular handles on selected control
+        selectedControl?.let { control ->
+            controlRects[control]?.let { rect ->
+                val dashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    strokeWidth = 2f
+                    pathEffect = DashPathEffect(floatArrayOf(6f, 4f), 0f)
+                    color = Color.rgb(210, 180, 134)
+                }
+                canvas.drawRoundRect(rect, 12f, 12f, dashPaint)
+
+                // Corner handles (small circles at each corner)
+                val handleR = 6f * scale
+                val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.FILL
+                    color = Color.rgb(210, 180, 134)
+                }
+                val corners = listOf(
+                    rect.left to rect.top,
+                    rect.right to rect.top,
+                    rect.left to rect.bottom,
+                    rect.right to rect.bottom,
+                )
+                for ((hx, hy) in corners) {
+                    canvas.drawCircle(hx, hy, handleR, handlePaint)
+                    handlePaint.color = Color.argb(180, 210, 180, 134)
+                    canvas.drawCircle(hx, hy, handleR, handlePaint)
+                    handlePaint.color = Color.rgb(210, 180, 134)
+                }
+            }
+        }
+
+        // Bottom hint pill with info icon
+        val hintText = "Drag · Resize · Pinch"
+        val hintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = Paint.Align.LEFT
+            textSize = 12f * scale
+            color = Color.argb(160, 232, 229, 220)
+        }
+        val hintW = hintPaint.measureText(hintText) + 40f * scale
+        val hintH = 28f * scale
+        val hintX = (width - hintW) / 2f
+        val hintY = height - hintH - 16f * scale
+
+        val hintBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.argb(140, 0, 0, 0)
+        }
+        val hintRect = RectF(hintX, hintY, hintX + hintW, hintY + hintH)
+        canvas.drawRoundRect(hintRect, hintH / 2f, hintH / 2f, hintBgPaint)
+
+        val hintBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1f
+            color = Color.argb(60, 255, 255, 255)
+        }
+        canvas.drawRoundRect(hintRect, hintH / 2f, hintH / 2f, hintBorderPaint)
+
+        // Info icon
+        val iconPs = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeWidth = 1.5f
+            color = Color.argb(160, 232, 229, 220)
+        }
+        val infoCx = hintX + 14f * scale
+        val infoCy = hintY + hintH / 2f
+        iconPs.style = Paint.Style.STROKE
+        canvas.drawCircle(infoCx, infoCy, 5f * scale, iconPs)
+        iconPs.style = Paint.Style.FILL
+        canvas.drawCircle(infoCx, infoCy - 1.5f * scale, 1.5f * scale, iconPs)
+        canvas.drawLine(infoCx, infoCy + 1f * scale, infoCx, infoCy + 4f * scale, iconPs)
+        iconPs.style = Paint.Style.STROKE
+
+        canvas.drawText(hintText, hintX + 22f * scale, hintY + hintH / 2f + 4f * scale, hintPaint)
+    }
+
+    private fun drawEditorToolButton(canvas: Canvas, rect: RectF, icon: (Canvas: Canvas, cx: Float, cy: Float, s: Float, paint: Paint) -> Unit, label: String) {
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.argb(80, 255, 255, 255)
+        }
+        canvas.drawRoundRect(rect, 10f * scale, 10f * scale, bgPaint)
+
+        val bdrPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1.2f
+            color = Color.argb(100, 255, 255, 255)
+        }
+        canvas.drawRoundRect(rect, 10f * scale, 10f * scale, bdrPaint)
+
+        val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            strokeWidth = 2f * scale
+            color = Color.argb(200, 232, 229, 220)
+        }
+        val cx = rect.centerX()
+        val cy = rect.centerY()
+        val s = rect.width() * 0.32f
+        icon(canvas, cx, cy, s, iconPaint)
     }
 
     private fun drawEditorButton(canvas: Canvas, rect: RectF, label: String) {
@@ -1222,7 +1954,9 @@ class TouchOverlayView(context: Context) : View(context) {
 
     private fun isControlVisible(control: Control): Boolean {
         return when (control) {
-            Control.DPAD, Control.CONFIRM, Control.BACK, Control.DASH, Control.L1, Control.R1 -> true
+            Control.DPAD, Control.CONFIRM, Control.BACK, Control.DASH, Control.L1, Control.R1,
+            Control.ZL, Control.ZR, Control.L3, Control.R3, Control.GUIDE, Control.PLUS, Control.MINUS,
+            Control.LEFT_STICK, Control.RIGHT_STICK -> true
             Control.CTRL, Control.ALT, Control.SHIFT,
             Control.EXTRA_A, Control.EXTRA_S, Control.EXTRA_D,
             Control.EXTRA_Z, Control.EXTRA_X, Control.EXTRA_C -> controllerPreset == ControllerPreset.FULL
@@ -1241,6 +1975,15 @@ class TouchOverlayView(context: Context) : View(context) {
             Control.DPAD to ControlPlacement(dpadCenter.x / width, dpadCenter.y / height, (dpadRadius * scale) / shortSide),
             Control.L1 to ControlPlacement(l1Rect.centerX() / width, l1Rect.centerY() / height, (l1Rect.height() * scale) / shortSide),
             Control.R1 to ControlPlacement(r1Rect.centerX() / width, r1Rect.centerY() / height, (r1Rect.height() * scale) / shortSide),
+            Control.ZL to ControlPlacement(zlRect.centerX() / width, zlRect.centerY() / height, (zlRect.height() * scale) / shortSide),
+            Control.ZR to ControlPlacement(zrRect.centerX() / width, zrRect.centerY() / height, (zrRect.height() * scale) / shortSide),
+            Control.L3 to ControlPlacement(l3Rect.centerX() / width, l3Rect.centerY() / height, (l3Rect.height() * scale) / shortSide),
+            Control.R3 to ControlPlacement(r3Rect.centerX() / width, r3Rect.centerY() / height, (r3Rect.height() * scale) / shortSide),
+            Control.GUIDE to ControlPlacement(guideRect.centerX() / width, guideRect.centerY() / height, (guideRect.height() * scale) / shortSide),
+            Control.PLUS to ControlPlacement(plusRect.centerX() / width, plusRect.centerY() / height, (plusRect.height() * scale) / shortSide),
+            Control.MINUS to ControlPlacement(minusRect.centerX() / width, minusRect.centerY() / height, (minusRect.height() * scale) / shortSide),
+            Control.LEFT_STICK to ControlPlacement(leftStickRect.centerX() / width, leftStickRect.centerY() / height, (leftStickRect.width() * scale) / shortSide),
+            Control.RIGHT_STICK to ControlPlacement(rightStickRect.centerX() / width, rightStickRect.centerY() / height, (rightStickRect.width() * scale) / shortSide),
             Control.CONFIRM to ControlPlacement(btnConfirm.x / width, btnConfirm.y / height, (actionRadius * scale) / shortSide),
             Control.BACK to ControlPlacement(btnBack.x / width, btnBack.y / height, (actionRadius * scale) / shortSide),
             Control.DASH to ControlPlacement(btnDash.x / width, btnDash.y / height, (actionRadius * scale) / shortSide),
@@ -1267,13 +2010,14 @@ class TouchOverlayView(context: Context) : View(context) {
         controllerPreset = savedPreset
 
         layout.clear()
+        val prefix = orientationPrefix()
         Control.entries.forEach { control ->
             val default = defaultLayout[control] ?: return@forEach
-            val prefix = "${if (controlsOnly) "portrait" else "landscape"}_${controllerPreset.name}_${control.name}"
+            val key = "${prefix}_${controllerPreset.name}_${control.name}"
             layout[control] = ControlPlacement(
-                x = prefs.getFloat("${prefix}_x", default.x),
-                y = prefs.getFloat("${prefix}_y", default.y),
-                size = prefs.getFloat("${prefix}_size", default.size),
+                x = prefs.getFloat("${key}_x", default.x),
+                y = prefs.getFloat("${key}_y", default.y),
+                size = prefs.getFloat("${key}_size", default.size),
             )
         }
     }
@@ -1281,11 +2025,12 @@ class TouchOverlayView(context: Context) : View(context) {
     private fun saveLayout() {
         val prefs = context.getSharedPreferences("controller-layout-v2", Context.MODE_PRIVATE).edit()
         prefs.putString("preset", controllerPreset.name)
+        val prefix = orientationPrefix()
         layout.forEach { (control, placement) ->
-            val prefix = "${if (controlsOnly) "portrait" else "landscape"}_${controllerPreset.name}_${control.name}"
-            prefs.putFloat("${prefix}_x", placement.x)
-            prefs.putFloat("${prefix}_y", placement.y)
-            prefs.putFloat("${prefix}_size", placement.size)
+            val key = "${prefix}_${controllerPreset.name}_${control.name}"
+            prefs.putFloat("${key}_x", placement.x)
+            prefs.putFloat("${key}_y", placement.y)
+            prefs.putFloat("${key}_size", placement.size)
         }
         prefs.apply()
         onProfileLayoutChanged?.invoke(exportProfileButtons())
@@ -1301,7 +2046,7 @@ class TouchOverlayView(context: Context) : View(context) {
     }
 
     private fun exportProfileButtons(): List<ControlButtonProfile> {
-        val layoutName = if (controlsOnly) "portrait" else "landscape"
+        val layoutName = orientationPrefix()
         return layout.mapNotNull { (control, placement) ->
             if (!isControlVisible(control)) return@mapNotNull null
             val label = when (control) {
@@ -1309,6 +2054,15 @@ class TouchOverlayView(context: Context) : View(context) {
                 Control.CONFIRM -> "Confirm"
                 Control.BACK -> "Back"
                 Control.DASH -> "Dash"
+                Control.ZL -> "ZL"
+                Control.ZR -> "ZR"
+                Control.L3 -> "L3"
+                Control.R3 -> "R3"
+                Control.GUIDE -> "Guide"
+                Control.PLUS -> "Plus"
+                Control.MINUS -> "Minus"
+                Control.LEFT_STICK -> "Left Stick"
+                Control.RIGHT_STICK -> "Right Stick"
                 else -> control.name.lowercase().replaceFirstChar { it.uppercase() }
             }
             val key = when (control) {
@@ -1316,6 +2070,15 @@ class TouchOverlayView(context: Context) : View(context) {
                 Control.CONFIRM -> "ENTER"
                 Control.BACK -> "ESCAPE"
                 Control.DASH -> "SHIFT"
+                Control.ZL -> "ZL"
+                Control.ZR -> "ZR"
+                Control.L3 -> "L3"
+                Control.R3 -> "R3"
+                Control.GUIDE -> "GUIDE"
+                Control.PLUS -> "PLUS"
+                Control.MINUS -> "MINUS"
+                Control.LEFT_STICK -> "LEFT_STICK"
+                Control.RIGHT_STICK -> "RIGHT_STICK"
                 else -> control.name
             }
             ControlButtonProfile(
@@ -1357,6 +2120,51 @@ class TouchOverlayView(context: Context) : View(context) {
             val h = layout.getValue(Control.R1).size * shortSide
             val w = h * 1.6f
             r1Rect.set(it.x - w / 2f, it.y - h / 2f, it.x + w / 2f, it.y + h / 2f)
+        }
+        point(Control.ZL).also {
+            val h = layout.getValue(Control.ZL).size * shortSide
+            val w = h * 1.5f
+            zlRect.set(it.x - w / 2f, it.y - h / 2f, it.x + w / 2f, it.y + h / 2f)
+        }
+        point(Control.ZR).also {
+            val h = layout.getValue(Control.ZR).size * shortSide
+            val w = h * 1.5f
+            zrRect.set(it.x - w / 2f, it.y - h / 2f, it.x + w / 2f, it.y + h / 2f)
+        }
+        point(Control.L3).also {
+            val h = layout.getValue(Control.L3).size * shortSide
+            val w = h * 1.5f
+            l3Rect.set(it.x - w / 2f, it.y - h / 2f, it.x + w / 2f, it.y + h / 2f)
+        }
+        point(Control.R3).also {
+            val h = layout.getValue(Control.R3).size * shortSide
+            val w = h * 1.5f
+            r3Rect.set(it.x - w / 2f, it.y - h / 2f, it.x + w / 2f, it.y + h / 2f)
+        }
+        point(Control.GUIDE).also {
+            val h = layout.getValue(Control.GUIDE).size * shortSide
+            val w = h * 1.5f
+            guideRect.set(it.x - w / 2f, it.y - h / 2f, it.x + w / 2f, it.y + h / 2f)
+        }
+        point(Control.PLUS).also {
+            val h = layout.getValue(Control.PLUS).size * shortSide
+            val w = h * 1.5f
+            plusRect.set(it.x - w / 2f, it.y - h / 2f, it.x + w / 2f, it.y + h / 2f)
+        }
+        point(Control.MINUS).also {
+            val h = layout.getValue(Control.MINUS).size * shortSide
+            val w = h * 1.5f
+            minusRect.set(it.x - w / 2f, it.y - h / 2f, it.x + w / 2f, it.y + h / 2f)
+        }
+        point(Control.LEFT_STICK).also {
+            val size = layout.getValue(Control.LEFT_STICK).size * shortSide
+            leftStickRect.set(it.x - size / 2f, it.y - size / 2f, it.x + size / 2f, it.y + size / 2f)
+            leftStickThumb.x = it.x; leftStickThumb.y = it.y
+        }
+        point(Control.RIGHT_STICK).also {
+            val size = layout.getValue(Control.RIGHT_STICK).size * shortSide
+            rightStickRect.set(it.x - size / 2f, it.y - size / 2f, it.x + size / 2f, it.y + size / 2f)
+            rightStickThumb.x = it.x; rightStickThumb.y = it.y
         }
 
         point(Control.CONFIRM).also { btnConfirm.x = it.x; btnConfirm.y = it.y }
@@ -1414,6 +2222,15 @@ class TouchOverlayView(context: Context) : View(context) {
         controlRects[Control.MENU] = RectF(menuRect)
         controlRects[Control.L1] = RectF(l1Rect)
         controlRects[Control.R1] = RectF(r1Rect)
+        controlRects[Control.ZL] = RectF(zlRect)
+        controlRects[Control.ZR] = RectF(zrRect)
+        controlRects[Control.L3] = RectF(l3Rect)
+        controlRects[Control.R3] = RectF(r3Rect)
+        controlRects[Control.GUIDE] = RectF(guideRect)
+        controlRects[Control.PLUS] = RectF(plusRect)
+        controlRects[Control.MINUS] = RectF(minusRect)
+        controlRects[Control.LEFT_STICK] = RectF(leftStickRect)
+        controlRects[Control.RIGHT_STICK] = RectF(rightStickRect)
     }
 
     private fun radiusFor(control: Control): Float =
@@ -1422,11 +2239,12 @@ class TouchOverlayView(context: Context) : View(context) {
 
     private enum class Control {
         DPAD, CONFIRM, BACK, DASH,
-        L1, R1,
+        L1, R1, ZL, ZR, L3, R3,
         EXTRA_A, EXTRA_S, EXTRA_D,
         EXTRA_Z, EXTRA_X, EXTRA_C,
         CTRL, ALT, SHIFT,
-        SELECT, START, MENU,
+        SELECT, START, MENU, GUIDE, PLUS, MINUS,
+        LEFT_STICK, RIGHT_STICK,
     }
 
     private data class ControlPlacement(

@@ -14,7 +14,9 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.text.InputType
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -39,6 +41,7 @@ class SourcesScreen(private val context: Context) {
     ): LinearLayout {
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.argb(252, 3, 3, 4))
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -50,6 +53,9 @@ class SourcesScreen(private val context: Context) {
         val scroll = ScrollView(context).apply {
             isFillViewport = false
             overScrollMode = ScrollView.OVER_SCROLL_NEVER
+            isVerticalScrollBarEnabled = false
+            clipToPadding = false
+            setPadding(0, 0, 0, dp(26))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f,
             )
@@ -58,9 +64,12 @@ class SourcesScreen(private val context: Context) {
 
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(28))
+            setPadding(dp(14), dp(10), dp(14), dp(34))
         }
-        scroll.addView(content)
+        scroll.addView(content, ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ))
 
         if (sources.isEmpty()) {
             content.addView(spacer(dp(36)))
@@ -116,39 +125,37 @@ class SourcesScreen(private val context: Context) {
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(14))
-            setBackgroundColor(Color.rgb(15, 14, 18))
+            setPadding(dp(14), dp(10), dp(14), dp(8))
+            setBackgroundColor(Color.TRANSPARENT)
 
             addView(TextView(context).apply {
                 text = "Back"
                 setTextColor(ACCENT); textSize = 15f
                 typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                setPadding(dp(8), dp(6), dp(8), dp(6))
-                background = GradientDrawable().apply {
-                    setColor(Color.argb(40, 207, 174, 126))
-                    cornerRadius = dp(8).toFloat()
-                    setStroke(dp(1), Color.argb(60, 207, 174, 126))
-                }
+                setPadding(dp(16), 0, dp(16), 0)
+                background = glassBg(dp(22), alpha = 55)
                 setOnClickListener { onBack() }
                 makeLiquid(this)
-            }, LinearLayout.LayoutParams(dp(84), ViewGroup.LayoutParams.WRAP_CONTENT))
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(46)))
 
             addView(TextView(context).apply {
-                text = "Game Sources"
-                setTextColor(TEXT); textSize = 21f
-                letterSpacing = 0.5f; gravity = Gravity.CENTER
-                typeface = Typeface.create("serif", Typeface.BOLD)
+                text = "Sources"
+                setTextColor(TEXT); textSize = 22f
+                letterSpacing = 0f; gravity = Gravity.CENTER
+                typeface = Typeface.DEFAULT_BOLD
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-
-            addView(View(context), LinearLayout.LayoutParams(dp(84), 1))
         }
 
     private fun sourceRow(source: ProviderSource, onRemove: (String) -> Unit): LinearLayout {
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            background = glassBg(dp(12))
+            setPadding(dp(14), dp(12), dp(12), dp(12))
+            background = glassBg(dp(14), alpha = 205)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
         }
 
         // Status indicator
@@ -158,8 +165,8 @@ class SourcesScreen(private val context: Context) {
             SourceStatus.PENDING -> Color.rgb(200, 180, 100)
         }
         val statusDot = TextView(context).apply {
-            text = "\u25CF"; setTextColor(statusColor); textSize = 10f
-            setPadding(0, 0, dp(8), 0)
+            text = "\u25CF"; setTextColor(statusColor); textSize = 11f
+            setPadding(0, 0, dp(10), 0)
         }
         row.addView(statusDot)
 
@@ -168,25 +175,30 @@ class SourcesScreen(private val context: Context) {
             orientation = LinearLayout.VERTICAL
         }
         info.addView(TextView(context).apply {
-            text = source.name; setTextColor(TEXT); textSize = 14f
-            typeface = Typeface.DEFAULT_BOLD; maxLines = 1
+            text = sourceDisplayName(source)
+            setTextColor(TEXT); textSize = 15f
+            typeface = Typeface.DEFAULT_BOLD
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
         })
-        val displayUrl = if (source.url.length > 40) source.url.take(40) + "..." else source.url
         info.addView(TextView(context).apply {
-            text = displayUrl; setTextColor(MUTED_DIM); textSize = 11f
-            maxLines = 1; setPadding(0, dp(2), 0, 0)
+            text = source.url
+            setTextColor(MUTED_DIM); textSize = 11.5f
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.MIDDLE
+            setPadding(0, dp(3), 0, 0)
         })
         row.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
         // Status badge
         row.addView(TextView(context).apply {
-            text = source.status.name
+            text = source.status.name.lowercase().replaceFirstChar { it.uppercase() }
             setTextColor(statusColor); textSize = 9f
             typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setPadding(dp(6), dp(3), dp(6), dp(3))
+            setPadding(dp(8), dp(4), dp(8), dp(4))
             background = GradientDrawable().apply {
                 setColor(Color.argb(30, Color.red(statusColor), Color.green(statusColor), Color.blue(statusColor)))
-                cornerRadius = dp(4).toFloat()
+                cornerRadius = dp(7).toFloat()
             }
         })
 
@@ -195,7 +207,7 @@ class SourcesScreen(private val context: Context) {
         row.addView(TextView(context).apply {
             text = "X"; setTextColor(Color.rgb(200, 120, 120)); textSize = 14f
             typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setPadding(dp(8), dp(4), dp(8), dp(4))
+            setPadding(dp(10), dp(6), dp(10), dp(6))
             background = GradientDrawable().apply {
                 setColor(Color.argb(30, 200, 80, 80)); cornerRadius = dp(6).toFloat()
             }
@@ -212,19 +224,23 @@ class SourcesScreen(private val context: Context) {
     private fun addSourceButton(onAdd: (String) -> Unit): LinearLayout {
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
         }
 
         // Add Source dialog (hidden initially)
         val addDialog = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(14), dp(16), dp(14))
-            background = glassBg(dp(14), accent = true)
+            background = glassBg(dp(14), alpha = 215, accent = true)
             visibility = View.GONE
         }
 
         val urlInput = EditText(context).apply {
             hint = "Source URL (e.g. https://example.com/games.json)"
-            setHintTextColor(Color.argb(80, 200, 180, 130))
+            setHintTextColor(Color.argb(130, 200, 180, 130))
             setTextColor(TEXT); textSize = 13f
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
             maxLines = 1; background = null
@@ -274,8 +290,8 @@ class SourcesScreen(private val context: Context) {
         val toggleBtn = TextView(context).apply {
             text = "+ ADD SOURCE"; setTextColor(Color.rgb(220, 200, 160)); textSize = 13f
             typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-            background = glassBg(dp(10), alpha = 120, accent = true)
+            setPadding(dp(16), 0, dp(16), 0)
+            background = glassBg(dp(22), alpha = 55)
             setOnClickListener {
                 animTap(this)
                 addDialog.visibility = if (addDialog.visibility == View.GONE) View.VISIBLE else View.GONE
@@ -283,60 +299,39 @@ class SourcesScreen(private val context: Context) {
             makeLiquid(this)
         }
         container.addView(toggleBtn, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(46)))
 
         return container
     }
 
+    private fun sourceDisplayName(source: ProviderSource): String {
+        val trimmed = source.name.trim()
+        if (trimmed.isNotBlank()) return trimmed
+        val host = runCatching { Uri.parse(source.url).host.orEmpty() }.getOrDefault("")
+            .removePrefix("www.")
+        return when {
+            host.isNotBlank() -> host
+            source.url.isNotBlank() -> source.url
+            else -> "Catalogue source"
+        }
+    }
+
     private fun glassBg(radius: Int, alpha: Int = 200, accent: Boolean = false): GradientDrawable =
-        GradientDrawable().apply {
-            setColor(Color.argb(alpha,
-                if (accent) 50 else 22, if (accent) 40 else 20, if (accent) 30 else 26))
-            cornerRadius = dp(radius).toFloat()
-            setStroke(dp(1), Color.argb(if (accent) 80 else 45,
-                if (accent) 180 else 100, if (accent) 140 else 90, if (accent) 100 else 80))
-        }
+        com.runestone.app.ui.theme.ThemeProvider.getInstance(context).glassBg(radius, alpha, accent)
 
-    private fun makeLiquid(view: View) { if (Theme.isReducedMotion(context)) return
-        view.setOnTouchListener { v, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    v.animate().cancel()
-                    v.animate().scaleX(1.08f).scaleY(1.08f).setDuration(120).start()
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val cx = v.width / 2f; val cy = v.height / 2f
-                    v.translationX = (event.x - cx) * 0.06f
-                    v.translationY = (event.y - cy) * 0.06f
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    v.animate().scaleX(1f).scaleY(1f).translationX(0f).translationY(0f)
-                        .setDuration(250).setInterpolator(OvershootInterpolator(1.6f)).start()
-                }
-            }
-            false
-        }
-    }
+    private fun makeLiquid(view: View) { com.runestone.app.ui.UiKit.makeLiquid(view) }
 
-    private fun animTap(v: View) { if (Theme.isReducedMotion(context)) return
-        v.animate().scaleX(0.88f).scaleY(0.88f).setDuration(60)
-            .withEndAction {
-                v.animate().scaleX(1f).scaleY(1f).setDuration(180)
-                    .setInterpolator(OvershootInterpolator(1.5f)).start()
-            }.start()
-    }
+    private fun animTap(v: View) { com.runestone.app.ui.UiKit.animTap(v) }
 
-    private fun spacer(h: Int): View = View(context).apply {
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, if (h > 0) h else 1)
-    }
+    private fun spacer(h: Int): View = com.runestone.app.ui.UiKit.spacer(context, h)
 
-    private fun dp(v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
+    private fun dp(v: Int): Int = com.runestone.app.ui.UiKit.dp(context, v)
 
     private companion object {
         const val DEFAULT_CATALOGUE_URL = SourcesManager.DEFAULT_PUBLIC_CATALOGUE_URL
-        val TEXT = Color.rgb(232, 229, 220)
-        val MUTED = Color.rgb(140, 130, 112)
-        val MUTED_DIM = Color.rgb(120, 112, 104)
+        val TEXT: Int get() = Theme.TEXT
+        val MUTED: Int get() = Theme.MUTED
+        val MUTED_DIM: Int get() = Theme.MUTED_DIM
         val ACCENT: Int get() = Theme.active.accent
     }
 }

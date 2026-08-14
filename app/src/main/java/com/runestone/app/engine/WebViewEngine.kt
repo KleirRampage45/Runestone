@@ -54,6 +54,52 @@ class WebViewEngine(context: Context) : WebView(context) {
     private var gameDir: File? = null
     private var config: WebViewGameConfig = WebViewGameConfig()
     private val externalHostCache = mutableMapOf<String, Boolean>()
+    private var localServer: LocalServer? = null
+    private var serverIp: String? = null
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        stopLocalServer()
+    }
+
+    private fun stopLocalServer() {
+        localServer?.stop()
+        localServer = null
+        serverIp = null
+    }
+
+    /**
+     * Pick a non-loopback IPv4 address to use as the server's bind
+     * address / page origin. The Android WebView treats 127.0.0.1 /
+     * localhost as a null origin and refuses to enable cross-origin
+     * isolation (COOP+COEP) on responses from there. A real LAN IP
+     * gives the WebView a proper origin and crossOriginIsolated
+     * becomes true.
+     *
+     * Returns null if no suitable IP is found; callers should fall
+     * back to file:// loading in that case.
+     */
+    private fun pickServerIp(): String? {
+        val interfaces = try {
+            java.net.NetworkInterface.getNetworkInterfaces()
+        } catch (_: Exception) {
+            return null
+        } ?: return null
+        val candidates = mutableListOf<String>()
+        while (interfaces.hasMoreElements()) {
+            val ni = interfaces.nextElement()
+            if (!ni.isUp || ni.isLoopback || ni.isPointToPoint) continue
+            val addrs = ni.inetAddresses
+            while (addrs.hasMoreElements()) {
+                val addr = addrs.nextElement()
+                if (addr is java.net.Inet4Address && !addr.isLoopbackAddress) {
+                    candidates.add(addr.hostAddress ?: continue)
+                }
+            }
+        }
+        // Prefer Wi-Fi-ish names but accept any.
+        return candidates.firstOrNull()
+    }
 
     data class WebViewGameConfig(
         val fixLocalStorage: Boolean = true,
@@ -69,10 +115,18 @@ class WebViewEngine(context: Context) : WebView(context) {
         val textScale: Float = 1.0f,
         val useHttpServer: Boolean = false,
         val webgl: Boolean = true,
+        val useWebgl2: Boolean = true,
+        val forceCanvas: Boolean = false,
+        val engineFamily: WebglConfigBuilder.EngineFamily = WebglConfigBuilder.EngineFamily.HTML,
         val desktopMode: Boolean = false,
         val allowExternalModules: Boolean = false,
         val allowedExternalHosts: List<String> = emptyList(),
         val dialogLogs: Boolean = false,
+        // When true, the WebView's request for js/libs/effekseer.min.js
+        // is intercepted and served from our bundled
+        // effekseer_asmjs.min.js. Required for any MZ game whose
+        // main.js calls effekseer.initRuntime() on Android WebView.
+        val useAsmjsEffekseer: Boolean = true,
     )
 
     init {
@@ -101,7 +155,15 @@ class WebViewEngine(context: Context) : WebView(context) {
         webSettings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
         webSettings.textZoom = (config.textScale * 100).toInt().coerceIn(50, 200)
         webSettings.setSupportZoom(false)
-        webSettings.setOffscreenPreRaster(true)
+        // OffscreenPreRaster pre-rasterises the entire viewport at the
+        // WebView's native resolution. On hi-DPI phones with games that
+        // allocate a WebGL canvas at full viewport size (e.g. RPG Maker
+        // MZ with Effekseer particles), this is what exhausts the
+        // WebView's tile memory pool and produces a black canvas with
+        // Chromium's "tile memory limits exceeded" warning. Disabling
+        // it is the difference between a black screen and a working
+        // game on devices we've tested.
+        webSettings.setOffscreenPreRaster(false)
         isVerticalScrollBarEnabled = false
         isHorizontalScrollBarEnabled = false
         overScrollMode = OVER_SCROLL_NEVER
@@ -158,6 +220,28 @@ class WebViewEngine(context: Context) : WebView(context) {
 
         addJavascriptInterface(Bootstrapper(), "RunestoneBridge")
 
+        // Local HTTP server. When enabled, the game is served from
+        // http://<device-ip>:PORT/ with COOP/COEP headers, which unlocks
+        // SharedArrayBuffer / shared-memory WebAssembly on the system
+        // WebView. This is required for Effekseer-based MZ games
+        // (look-outside, haven) to boot, and is harmless for games
+        // that don't need it.
+        //
+        // We bind to 0.0.0.0 and load via the device's Wi-Fi IP, not
+        // 127.0.0.1, because the Android WebView treats 127.0.0.1 as
+        // a null origin and refuses to enable cross-origin isolation
+        // (crossOriginIsolated stays false). Using the device's LAN
+        // IP gives the WebView a real origin.
+        if (config.useHttpServer) {
+            stopLocalServer()
+            val server = LocalServer(wwwDir).also { it.start() }
+            localServer = server
+            serverIp = pickServerIp()
+        } else {
+            stopLocalServer()
+            serverIp = null
+        }
+
         webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
                 view: WebView,
@@ -188,12 +272,100 @@ class WebViewEngine(context: Context) : WebView(context) {
                     }
                 }
 
+                // Intercept effekseer.min.js requests — swap in the
+                // asm.js runtime so initRuntime() takes the immediate
+                // fallback path (no WASM, no SharedArrayBuffer).
+                //
+                // Background: Android system WebView does not enable
+                // cross-origin isolation, so SharedArrayBuffer is
+                // permanently unavailable. The WASM Effekseer runtime
+                // needs shared-memory WebAssembly and silently hangs
+                // forever in initRuntime() on Android WebView. The
+                // asm.js runtime is a 2.5 MB plain-JS port of the same
+                // API; its initRuntime() short-circuits to onload()
+                // when effekseer_native is undefined, which it always
+                // is in the asm.js build.
+                //
+                // Trade-off: particle effects don't render. The MZ
+                // runtime's Graphics.effekseer calls into the loaded
+                // module but gets a no-op. Scenes, maps, battles,
+                // menus, saves — everything else works.
+                if (config.useAsmjsEffekseer && url.endsWith("/effekseer.min.js", ignoreCase = true)) {
+                    val asmjs = readAssetFile("effekseer_asmjs.min.js")
+                    if (asmjs != null) {
+                        android.util.Log.d(
+                            "Runestone",
+                            "effekseer intercept: url=$url -> serving asm.js runtime",
+                        )
+                        return WebResourceResponse(
+                            "application/javascript",
+                            "utf-8",
+                            200,
+                            "OK",
+                            mapOf("Content-Type" to "application/javascript"),
+                            java.io.ByteArrayInputStream(asmjs.toByteArray()),
+                        )
+                    }
+                }
+
                 // Intercept .m4a audio requests — serve .ogg instead if available
                 if (config.forceAudioExt.isNotEmpty() && url.contains(".m4a")) {
                     val oggUrl = url.replace(Regex("\\.m4a(\\?.*)?$"), config.forceAudioExt)
                     val oggFile = resolveGameFile(oggUrl)
                     if (oggFile != null && oggFile.exists()) {
                         return createAudioResponse(oggFile, "audio/ogg")
+                    }
+                }
+
+                // Intercept .wasm asset requests — serve from the game
+                // directory with the correct MIME type, an explicit 200
+                // status, and the headers required for the page to be
+                // cross-origin-isolated (Effekseer's WASM runtime needs
+                // SharedArrayBuffer, which requires both COOP/COEP on
+                // the main document and CORP on every subresource).
+                //
+                // The 3-arg WebResourceResponse constructor is unreliable
+                // for .wasm on some Android WebView versions: the response
+                // is returned to the XHR but the WASM fails to instantiate
+                // because the response is missing CORS / CORP headers.
+                // The 6-arg constructor with explicit status + headers
+                // is the supported path.
+                if (url.endsWith(".wasm", ignoreCase = true) ||
+                    url.contains(".wasm?", ignoreCase = true) ||
+                    url.contains(".wasm#", ignoreCase = true)
+                ) {
+                    // When the local HTTP server is serving the game,
+                    // its response already includes COOP/COEP/CORP and
+                    // is what enables cross-origin-isolation. Don't
+                    // override it with our simpler response or the
+                    // page loses its isolation.
+                    val fromLocalServer = url.startsWith("http://127.0.0.1:") ||
+                        url.startsWith("http://localhost:") ||
+                        (serverIp != null && url.startsWith("http://$serverIp:"))
+                    if (!fromLocalServer) {
+                        val wasmFile = resolveGameFile(url)
+                        if (wasmFile != null && wasmFile.exists()) {
+                            val headers = mapOf(
+                                "Content-Type" to "application/wasm",
+                                "Content-Length" to wasmFile.length().toString(),
+                                "Cross-Origin-Resource-Policy" to "cross-origin",
+                                "Access-Control-Allow-Origin" to "*",
+                                "Cache-Control" to "no-store",
+                            )
+                            android.util.Log.d(
+                                "Runestone",
+                                "wasm intercept: url=$url size=${wasmFile.length()} " +
+                                    "headers=$headers",
+                            )
+                            return WebResourceResponse(
+                                "application/wasm",
+                                "utf-8",
+                                200,
+                                "OK",
+                                headers,
+                                FileInputStream(wasmFile),
+                            )
+                        }
                     }
                 }
 
@@ -239,7 +411,25 @@ class WebViewEngine(context: Context) : WebView(context) {
                 if (scalingJs.isNotEmpty()) {
                     view.evaluateJavascript(scalingJs, null)
                 }
-                // Fix PIXI tile bleeding — force NEAREST scale mode
+                // Renderer-pick + PIXI options: this is the one injection that
+                // runs only when webgl is enabled. It probes the actual context,
+                // forces WebGL2 on MZ when available, tunes mobile-friendly PIXI
+                // options, and reports back via RunestoneBridge.bootDetailed(...).
+                if (config.webgl) {
+                    val targetRenderer = WebglConfigBuilder
+                        .pick(config.engineFamily, config.useWebgl2, config.forceCanvas)
+                        .name.lowercase()
+                    val bootstrapJs = readAssetFile("webgl-bootstrap.js")
+                    if (bootstrapJs != null) {
+                        val tpl = bootstrapJs.replace("__TARGET_RENDERER__", targetRenderer)
+                        view.evaluateJavascript(tpl, null)
+                    }
+                }
+                // Fix PIXI tile bleeding — force NEAREST scale mode.
+                // Kept as the only post-load PIXI patch; the previous
+                // PIXI_RENDER_OPTS_JS plus devicePixelRatio override have
+                // been removed because they were observed to black-screen
+                // some MZ games (look-outside, haven) on hi-DPI phones.
                 view.evaluateJavascript(PIXI_TILE_FIX_JS, null)
             }
         }
@@ -251,13 +441,39 @@ class WebViewEngine(context: Context) : WebView(context) {
                     // Game tried to close via window.close() — ignore
                     return true
                 }
+                // Mirror all page-side console output to Runestone-tagged
+                // logcat so we can debug game issues without attaching
+                // chrome://inspect. Format: "page-console(level): <message>"
+                // plus the source URL and line number, when available.
+                val level = when (msg.messageLevel()) {
+                    ConsoleMessage.MessageLevel.ERROR -> "E"
+                    ConsoleMessage.MessageLevel.WARNING -> "W"
+                    else -> "I"
+                }
+                android.util.Log.println(
+                    android.util.Log.INFO,
+                    "Runestone",
+                    "page-console[$level] ${msg.lineNumber()}: $log",
+                )
                 return super.onConsoleMessage(msg)
             }
         }
 
-        // Load the game — pass webgl query param only if WebGL is enabled
-        val query = if (config.webgl) "?webgl" else ""
-        loadUrl("file://${indexHtml.absolutePath}$query")
+        // Load the game — compose the renderer-hint query string via the
+        // shared, unit-tested builder. The string may be empty (when webgl
+        // is disabled) or carry `?webgl=1&renderer=...` discriminator flags.
+        val query = WebglConfigBuilder.buildQuery(
+            engineFamily = config.engineFamily,
+            useWebgl2 = config.useWebgl2,
+            forceCanvas = config.forceCanvas,
+            webglEnabled = config.webgl,
+        )
+        val url = if (config.useHttpServer && localServer != null && serverIp != null) {
+            "http://$serverIp:${localServer!!.port}/index.html$query"
+        } else {
+            "file://${indexHtml.absolutePath}$query"
+        }
+        loadUrl(url)
     }
 
     private fun findWwwDir(gameDir: File): File {
@@ -375,25 +591,51 @@ class WebViewEngine(context: Context) : WebView(context) {
     }
 
     /**
-     * Bootstrapper interface - called from injected JS to signal readiness
+     * Bootstrapper interface - called from injected JS to signal readiness.
+     *
+     * Accepts both the legacy two-arg form (webgl, webaudio) and the richer
+     * form used by `webgl-bootstrap.js` (webgl, webaudio, renderer, webglVersion).
+     * Older games that only post the two-arg shape keep working without changes.
      */
     inner class Bootstrapper {
         @JavascriptInterface
         fun boot(webgl: Boolean, webaudio: Boolean) {
             android.util.Log.d("Runestone", "Game booted: WebGL=$webgl, WebAudio=$webaudio")
         }
+
+        @JavascriptInterface
+        fun bootDetailed(
+            webgl: Boolean,
+            webaudio: Boolean,
+            renderer: String?,
+            webglVersion: Int,
+        ) {
+            android.util.Log.d(
+                "Runestone",
+                "Game booted: WebGL=$webgl WebAudio=$webaudio renderer=$renderer webglVersion=$webglVersion",
+            )
+        }
     }
 
     /**
      * Resolve a URL path to a file in the game directory.
-     * Handles file:// URLs, relative paths, and paths with query strings.
+     * Handles file:// URLs, our own http://127.0.0.1:PORT/ URLs (when
+     * useHttpServer is on), and relative paths with query strings.
      */
     private fun resolveGameFile(url: String): File? {
         val gameDir = gameDir ?: return null
-        // Strip file:// prefix and query params
+        // Strip file:// prefix
         var path = url
         if (path.startsWith("file://")) {
             path = path.removePrefix("file://")
+        } else if (path.startsWith("http://127.0.0.1:") || path.startsWith("http://localhost:")
+            || (serverIp != null && path.startsWith("http://$serverIp:"))
+        ) {
+            // The local server is up; strip the origin so we're left
+            // with the same path we would have used under file://.
+            val schemeEnd = path.indexOf("://") + 3
+            val pathStart = path.indexOf('/', schemeEnd)
+            path = if (pathStart >= 0) path.substring(pathStart) else "/"
         }
         // Strip query string
         val queryIdx = path.indexOf('?')
@@ -448,19 +690,6 @@ class WebViewEngine(context: Context) : WebView(context) {
                     origClear.call(localStorage);
                 };
             }
-        })();
-        """
-
-        // JS injected into the game to listen for a boot message
-        private const val BOOT_JS = """
-        (function() {
-            window.addEventListener('message', function(e) {
-                if (e.data && e.data.boot === 'ok') {
-                    if (window.RunestoneBridge) {
-                        RunestoneBridge.boot(!!e.data.webgl, !!e.data.webaudio);
-                    }
-                }
-            });
         })();
         """
 
@@ -555,6 +784,49 @@ class WebViewEngine(context: Context) : WebView(context) {
             }
             if (typeof PIXI !== 'undefined' && PIXI.BaseTexture && PIXI.BaseTexture.defaultOptions) {
                 PIXI.BaseTexture.defaultOptions.scaleMode = 0;
+            }
+        })();
+        """
+
+        // JS to apply mobile-friendly PIXI renderer options. Runs BEFORE the
+        // tile-bleeding fix so that __runestonePixiOpts is in place by the
+        // time the webgl-bootstrap (if injected) reads it.
+        //
+        // Conservative defaults: only touch the things that are universal
+        // wins on mobile. We do NOT force roundPixels, antialias, or
+        // resolution globally — those interact with PIXI v5 shaders in ways
+        // that have produced black screens on real games. The game is
+        // allowed to set them itself; we just nudge the bits that are
+        // never wrong.
+        //
+        // - PRECISION_FRAGMENT = 'mediump'   → cheaper fragment math on mobile GPUs
+        // - scaleMode = 0 (NEAREST)           → duplicated in PIXI_TILE_FIX_JS;
+        //                                       kept here in case that injection is skipped
+        // - resolution cap via opts hint     → only consumed by the bootstrap
+        private const val PIXI_RENDER_OPTS_JS = """
+        (function() {
+            try {
+                if (typeof PIXI === 'undefined') return;
+                if (PIXI.settings) {
+                    if ('PRECISION_FRAGMENT' in PIXI.settings) {
+                        PIXI.settings.PRECISION_FRAGMENT = 'mediump';
+                    }
+                }
+                if (PIXI.BaseTexture && PIXI.BaseTexture.defaultOptions) {
+                    if ('scaleMode' in PIXI.BaseTexture.defaultOptions) {
+                        PIXI.BaseTexture.defaultOptions.scaleMode = 0;
+                    }
+                }
+                // Stash a resolution hint for the bootstrap to read. The
+                // bootstrap is the only place that actually forwards
+                // resolution to the renderer constructor, and only when the
+                // game has not already set one.
+                var dpr = window.devicePixelRatio || 1;
+                window.__runestonePixiOpts = {
+                    resolution: Math.max(1, Math.min(2, dpr)),
+                };
+            } catch (e) {
+                // Best-effort: never break the game over a tuning patch.
             }
         })();
         """

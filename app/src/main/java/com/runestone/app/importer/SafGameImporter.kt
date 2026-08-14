@@ -15,7 +15,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
 import com.runestone.app.data.EngineType
-import com.runestone.app.engine.EngineDetector
+import com.runestone.app.engine.EngineRegistry
 import com.runestone.app.workspace.WorkspaceManager
 import org.json.JSONObject
 import java.io.File
@@ -74,7 +74,7 @@ class SafGameImporter(
             }
 
             onProgress("Checking game files...")
-            val engineType = EngineDetector.detect(incoming)
+            val engineType = EngineRegistry.detect(incoming)?.let { EngineType.fromEngineId(it.id) } ?: EngineType.UNKNOWN
             if (engineType == EngineType.UNKNOWN) {
                 incoming.deleteRecursively()
                 gameDir.deleteRecursively()

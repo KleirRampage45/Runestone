@@ -77,6 +77,8 @@ class GameConfigService(
         json.optJSONObject("performance")?.let { perf ->
             result = result.copy(
                 frameSkip = if (perf.has("frameSkip")) perf.optInt("frameSkip", if (result.frameSkip) 1 else 0) > 0 else result.frameSkip,
+                useWebgl2 = if (perf.has("useWebgl2")) perf.optBoolean("useWebgl2", result.useWebgl2) else result.useWebgl2,
+                forceCanvas = if (perf.has("forceCanvas")) perf.optBoolean("forceCanvas", result.forceCanvas) else result.forceCanvas,
             )
         }
         json.optJSONObject("fonts")?.let { fonts ->
@@ -146,6 +148,10 @@ class GameConfigService(
             resolutionScale = override(o.resolutionScale, 1.0f, b.resolutionScale),
             brightness = override(o.brightness, 1.0f, b.brightness),
             contrast = override(o.contrast, 1.0f, b.contrast),
+            gamma = override(o.gamma, 1.0f, b.gamma),
+            saturation = override(o.saturation, 1.0f, b.saturation),
+            sharpness = override(o.sharpness, 0.0f, b.sharpness),
+            aspectMode = override(o.aspectMode, "fit_4_3", b.aspectMode),
         )
     }
 

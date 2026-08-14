@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <activity
+            android:name="com.runestone.plugin.godot.GodotPluginActivity"
+            android:exported="true"
+            android:label="Godot Engine"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
+            <intent-filter>
+                <action android:name="com.runestone.plugin.LAUNCH_GAME" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="runestone" android:host="godot" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

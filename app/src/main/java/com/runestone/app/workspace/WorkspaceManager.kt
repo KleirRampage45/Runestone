@@ -11,8 +11,9 @@
 package com.runestone.app.workspace
 
 import android.content.Context
+import android.util.Log
 import com.runestone.app.data.EngineType
-import com.runestone.app.engine.EngineDetector
+import com.runestone.app.engine.EngineRegistry
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -38,6 +39,11 @@ import java.io.File
  * ```
  */
 class WorkspaceManager(private val context: Context) {
+
+    private companion object {
+        private const val TAG = "WSMGR"
+    }
+
 
     data class GameInfo(
         val storageName: String,
@@ -80,7 +86,7 @@ class WorkspaceManager(private val context: Context) {
                     } else null
                 }.getOrNull()
 
-                val engineType = override ?: EngineDetector.detect(originalDir)
+                val engineType = override ?: (EngineRegistry.detect(originalDir)?.let { EngineType.fromEngineId(it.id) } ?: EngineType.UNKNOWN)
                 val fileCount = originalDir.walkTopDown().count { it.isFile }
                 val displayName = readGameTitle(originalDir, engineType) ?: formatDisplayName(gameDir.name)
 
@@ -212,7 +218,7 @@ class WorkspaceManager(private val context: Context) {
         val gamePayload = children.filter { it.name !in ignoredNames }
         if (gamePayload.isEmpty()) return
 
-        val engineType = EngineDetector.detect(gameDir)
+        val engineType = EngineRegistry.detect(gameDir)?.let { EngineType.fromEngineId(it.id) } ?: EngineType.UNKNOWN
         if (engineType == EngineType.UNKNOWN) return
 
         val repairDir = File(gameDir, "original_repair")
@@ -254,15 +260,43 @@ class WorkspaceManager(private val context: Context) {
     }
 
     fun allocateGameDir(baseName: String): File {
-        var dirName = sanitizeName(baseName)
+        val sanitized = sanitizeName(baseName)
+        cleanupOrphanInstalls(sanitized)
+        var dirName = sanitized
         var dir = File(gamesBaseDir, dirName)
         var counter = 1
         while (dir.exists()) {
-            dirName = "${sanitizeName(baseName)}-$counter"
+            dirName = "$sanitized-$counter"
             dir = File(gamesBaseDir, dirName)
             counter++
         }
         return dir
+    }
+
+    /**
+     * Remove any directory matching `<sanitizedBase>` or `<sanitizedBase>-N` that is not
+     * a complete install (i.e. has no `manifest.json`). These are leftovers from installs
+     * killed before discardFailedInstall could wipe them — most commonly because the
+     * extraction thread was still running when the app was force-stopped.
+     *
+     * Directories whose name starts with `<sanitizedBase>` but contains a real
+     * `manifest.json` are kept (they're real installs, possibly older copies of the
+     * same game the user wants to keep).
+     */
+    private fun cleanupOrphanInstalls(sanitizedBase: String) {
+        val baseDir = gamesBaseDir
+        if (!baseDir.isDirectory) return
+        val prefix = "$sanitizedBase"
+        val matcher = Regex("^" + Regex.escape(prefix) + "(?:-\\d+)?$")
+        baseDir.listFiles()?.forEach { child ->
+            if (!child.isDirectory) return@forEach
+            if (!matcher.matches(child.name)) return@forEach
+            val manifest = File(child, "manifest.json")
+            if (!manifest.isFile) {
+                Log.w(TAG, "Removing orphan install dir: ${child.name} (no manifest.json)")
+                child.deleteRecursively()
+            }
+        }
     }
 
     fun gameDir(storageName: String): File = File(gamesBaseDir, storageName)
@@ -304,7 +338,12 @@ class WorkspaceManager(private val context: Context) {
 
     fun removeGame(storageName: String, keepSaves: Boolean = false) {
         val dir = gameDir(storageName)
-        if (!dir.exists()) return
+        android.util.Log.i("Runestone", "removeGame: storageName=$storageName dir=${dir.absolutePath} exists=${dir.exists()} keepSaves=$keepSaves")
+        if (!dir.exists()) {
+            android.util.Log.w("Runestone", "removeGame: dir does not exist, nothing to do")
+            invalidateGameScanCache()
+            return
+        }
 
         if (keepSaves) {
             val saves = savesDir(storageName)
@@ -312,14 +351,16 @@ class WorkspaceManager(private val context: Context) {
             if (saves.exists()) {
                 saves.copyRecursively(preservedSaves, overwrite = true)
             }
-            dir.deleteRecursively()
+            val deleted = dir.deleteRecursively()
+            android.util.Log.i("Runestone", "removeGame: keepSaves deleteRecursively=$deleted")
             dir.mkdirs()
             if (preservedSaves.exists()) {
                 preservedSaves.copyRecursively(File(dir, "saves"), overwrite = true)
                 preservedSaves.deleteRecursively()
             }
         } else {
-            dir.deleteRecursively()
+            val deleted = dir.deleteRecursively()
+            android.util.Log.i("Runestone", "removeGame: full delete deleteRecursively=$deleted, existsAfter=${dir.exists()}")
         }
         invalidateGameScanCache()
     }

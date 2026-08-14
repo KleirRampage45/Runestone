@@ -286,8 +286,12 @@ class SettingsScreen(private val context: Context) {
         //  5. RPG MAKER — MV/MZ (WebView)
         // ────────────────────────────────────────────────
         accordion(content, "RPG MAKER (MV/MZ)", "WebView settings for MV/MZ games.") { panel ->
-            panel.addView(switchPanel("Use WebGL2", "Enable WebGL2 rendering context.", current.useWebgl2) {
+            panel.addView(switchPanel("Use WebGL2", "Enable WebGL2 rendering context. (MZ only — ignored on MV.)", current.useWebgl2) {
                 upd { copy(useWebgl2 = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Force Canvas Renderer", "Emergency fallback: skip WebGL entirely and use 2D canvas. Use if a specific game breaks under WebGL.", current.forceCanvas) {
+                upd { copy(forceCanvas = it) }
             })
             panel.addView(spacerAfter(6))
             panel.addView(switchPanel("Decrypter & Readfiles", "Support encrypted RPG Maker assets.", current.decrypterAndReadfiles) {
@@ -348,8 +352,12 @@ class SettingsScreen(private val context: Context) {
         //  7. HTML GAMES (WebView)
         // ────────────────────────────────────────────────
         accordion(content, "HTML GAMES", "WebView settings for HTML5/Tyrano/Construct games.") { panel ->
-            panel.addView(stubSwitchPanel("Use HTTP Server", "Serve games via local HTTP instead of file://.", current.useHttpServer) {
+            panel.addView(switchPanel("Use HTTP Server", "Serve games via local HTTP instead of file://. Required for Effekseer-based MZ games (Look Outside, Haven) to boot, and for any WASM that uses shared memory.", current.useHttpServer) {
                 upd { copy(useHttpServer = it) }
+            })
+            panel.addView(spacerAfter(6))
+            panel.addView(switchPanel("Asm.js Effekseer", "Replace js/libs/effekseer.min.js with the asm.js runtime (no WASM, no particle effects). Required for any game whose main.js calls effekseer.initRuntime() on Android WebView.", current.useAsmjsEffekseer) {
+                upd { copy(useAsmjsEffekseer = it) }
             })
             panel.addView(spacerAfter(6))
             panel.addView(stubSwitchPanel("Preload", "Preload HTML resources for faster startup.", current.preload) {
@@ -402,9 +410,12 @@ class SettingsScreen(private val context: Context) {
         //  9. APPLICATION
         // ────────────────────────────────────────────────
         accordion(content, "APPLICATION", "App-wide preferences and features.") { panel ->
-            val themeOptions = listOf("Dark", "Light", "Wallpaper")
             val animFrameOptions = listOf("None", "Low", "Medium", "High")
-            panel.addView(compactDropdown("Theme", current.theme, themeOptions) { upd { copy(theme = it) } })
+            panel.addView(themeSelector(context, current.theme) { mode ->
+                upd { copy(theme = mode) }
+                val tp = com.runestone.app.ui.theme.ThemeProvider.getInstance(context)
+                tp.setMode(runCatching { com.runestone.app.ui.theme.ThemeMode.valueOf(mode.uppercase()) }.getOrDefault(com.runestone.app.ui.theme.ThemeMode.DARK))
+            })
             panel.addView(spacerAfter(6))
             panel.addView(compactDropdown("Animation Frames", current.animationFrames, animFrameOptions) { upd { copy(animationFrames = it) } })
             panel.addView(spacerAfter(6))
@@ -1069,6 +1080,33 @@ Core runtimes: SDL2, mkxp-z, EasyRPG, Ruby, OpenAL, WebView
             })
         }
 
+    private fun themeSelector(context: Context, currentValue: String, onSelect: (String) -> Unit): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(3), 0, dp(3))
+            addView(TextView(context).apply {
+                text = "Theme"; setTextColor(TEXT); textSize = 13f; typeface = Typeface.DEFAULT_BOLD
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val modes = listOf("Dark", "Light", "System")
+            val label = TextView(context).apply {
+                val mode = currentValue.lowercase().replaceFirstChar { it.uppercase() }
+                text = if (mode in modes) mode else "Dark"
+                setTextColor(ACCENT); textSize = 12f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.END
+                setPadding(dp(8), dp(3), dp(8), dp(3))
+                background = glassBg(6, alpha = 80)
+                makeLiquid(this)
+                setOnClickListener {
+                    animTap(this)
+                    val idx = modes.indexOf(text)
+                    val nextIdx = (idx + 1) % modes.size
+                    text = modes[nextIdx]
+                    onSelect(modes[nextIdx].lowercase())
+                }
+            }
+            addView(label)
+        }
+
     private fun dropdownRow(title: String, currentValue: String, options: List<String>, onSelect: (String) -> Unit): LinearLayout =
         settingsPanel {
             val row = LinearLayout(context).apply {
@@ -1182,9 +1220,7 @@ Core runtimes: SDL2, mkxp-z, EasyRPG, Ruby, OpenAL, WebView
         }
 
     private fun spacer(height: Int = 0, width: Int = 0): View =
-        View(context).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(width), dp(height))
-        }
+        com.runestone.app.ui.UiKit.spacer(context, height)
 
     private fun spacerAfter(height: Int): View {
         val v = View(context)
@@ -1192,52 +1228,14 @@ Core runtimes: SDL2, mkxp-z, EasyRPG, Ruby, OpenAL, WebView
         return v
     }
 
-    private fun dp(value: Int): Int =
-        (value * context.resources.displayMetrics.density).toInt()
+    private fun dp(value: Int): Int = com.runestone.app.ui.UiKit.dp(context, value)
 
-    private fun makeLiquid(view: View) { if (Theme.isReducedMotion(context)) return
-        view.setOnTouchListener { v, event ->
-            when (event.action) {
-                MotionEvent.ACTION_MOVE -> {
-                    val cx = v.width / 2f; val cy = v.height / 2f
-                    v.translationX = (event.x - cx) * 0.06f
-                    v.translationY = (event.y - cy) * 0.06f
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    v.animate().cancel()
-                    v.animate().translationX(0f).translationY(0f)
-                        .setDuration(200).setInterpolator(OvershootInterpolator(1.4f)).start()
-                }
-                else -> {}
-            }
-            false
-        }
-    }
+    private fun makeLiquid(view: View) { com.runestone.app.ui.UiKit.makeLiquid(view) }
 
-    private fun animTap(v: View) { if (Theme.isReducedMotion(context)) return
-        v.animate().scaleX(0.88f).scaleY(0.88f).setDuration(60)
-            .withEndAction {
-                v.animate().scaleX(1f).scaleY(1f).setDuration(180)
-                    .setInterpolator(OvershootInterpolator(1.5f)).start()
-            }.start()
-    }
+    private fun animTap(v: View) { com.runestone.app.ui.UiKit.animTap(v) }
 
     private fun glassBg(radius: Int, alpha: Int = 200, accent: Boolean = false): GradientDrawable =
-        GradientDrawable().apply {
-            setColor(Color.argb(alpha,
-                if (accent) Color.red(Theme.active.accent) / 4 else 22,
-                if (accent) Color.green(Theme.active.accent) / 4 else 20,
-                if (accent) Color.blue(Theme.active.accent) / 4 else 26))
-            cornerRadius = dp(radius).toFloat()
-            if (accent) {
-                setStroke(dp(1), Color.argb(80,
-                    Color.red(Theme.active.accent),
-                    Color.green(Theme.active.accent),
-                    Color.blue(Theme.active.accent)))
-            } else {
-                setStroke(dp(1), Color.argb(45, 100, 90, 80))
-            }
-        }
+        com.runestone.app.ui.theme.ThemeProvider.getInstance(context).glassBg(radius, alpha, accent)
 
     // ============================================================
     //  Layout Preview
@@ -1403,8 +1401,8 @@ Core runtimes: SDL2, mkxp-z, EasyRPG, Ruby, OpenAL, WebView
     private companion object {
         val MATCH_PARENT = ViewGroup.LayoutParams.MATCH_PARENT
         val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
-        val TEXT: Int = Color.rgb(232, 229, 220)
-        val MUTED: Int = Color.rgb(140, 130, 112)
+        val TEXT: Int get() = Theme.TEXT
+        val MUTED: Int get() = Theme.MUTED
         val ACCENT: Int get() = Theme.active.accent
     }
 }

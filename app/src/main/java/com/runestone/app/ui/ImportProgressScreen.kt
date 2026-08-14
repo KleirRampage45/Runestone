@@ -115,9 +115,7 @@ class ImportProgressScreen(private val context: Context) {
         return ImportProgressView(root, phaseView, fileView, countView)
     }
 
-    private fun spacer(h: Int): View = View(context).apply {
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, h)
-    }
+    private fun spacer(h: Int): View = com.runestone.app.ui.UiKit.spacer(context, h)
 
-    private fun dp(v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
+    private fun dp(v: Int): Int = com.runestone.app.ui.UiKit.dp(context, v)
 }

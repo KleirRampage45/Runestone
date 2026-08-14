@@ -1,0 +1,10 @@
+# code-style
+- Do NOT add emojis to the codebase. Use SVG icons instead. Confidence: 0.80
+- All UI views are programmatic Kotlin — no XML layouts. Keep this pattern for all UI work. Confidence: 0.70
+- Always include `Co-authored-by: CommandCodeBot <noreply@commandcode.ai>` in commit messages. Confidence: 0.85
+- Write commit messages with a clear root-cause → fix → rationale structure, including behavioural-change notes and the trade-offs considered. Confidence: 0.80
+- In Android WebView, `.wasm` asset requests fail silently over `file://` URLs in modern Chromium. Intercept `.wasm` requests in `shouldInterceptRequest` and serve the file directly with `application/wasm` MIME to bypass the broken `fetch()` path. Confidence: 0.80
+- Mirror page-side `console.log/error/warning` from `WebChromeClient.onConsoleMessage` to a project-specific logcat tag (e.g. `Runestone`) so game-side issues can be debugged without `chrome://inspect`. Confidence: 0.75
+- For Android WebView games requiring SharedArrayBuffer / cross-origin-isolation (e.g. Effekseer-based RPG Maker MZ games, shared-memory WASM): serve the game directory over `http://127.0.0.1:0/` (random local port) with `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`, and `Cross-Origin-Resource-Policy: cross-origin` response headers. `file://` pages cannot be cross-origin-isolated in the system WebView. The `RunnerSettings.useHttpServer` flag controls this — default it to `true` for HTML/WebView engines. Confidence: 0.85
+- For local HTTP servers inside the app (used to serve WebView games), bind to `127.0.0.1` only (not `0.0.0.0`), serve exactly one configured root directory, and reject any URL containing `..` path segments. Listen on port `0` (random) so port collisions are impossible. Daemon threads are fine — the activity lifecycle stops the server in `onDestroy`. Confidence: 0.80
+- When a `shouldInterceptRequest` branch overrides a response served by another mechanism (e.g. the local HTTP server for the same game), skip the override for the local-server URLs so the proper response (with the right headers) is used. Confidence: 0.75

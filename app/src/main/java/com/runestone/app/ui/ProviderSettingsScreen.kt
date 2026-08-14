@@ -298,53 +298,20 @@ Example:
     }
 
     private fun glassBg(radius: Int, alpha: Int = 200, accent: Boolean = false): GradientDrawable =
-        GradientDrawable().apply {
-            setColor(Color.argb(alpha,
-                if (accent) 50 else 22, if (accent) 40 else 20, if (accent) 30 else 26))
-            cornerRadius = dp(radius).toFloat()
-            setStroke(dp(1), Color.argb(if (accent) 80 else 45,
-                if (accent) 180 else 100, if (accent) 140 else 90, if (accent) 100 else 80))
-        }
+        com.runestone.app.ui.theme.ThemeProvider.getInstance(context).glassBg(radius, alpha, accent)
 
-    private fun makeLiquid(view: View) { if (Theme.isReducedMotion(context)) return
-        view.setOnTouchListener { v, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    v.animate().cancel()
-                    v.animate().scaleX(1.08f).scaleY(1.08f).setDuration(120).start()
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val cx = v.width / 2f; val cy = v.height / 2f
-                    v.translationX = (event.x - cx) * 0.06f
-                    v.translationY = (event.y - cy) * 0.06f
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    v.animate().scaleX(1f).scaleY(1f).translationX(0f).translationY(0f)
-                        .setDuration(250).setInterpolator(OvershootInterpolator(1.6f)).start()
-                }
-            }
-            false
-        }
-    }
+    private fun makeLiquid(view: View) { com.runestone.app.ui.UiKit.makeLiquid(view) }
 
-    private fun animTap(v: View) { if (Theme.isReducedMotion(context)) return
-        v.animate().scaleX(0.88f).scaleY(0.88f).setDuration(60)
-            .withEndAction {
-                v.animate().scaleX(1f).scaleY(1f).setDuration(180)
-                    .setInterpolator(OvershootInterpolator(1.5f)).start()
-            }.start()
-    }
+    private fun animTap(v: View) { com.runestone.app.ui.UiKit.animTap(v) }
 
-    private fun spacer(h: Int): View = View(context).apply {
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, if (h > 0) h else 1)
-    }
+    private fun spacer(h: Int): View = com.runestone.app.ui.UiKit.spacer(context, h)
 
-    private fun dp(v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
+    private fun dp(v: Int): Int = com.runestone.app.ui.UiKit.dp(context, v)
 
     private companion object {
-        val TEXT = Color.rgb(232, 229, 220)
-        val MUTED = Color.rgb(140, 130, 112)
-        val MUTED_DIM = Color.rgb(120, 112, 104)
+        val TEXT: Int get() = Theme.TEXT
+        val MUTED: Int get() = Theme.MUTED
+        val MUTED_DIM: Int get() = Theme.MUTED_DIM
         val ACCENT: Int get() = Theme.active.accent
     }
 }

@@ -12,17 +12,22 @@ package com.runestone.app.ui
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.text.Editable
 import android.text.InputType
+import android.text.TextUtils
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.animation.OvershootInterpolator
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -31,7 +36,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import com.runestone.app.MainActivity
+import com.runestone.app.store.StoreCoordinator
 import com.runestone.app.provider.AvailableGame
 import com.runestone.app.provider.DownloadManager
 import com.runestone.app.provider.DownloadOption
@@ -46,19 +51,24 @@ class AvailableGamesScreen(private val context: Context) {
         isMetadataLoading: Boolean = false,
         errorMessage: String?,
         downloadStates: Map<String, DownloadManager.DownloadProgress> = emptyMap(),
-        installStates: Map<String, MainActivity.InstallProgress> = emptyMap(),
+        installStates: Map<String, StoreCoordinator.InstallProgress> = emptyMap(),
         installedGameTitles: Set<String> = emptySet(),
+        gridColumns: Int = 2,
         initialScrollY: Int = 0,
         onScrollYChanged: (Int) -> Unit = {},
+        onGridColumnsChanged: (Int) -> Unit = {},
         onRefresh: () -> Unit,
         onManageSources: () -> Unit,
         onProviderSettings: () -> Unit,
         onDownload: (AvailableGame) -> Unit,
         onPauseDownload: (String) -> Unit,
         onBack: () -> Unit,
+        onOpenDetail: (AvailableGame) -> Unit = {},
     ): FrameLayout {
         val root = FrameLayout(context).apply {
-            setBackgroundColor(Color.argb(220, 8, 8, 10))
+            setBackgroundColor(Color.argb(252, 3, 3, 4))
+            isClickable = true
+            isFocusable = true
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -67,6 +77,9 @@ class AvailableGamesScreen(private val context: Context) {
 
         val mainLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.argb(248, 3, 3, 4))
+            isClickable = true
+            isFocusable = true
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -74,11 +87,14 @@ class AvailableGamesScreen(private val context: Context) {
         }
         root.addView(mainLayout)
 
-        mainLayout.addView(makeTopBar(onBack, onManageSources, onProviderSettings))
+        mainLayout.addView(makeTopBar(onBack, onManageSources, onProviderSettings, gridColumns, onGridColumnsChanged))
 
         val scroll = ScrollView(context).apply {
             isFillViewport = false
             overScrollMode = ScrollView.OVER_SCROLL_NEVER
+            isVerticalScrollBarEnabled = false
+            clipToPadding = false
+            setPadding(0, 0, 0, dp(18))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f,
             )
@@ -91,7 +107,7 @@ class AvailableGamesScreen(private val context: Context) {
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(12), dp(12), dp(12), dp(18))
+            setPadding(dp(12), dp(4), dp(12), dp(34))
         }
         scroll.addView(content, ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -150,7 +166,7 @@ class AvailableGamesScreen(private val context: Context) {
                     ) &&
                         (engineFilter == null || game.engine.equals(engineFilter, ignoreCase = true))
                 }
-                renderGameList(gamesContainer, filtered, downloadStates, installStates, onDownload, onPauseDownload, installedGameTitles)
+                renderGameList(gamesContainer, filtered, downloadStates, installStates, onDownload, onPauseDownload, installedGameTitles, onOpenDetail, gridColumns)
             }
 
             val searchRow = makeSearchBar { query ->
@@ -167,7 +183,7 @@ class AvailableGamesScreen(private val context: Context) {
                 content.addView(spacer(dp(8)))
                 content.addView(metadataLoadingStrip())
             }
-            content.addView(spacer(dp(8)))
+            content.addView(spacer(dp(10)))
 
             content.addView(gamesContainer, ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -185,58 +201,86 @@ class AvailableGamesScreen(private val context: Context) {
         onBack: () -> Unit,
         onManageSources: () -> Unit,
         onProviderSettings: () -> Unit,
+        gridColumns: Int,
+        onGridColumnsChanged: (Int) -> Unit,
     ): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(12), dp(12), dp(12), dp(10))
-        setBackgroundColor(Color.rgb(3, 3, 4))
+        setPadding(dp(14), dp(10), dp(14), dp(8))
+        setBackgroundColor(Color.TRANSPARENT)
 
         addView(TextView(context).apply {
-            text = "Back"
-            setTextColor(TEXT); textSize = 13f
-            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setPadding(dp(16), dp(10), dp(16), dp(10))
-            background = glassBg(dp(12), alpha = 120, accent = true)
-            setOnClickListener { onBack() }
-            makeLiquid(this)
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-
-        addView(TextView(context).apply {
-            text = "Available Games"
-            setTextColor(TEXT); textSize = 17f
-            letterSpacing = 0.08f; gravity = Gravity.CENTER
-            typeface = Typeface.create("serif", Typeface.BOLD)
+            text = "Store"
+            setTextColor(TEXT); textSize = 22f
+            letterSpacing = 0f; gravity = Gravity.CENTER_VERTICAL
+            typeface = Typeface.DEFAULT_BOLD
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
         addView(TextView(context).apply {
-            text = "\u2699 OPTIONS"
-            setTextColor(TEXT); textSize = 13f
+            text = "\u2699"
+            contentDescription = "Provider settings"
+            setTextColor(TEXT); textSize = 21f
             typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setPadding(dp(16), dp(10), dp(16), dp(10))
-            background = glassBg(dp(12), alpha = 120, accent = true)
+            background = glassBg(dp(22), alpha = 55)
             setOnClickListener { onProviderSettings() }
             makeLiquid(this)
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }, LinearLayout.LayoutParams(dp(46), dp(46)).apply {
+            marginEnd = dp(8)
+        })
+
+        addView(GridDensityIcon(context, gridColumns).apply {
+            contentDescription = "Store grid density"
+            background = glassBg(dp(22), alpha = 55)
+            setOnClickListener {
+                animTap(this)
+                onGridColumnsChanged(if (gridColumns >= 4) 1 else gridColumns + 1)
+            }
+            makeLiquid(this)
+        }, LinearLayout.LayoutParams(dp(46), dp(46)).apply {
+            marginEnd = dp(8)
+        })
+
+        addView(TextView(context).apply {
+            text = "SOURCES"
+            setTextColor(MUTED); textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setPadding(dp(18), 0, dp(18), 0)
+            background = glassBg(dp(22), alpha = 55)
+            setOnClickListener { onManageSources() }
+            makeLiquid(this)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(46)))
     }
 
     private fun renderGameList(
         container: LinearLayout,
         games: List<AvailableGame>,
         downloadStates: Map<String, DownloadManager.DownloadProgress>,
-        installStates: Map<String, MainActivity.InstallProgress>,
+        installStates: Map<String, StoreCoordinator.InstallProgress>,
         onDownload: (AvailableGame) -> Unit,
         onPauseDownload: (String) -> Unit,
         installedGameTitles: Set<String> = emptySet(),
+        onOpenDetail: (AvailableGame) -> Unit = {},
+        gridColumns: Int = 2,
     ) {
         container.removeAllViews()
         val screenW = context.resources.displayMetrics.widthPixels
-        val cardW = ((screenW - dp(44)) / 2).coerceAtLeast(dp(144))
-        games.chunked(2).forEach { rowGames ->
+        val columns = gridColumns.coerceIn(1, 4)
+        val horizontalPadding = dp(58)
+        val gap = dp(if (columns >= 3) 8 else 10)
+        val cardW = ((screenW - horizontalPadding - gap * (columns - 1)) / columns)
+            .coerceAtLeast(dp(if (columns >= 4) 74 else 100))
+        val cardH = when (columns) {
+            1 -> dp(244)
+            2 -> dp(186)
+            3 -> dp(152)
+            else -> dp(132)
+        }
+        games.chunked(columns).forEach { rowGames ->
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
             }
-            rowGames.forEach { game ->
+            rowGames.forEachIndexed { index, game ->
                 row.addView(
                     gameCard(
                         game,
@@ -245,20 +289,26 @@ class AvailableGamesScreen(private val context: Context) {
                         onDownload,
                         onPauseDownload,
                         installedGameTitles,
+                        onOpenDetail,
                         cardW,
+                        columns,
                     ),
-                    LinearLayout.LayoutParams(cardW, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                        setMargins(dp(4), 0, dp(4), dp(10))
+                    LinearLayout.LayoutParams(cardW, cardH).apply {
+                        if (index < columns - 1) marginEnd = gap
                     },
                 )
             }
-            if (rowGames.size == 1) {
-                row.addView(spacer(cardW + dp(8)))
+            repeat(columns - rowGames.size) { emptyIndex ->
+                row.addView(View(context), LinearLayout.LayoutParams(cardW, 1).apply {
+                    if (rowGames.size + emptyIndex < columns - 1) marginEnd = gap
+                })
             }
             container.addView(row, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-            ))
+            ).apply {
+                bottomMargin = gap
+            })
         }
     }
 
@@ -267,25 +317,25 @@ class AvailableGamesScreen(private val context: Context) {
     ): LinearLayout {
         val searchRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(2), dp(4), dp(2))
+            setPadding(dp(18), dp(4), dp(6), dp(4))
             background = GradientDrawable().apply {
-                setColor(Color.argb(30, 255, 255, 255)); cornerRadius = dp(10).toFloat()
-                setStroke(dp(1), Color.argb(30, 200, 180, 150))
+                setColor(Color.argb(225, 5, 5, 7)); cornerRadius = dp(25).toFloat()
+                setStroke(dp(1), Color.argb(70, 150, 140, 125))
             }
         }
         val searchInput = EditText(context).apply {
-            hint = "Search games..."; setHintTextColor(Color.argb(120, 200, 180, 130))
-            setTextColor(TEXT); textSize = 13f
+            hint = "Search games..."; setHintTextColor(Color.argb(155, 204, 186, 148))
+            setTextColor(TEXT); textSize = 16f
             inputType = InputType.TYPE_CLASS_TEXT; maxLines = 1; background = null
-            setPadding(0, dp(6), 0, dp(6))
+            setPadding(0, dp(7), 0, dp(7))
         }
         searchRow.addView(searchInput, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
         val clearBtn = TextView(context).apply {
-            text = "X"; setTextColor(MUTED_DIM); textSize = 12f
+            text = "X"; setTextColor(MUTED_DIM); textSize = 13f
             typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
             setPadding(dp(8), dp(4), dp(8), dp(4))
-            minimumWidth = dp(48); minimumHeight = dp(48)
+            minimumWidth = dp(44); minimumHeight = dp(44)
             visibility = View.INVISIBLE
             setOnClickListener { searchInput.setText("") }
             makeLiquid(this)
@@ -320,8 +370,8 @@ class AvailableGamesScreen(private val context: Context) {
         fun updateSelection(selected: String?) {
             buttons.forEach { (engine, button) ->
                 val isSelected = engine == selected
-                button.setTextColor(if (isSelected) Color.rgb(238, 207, 158) else MUTED)
-                button.background = glassBg(dp(8), alpha = if (isSelected) 120 else 60, accent = isSelected)
+                button.setTextColor(if (isSelected) Color.rgb(18, 17, 14) else MUTED)
+                button.background = glassBg(dp(20), alpha = if (isSelected) 210 else 42, accent = isSelected)
             }
             onFilterChanged(selected)
         }
@@ -329,11 +379,11 @@ class AvailableGamesScreen(private val context: Context) {
         listOf<String?>(null).plus(engines).forEach { engine ->
             val button = TextView(context).apply {
                 text = engine?.let(::engineLabel) ?: "ALL"
-                textSize = 11f
+                textSize = 13f
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER
-                setPadding(dp(12), dp(10), dp(12), dp(10))
-                minimumHeight = dp(48)
+                setPadding(dp(15), dp(9), dp(15), dp(9))
+                minimumHeight = dp(42)
                 setOnClickListener {
                     animTap(this)
                     updateSelection(engine)
@@ -344,7 +394,7 @@ class AvailableGamesScreen(private val context: Context) {
             row.addView(button, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
             ).apply {
-                marginEnd = dp(6)
+                marginEnd = dp(7)
             })
         }
 
@@ -389,38 +439,60 @@ class AvailableGamesScreen(private val context: Context) {
     private fun gameCard(
         game: AvailableGame,
         progress: DownloadManager.DownloadProgress?,
-        installProgress: MainActivity.InstallProgress?,
+        installProgress: StoreCoordinator.InstallProgress?,
         onDownload: (AvailableGame) -> Unit,
         onPauseDownload: (String) -> Unit,
         installedGameTitles: Set<String> = emptySet(),
+        onOpenDetail: (AvailableGame) -> Unit = {},
         forcedCardWidth: Int? = null,
+        gridColumns: Int = 2,
     ): LinearLayout {
         val screenW = context.resources.displayMetrics.widthPixels
         val cardW = forcedCardWidth ?: (screenW * 0.92f).toInt()
+        val columns = gridColumns.coerceIn(1, 4)
+        val cardH = when (columns) {
+            1 -> dp(244)
+            2 -> dp(186)
+            3 -> dp(152)
+            else -> dp(132)
+        }
 
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(cardW, ViewGroup.LayoutParams.WRAP_CONTENT)
+            layoutParams = LinearLayout.LayoutParams(cardW, cardH)
             background = GradientDrawable().apply {
-                setColor(Color.argb(220, 12, 11, 16))
-                cornerRadius = dp(if (forcedCardWidth != null) 10 else 18).toFloat()
-                setStroke(dp(1), Color.argb(60, 207, 174, 126))
+                setColor(Color.argb(245, 12, 11, 16))
+                cornerRadius = dp(8).toFloat()
+                setStroke(dp(1), Color.argb(70, 145, 124, 100))
             }
             gravity = Gravity.CENTER_HORIZONTAL
+            isClickable = true
+            isFocusable = true
+            clipToOutline = true
+            outlineProvider = ViewOutlineProvider.BACKGROUND
+            setOnClickListener { onOpenDetail(game) }
         }
 
+        val coverHeight = when (columns) {
+            1 -> dp(154)
+            2 -> dp(98)
+            3 -> dp(76)
+            else -> dp(58)
+        }
         if (game.coverUrl != null) {
             val cover = ImageView(context).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 background = GradientDrawable().apply {
-                    setColor(Color.argb(60, 255, 255, 255))
-                    cornerRadius = dp(12).toFloat()
+                    setColor(Color.argb(50, 255, 255, 255))
+                    cornerRadius = dp(8).toFloat()
                 }
+                clipToOutline = true
+                outlineProvider = ViewOutlineProvider.BACKGROUND
                 contentDescription = game.title
             }
             card.addView(cover, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    if (forcedCardWidth != null) dp(64) else dp(140),
+                    coverHeight,
                 ))
             Thread {
                 runCatching {
@@ -432,53 +504,63 @@ class AvailableGamesScreen(private val context: Context) {
                     cover.post { cover.setImageBitmap(bitmap) }
                 }
             }.start()
+        } else {
+            card.addView(TextView(context).apply {
+                text = engineLabel(game.engine).take(2)
+                setTextColor(Color.rgb(238, 207, 158)); textSize = when (columns) {
+                    1 -> 40f
+                    2 -> 34f
+                    3 -> 25f
+                    else -> 20f
+                }
+                letterSpacing = 0.12f
+                typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    setColor(Color.argb(120, 38, 32, 28))
+                }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, coverHeight))
         }
 
-        // ── Top section: title + engine badge ──
         val topSection = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(
-                dp(if (forcedCardWidth != null) 10 else 18),
-                dp(if (forcedCardWidth != null) 10 else 16),
-                dp(if (forcedCardWidth != null) 10 else 18),
-                dp(if (forcedCardWidth != null) 8 else 12),
+                dp(if (columns >= 3) 7 else 10),
+                dp(if (columns >= 3) 6 else 8),
+                dp(if (columns >= 3) 7 else 10),
+                dp(if (columns >= 3) 5 else 7),
             )
         }
 
         topSection.addView(TextView(context).apply {
-            text = game.title; setTextColor(TEXT); textSize = if (forcedCardWidth != null) 12.5f else 19f
-            typeface = Typeface.create("serif", Typeface.BOLD); maxLines = 2
+            text = game.title
+            setTextColor(TEXT); textSize = when (columns) {
+                1 -> 18f
+                2 -> 15f
+                3 -> 12.5f
+                else -> 10.5f
+            }
+            typeface = Typeface.DEFAULT_BOLD
+            maxLines = if (columns >= 4) 1 else 2
+            ellipsize = TextUtils.TruncateAt.END
+            includeFontPadding = false
         })
 
-        val metaRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(if (forcedCardWidth != null) 6 else 8), 0, 0)
-        }
-        metaRow.addView(TextView(context).apply {
-            text = engineLabel(game.engine)
-            setTextColor(Color.rgb(238, 207, 158)); textSize = if (forcedCardWidth != null) 9f else 10f; typeface = Typeface.DEFAULT_BOLD
-            setPadding(dp(8), dp(3), dp(8), dp(3))
-            background = GradientDrawable().apply {
-                setColor(Color.argb(60, 200, 170, 130)); cornerRadius = dp(6).toFloat()
-                setStroke(dp(1), Color.argb(70, 200, 170, 130))
+        topSection.addView(TextView(context).apply {
+            text = cardMeta(game)
+            setTextColor(MUTED); textSize = when (columns) {
+                1 -> 12.5f
+                2 -> 12f
+                3 -> 9.5f
+                else -> 8.5f
             }
-        })
-        metaRow.addView(spacer(dp(10)))
-        metaRow.addView(TextView(context).apply {
-            text = game.sourceName; setTextColor(MUTED); textSize = 11f
             maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            includeFontPadding = false
+            setPadding(0, dp(if (columns >= 3) 4 else 6), 0, 0)
         })
-        if (game.fileSize != null) {
-            metaRow.addView(spacer(dp(10)))
-            metaRow.addView(TextView(context).apply {
-                text = formatBytes(game.fileSize)
-                setTextColor(MUTED); textSize = 11f
-            })
-        }
-        topSection.addView(metaRow)
 
         card.addView(topSection, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
         // ── Progress bar (if downloading/installing) ──
         if (installProgress != null) {
@@ -544,70 +626,90 @@ class AvailableGamesScreen(private val context: Context) {
             })
         }
 
-        // ── Bottom action bar ──
-        val actionBar = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
-            setPadding(dp(2), dp(2), dp(2), dp(2))
-            background = GradientDrawable().apply {
-                setColor(Color.argb(60, 12, 11, 16))
-                cornerRadii = floatArrayOf(
-                    0f, 0f, 0f, 0f,
-                    dp(if (forcedCardWidth != null) 9 else 14).toFloat(), dp(if (forcedCardWidth != null) 9 else 14).toFloat(),
-                    dp(if (forcedCardWidth != null) 9 else 14).toFloat(), dp(if (forcedCardWidth != null) 9 else 14).toFloat()
-                )
-            }
-        }
-
         val state = progress?.state
         when {
             installProgress != null -> {
-                actionBar.addView(makeActionBtn("INSTALLING", Color.rgb(170, 210, 230), Color.argb(40, 80, 120, 160)) {})
+                card.addView(compactStatus("INSTALLING", Color.rgb(170, 210, 230)))
             }
             state == DownloadManager.DownloadState.DOWNLOADING -> {
-                actionBar.addView(makeActionBtn("PAUSE", Color.rgb(220, 200, 160), Color.argb(40, 200, 170, 130)) {
-                    animTap(it); onPauseDownload(game.id)
+                card.addView(compactStatus("DOWNLOADING", Color.rgb(220, 200, 160)).apply {
+                    setOnClickListener { animTap(this); onPauseDownload(game.id) }
+                    makeLiquid(this)
                 })
             }
             state == DownloadManager.DownloadState.PAUSED -> {
-                actionBar.addView(makeActionBtn("RESUME", Color.rgb(200, 200, 160), Color.argb(40, 200, 170, 80)) {
-                    animTap(it); onDownload(game)
+                card.addView(compactStatus("PAUSED", Color.rgb(200, 200, 160)).apply {
+                    setOnClickListener { animTap(this); onDownload(game) }
+                    makeLiquid(this)
                 })
             }
             state == DownloadManager.DownloadState.COMPLETED -> {
-                actionBar.addView(makeActionBtn("INSTALLING", Color.rgb(170, 210, 230), Color.argb(40, 80, 120, 160)) {})
+                card.addView(compactStatus("INSTALLING", Color.rgb(170, 210, 230)))
             }
             state == DownloadManager.DownloadState.FAILED -> {
-                actionBar.addView(makeActionBtn("RETRY", Color.rgb(220, 160, 140), Color.argb(40, 200, 100, 80)) {
-                    animTap(it); onDownload(game)
+                card.addView(compactStatus("FAILED", Color.rgb(220, 160, 140)).apply {
+                    setOnClickListener { animTap(this); onDownload(game) }
+                    makeLiquid(this)
                 })
-            }
-            isInstalled(game, installedGameTitles) -> {
-                actionBar.addView(makeActionBtn("INSTALLED", Color.rgb(140, 220, 140), Color.argb(40, 80, 160, 80)) {})
-            }
-            game.downloadOptions.size > 1 -> {
-                actionBar.addView(makeActionBtn("GET (${game.downloadOptions.size})", Color.rgb(140, 220, 140), Color.argb(40, 80, 160, 80)) {
-                    animTap(it); showDownloadOptionsDialog(game, onDownload)
-                })
-            }
-            game.downloadOptions.isNotEmpty() -> {
-                actionBar.addView(makeActionBtn("GET", Color.rgb(140, 220, 140), Color.argb(40, 80, 160, 80)) {
-                    animTap(it); onDownload(game)
-                })
-            }
-            game.pageUrl != null -> {
-                actionBar.addView(makeActionBtn("OPEN PAGE", Color.rgb(190, 210, 230), Color.argb(40, 80, 120, 160)) {
-                    animTap(it); openPage(game.pageUrl)
-                })
-            }
-            else -> {
-                actionBar.addView(makeActionBtn("NO DOWNLOADS", Color.rgb(160, 150, 130), Color.argb(40, 120, 110, 90)) {})
             }
         }
 
-        card.addView(actionBar, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, if (forcedCardWidth != null) dp(34) else dp(44)))
-
         return card
+    }
+
+    private fun compactStatus(label: String, textColor: Int): TextView =
+        TextView(context).apply {
+            text = label; setTextColor(textColor); textSize = 10f
+            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setPadding(dp(8), dp(3), dp(8), dp(3))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(80, 12, 11, 16))
+                setStroke(dp(1), Color.argb(45, 160, 140, 110))
+            }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(22))
+        }
+
+    private fun cardMeta(game: AvailableGame): String {
+        val engine = engineLabel(game.engine)
+        val size = game.fileSize?.let(::formatBytes)
+        return listOf(engine, size).filterNotNull().joinToString("  |  ")
+    }
+
+    private class GridDensityIcon(context: Context, private val columns: Int) : View(context) {
+        private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = context.resources.displayMetrics.density * 1.6f
+            color = Color.rgb(232, 229, 220)
+        }
+        private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.argb(55, 232, 229, 220)
+        }
+        private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(232, 229, 220)
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.DEFAULT_BOLD
+            textSize = context.resources.displayMetrics.density * 10f
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val density = resources.displayMetrics.density
+            val count = columns.coerceIn(1, 4)
+            val left = width * 0.24f
+            val top = height * 0.28f
+            val right = width * 0.76f
+            val bottom = height * 0.66f
+            val gap = density * 2.4f
+            val cellW = (right - left - gap * (count - 1)) / count
+            repeat(count) { index ->
+                val x = left + index * (cellW + gap)
+                val rect = RectF(x, top, x + cellW, bottom)
+                canvas.drawRoundRect(rect, density * 2f, density * 2f, fill)
+                canvas.drawRoundRect(rect, density * 2f, density * 2f, stroke)
+            }
+            canvas.drawText(count.toString(), width / 2f, height * 0.86f, textPaint)
+        }
     }
 
     private fun makeActionBtn(label: String, textColor: Int, bgColor: Int, onClick: (View) -> Unit): TextView =
@@ -795,46 +897,13 @@ class AvailableGamesScreen(private val context: Context) {
     }
 
     private fun glassBg(radius: Int, alpha: Int = 200, accent: Boolean = false): GradientDrawable =
-        GradientDrawable().apply {
-            setColor(Color.argb(alpha,
-                if (accent) 50 else 22, if (accent) 40 else 20, if (accent) 30 else 26))
-            cornerRadius = dp(radius).toFloat()
-            setStroke(dp(1), Color.argb(if (accent) 80 else 45,
-                if (accent) 180 else 100, if (accent) 140 else 90, if (accent) 100 else 80))
-        }
+        com.runestone.app.ui.theme.ThemeProvider.getInstance(context).glassBg(radius, alpha, accent)
 
-    private fun makeLiquid(view: View) { if (Theme.isReducedMotion(context)) return
-        view.setOnTouchListener { v, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    v.animate().cancel()
-                    v.animate().scaleX(1.04f).scaleY(1.04f).setDuration(120).start()
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val cx = v.width / 2f; val cy = v.height / 2f
-                    v.translationX = (event.x - cx) * 0.04f
-                    v.translationY = (event.y - cy) * 0.04f
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    v.animate().scaleX(1f).scaleY(1f).translationX(0f).translationY(0f)
-                        .setDuration(250).setInterpolator(OvershootInterpolator(1.6f)).start()
-                }
-            }
-            false
-        }
-    }
+    private fun makeLiquid(view: View) { com.runestone.app.ui.UiKit.makeLiquid(view) }
 
-    private fun animTap(v: View) { if (Theme.isReducedMotion(context)) return
-        v.animate().scaleX(0.88f).scaleY(0.88f).setDuration(60)
-            .withEndAction {
-                v.animate().scaleX(1f).scaleY(1f).setDuration(180)
-                    .setInterpolator(OvershootInterpolator(1.5f)).start()
-            }.start()
-    }
+    private fun animTap(v: View) { com.runestone.app.ui.UiKit.animTap(v) }
 
-    private fun spacer(h: Int): View = View(context).apply {
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, if (h > 0) h else 1)
-    }
+    private fun spacer(h: Int): View = com.runestone.app.ui.UiKit.spacer(context, h)
 
     // ── Loading skeleton ──
 
@@ -937,12 +1006,12 @@ class AvailableGamesScreen(private val context: Context) {
             .trim('-')
     }
 
-    private fun dp(v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
+    private fun dp(v: Int): Int = com.runestone.app.ui.UiKit.dp(context, v)
 
     private companion object {
-        val TEXT = Color.rgb(232, 229, 220)
-        val MUTED = Color.rgb(140, 130, 112)
-        val MUTED_DIM = Color.rgb(120, 112, 104)
+        val TEXT: Int get() = Theme.TEXT
+        val MUTED: Int get() = Theme.MUTED
+        val MUTED_DIM: Int get() = Theme.MUTED_DIM
         val ACCENT: Int get() = Theme.active.accent
     }
 }

@@ -44,6 +44,19 @@ class GodotEngine : GameEngine {
     }
 
     override fun launch(context: Context, gameFolder: File, config: GameConfig) {
+        if (EngineRegistry.isPluginInstalled(context, "com.runestone.plugin.godot")) {
+            Log.i(TAG, "Launching Godot via plugin: ${gameFolder.name}")
+            val intent = android.content.Intent("com.runestone.plugin.LAUNCH_GAME").apply {
+                putExtra("game_path", gameFolder.absolutePath)
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            try {
+                context.startActivity(intent)
+                return
+            } catch (e: android.content.ActivityNotFoundException) {
+                Log.w(TAG, "Godot plugin not found, falling back to unavailable dialog")
+            }
+        }
         Log.i(TAG, "Godot unavailable: ${gameFolder.name}")
         UnavailableEngine.show(context, "Godot")
     }

@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, master]
+  pull_request:
+    branches: [develop]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode keystore
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > app/keystore.jks
+          fi
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 || '' }}
+
+      - name: Lint
+        run: ./gradlew :app:lintDebug
+
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug
+
+      - name: Build release APK
+        if: github.ref == 'refs/heads/master'
+        run: ./gradlew :app:assembleRelease
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || '' }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || '' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || '' }}
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: runestone-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload release APK
+        if: github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@v4
+        with:
+          name: runestone-release
+          path: app/build/outputs/apk/release/app-release.apk
+
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: app/build/reports/tests/

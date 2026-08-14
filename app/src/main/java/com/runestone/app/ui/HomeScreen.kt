@@ -573,7 +573,7 @@ class HomeScreen(private val context: Context) {
                 SortMode.NAME_ASC -> "A-Z"
                 SortMode.NAME_DESC -> "Z-A"
                 SortMode.RECENT -> "REC"
-                SortMode.DATE_ADDED -> "NEW"
+                SortMode.DATE_ADDED -> "ADDED"
             }
             val filterBtn = TextView(context).apply {
                 text = " \u25A4 $filterLabel$searchBadge  |  $sortLabel "; setTextColor(ACCENT); textSize = 13f
@@ -667,13 +667,7 @@ class HomeScreen(private val context: Context) {
         val screenW = displayMetrics.widthPixels
 
         // ── Helpers (defined first so all code below can reference them) ──
-        fun animTap(v: View) { if (Theme.isReducedMotion(context)) return
-            v.animate().scaleX(0.88f).scaleY(0.88f).setDuration(60)
-                .withEndAction {
-                    v.animate().scaleX(1f).scaleY(1f).setDuration(180)
-                        .setInterpolator(OvershootInterpolator(1.5f)).start()
-                }.start()
-        }
+        fun animTap(v: View) { com.runestone.app.ui.UiKit.animTap(v) }
         fun dismissOverlay(v: FrameLayout, root: ViewGroup?) {
             v.animate().alpha(0f).translationY(120f).setDuration(200).withEndAction {
                 root?.removeView(v)
@@ -951,7 +945,7 @@ class HomeScreen(private val context: Context) {
 
         val columns = if (layout == HomeCardLayout.GRID_3) 3 else 2
         val gap = dp(8)
-        val available = screenW - dp(20) - gap * (columns - 1)
+        val available = screenW - dp(28) - gap * (columns - 1)
         val cardW = available / columns
         return GridLayout(context).apply {
             columnCount = columns
@@ -1196,65 +1190,13 @@ class HomeScreen(private val context: Context) {
     // ============================================================
 
     private fun glassBg(radius: Int, alpha: Int = 200, accent: Boolean = false): GradientDrawable =
-        GradientDrawable().apply {
-            setColor(Color.argb(alpha,
-                if (accent) Color.red(Theme.active.accent) / 4 else 22,
-                if (accent) Color.green(Theme.active.accent) / 4 else 20,
-                if (accent) Color.blue(Theme.active.accent) / 4 else 26))
-            cornerRadius = dp(radius).toFloat()
-            if (accent) {
-                setStroke(dp(1), Color.argb(80,
-                    Color.red(Theme.active.accent),
-                    Color.green(Theme.active.accent),
-                    Color.blue(Theme.active.accent)))
-            } else {
-                setStroke(dp(1), Color.argb(45, 100, 90, 80))
-            }
-        }
+        com.runestone.app.ui.theme.ThemeProvider.getInstance(context).glassBg(radius, alpha, accent)
 
     // ============================================================
     //  Liquid Glass touch — zoom + parallax on press-and-move
     // ============================================================
 
-    private fun makeLiquid(view: View) { if (Theme.isReducedMotion(context)) return
-        view.setOnTouchListener { v, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    v.animate().cancel()
-                    v.scaleX = 1.35f
-                    v.scaleY = 1.35f
-                    v.elevation = dp(12).toFloat()
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val cx = v.width / 2f
-                    val cy = v.height / 2f
-                    val dx = (event.x - cx) * 0.25f
-                    val dy = (event.y - cy) * 0.25f
-                    v.translationX = dx
-                    v.translationY = dy
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    v.animate().cancel()
-                    ObjectAnimator.ofFloat(v, "elevation", 0f).apply {
-                        duration = 250
-                        interpolator = OvershootInterpolator(1.6f)
-                    }.start()
-                    v.animate()
-                        .scaleX(1f).scaleY(1f)
-                        .translationX(0f).translationY(0f)
-                        .setDuration(250)
-                        .setInterpolator(OvershootInterpolator(1.6f))
-                        .withEndAction {
-                            v.scaleX = 1f; v.scaleY = 1f
-                            v.translationX = 0f; v.translationY = 0f
-                            v.elevation = 0f
-                        }
-                        .start()
-                }
-            }
-            false // let click through
-        }
-    }
+    private fun makeLiquid(view: View) { com.runestone.app.ui.UiKit.makeLiquid(view) }
 
     // ============================================================
     //  Spin animation for gear icon
@@ -1566,10 +1508,8 @@ class HomeScreen(private val context: Context) {
     //  Helpers
     // ============================================================
 
-    private fun spacer(h: Int): View = View(context).apply {
-        layoutParams = LinearLayout.LayoutParams(MATCH, if (h > 0) h else 1)
-    }
-    private fun dp(v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
+    private fun spacer(h: Int): View = com.runestone.app.ui.UiKit.spacer(context, h)
+    private fun dp(v: Int): Int = com.runestone.app.ui.UiKit.dp(context, v)
 
     // ============================================================
     //  Inspect Overlay — long press hero card
@@ -1788,9 +1728,9 @@ class HomeScreen(private val context: Context) {
         val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
         val VERT = LinearLayout.VERTICAL
-        val TEXT = Color.rgb(232, 229, 220)
-        val MUTED = Color.rgb(140, 130, 112)
-        val MUTED_DIM = Color.rgb(120, 112, 104)
+        val TEXT: Int get() = Theme.TEXT
+        val MUTED: Int get() = Theme.MUTED
+        val MUTED_DIM: Int get() = Theme.MUTED_DIM
         val ACCENT: Int get() = Theme.active.accent
     }
 }

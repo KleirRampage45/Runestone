@@ -291,31 +291,12 @@ class GameFolderBrowserScreen(private val context: Context) {
         setPadding(dp(8), dp(24), dp(8), dp(24))
     }
 
-    private fun makeLiquid(view: View) {
-        if (Theme.isReducedMotion(context)) return
-        view.setOnTouchListener { v, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> v.animate().scaleX(1.015f).scaleY(1.015f).setDuration(80).start()
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
-                    v.animate().scaleX(1f).scaleY(1f).setDuration(160).setInterpolator(OvershootInterpolator(1.2f)).start()
-            }
-            false
-        }
-    }
+    private fun makeLiquid(view: View) { com.runestone.app.ui.UiKit.makeLiquid(view) }
 
-    private fun animTap(view: View) {
-        if (Theme.isReducedMotion(context)) return
-        view.animate().scaleX(0.98f).scaleY(0.98f).setDuration(45).withEndAction {
-            view.animate().scaleX(1f).scaleY(1f).setDuration(120).setInterpolator(OvershootInterpolator(1.2f)).start()
-        }.start()
-    }
+    private fun animTap(view: View) { com.runestone.app.ui.UiKit.animTap(view) }
 
     private fun glassBg(radius: Int, alpha: Int = 180, accent: Boolean = false): GradientDrawable =
-        GradientDrawable().apply {
-            setColor(if (accent) Theme.active.accentBg else withAlpha(Theme.PANEL_BG, alpha))
-            cornerRadius = radius.toFloat()
-            setStroke(dp(1), if (accent) Theme.active.accentStroke else Theme.active.panelStroke)
-        }
+        com.runestone.app.ui.theme.ThemeProvider.getInstance(context).glassBg(radius, alpha, accent)
 
     private fun separator(): View = View(context).apply {
         setBackgroundColor(Theme.active.panelStroke)
@@ -561,11 +542,9 @@ class GameFolderBrowserScreen(private val context: Context) {
         }
     }
 
-    private fun spacer(height: Int = 0, width: Int = 0): View = View(context).apply {
-        layoutParams = LinearLayout.LayoutParams(dp(width), dp(height))
-    }
+    private fun spacer(height: Int = 0, width: Int = 0): View = com.runestone.app.ui.UiKit.spacer(context, height)
 
-    private fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).toInt()
+    private fun dp(value: Int): Int = com.runestone.app.ui.UiKit.dp(context, value)
     private fun dp(value: Float): Float = value * context.resources.displayMetrics.density
 
     private companion object {
